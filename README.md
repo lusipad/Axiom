@@ -1,6 +1,6 @@
 # Axiom 文档入口
 
-> 状态：架构重整中，尚未进入实现  
+> 状态：规范演进中，已有有序离散点 v0.1 可运行原型
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1`  
 > 更新日期：2026-08-08
 
@@ -69,3 +69,22 @@ flowchart LR
 > 输入一组有序离散点及可选上下文，系统能够判断输入是否有效；在无物理单位时仍计算 `coordinate-unit` 下的内在几何；按确定规则记录执行、指标与 Case 状态；比较多个结果，并生成可复现、可追溯的评估证据。
 
 这个闭环成立后，再把五轴 M0–M5 作为领域包接入，而不是把通用框架重新改写成 CNC 专用系统。
+
+## v0.1 快速开始
+
+当前 Python 原型实现了单序列内在指标、显式参考比较、时间间隔指标、三条公共状态轴，以及可选且版本化的评分 Profile。没有 `ScoreProfile` 时不会生成总分；硬门槛失败也不会被分数抵消。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[test]"
+.\.venv\Scripts\python.exe -m axiom evaluate examples\basic-evaluation.json
+.\.venv\Scripts\python.exe -m pytest
+```
+
+输入契约示例见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)。命令退出码为：`0` 表示 `Passed`，`1` 表示 `Failed / Inconclusive / Unsupported`，`2` 表示请求读取失败或 `Invalid`。
+
+v0.1 的资源预算为：单个请求文件最多 8 MiB，单个序列最多 100,000 点，非逐点参考比较最多分配 5,000,000 个距离单元；当前 Fréchet 实现另有更严格的路径存储预算。超过计算预算会返回 `UnsupportedCapability / ComplexityBudgetExceeded`，不会尝试分配矩阵。
+
+按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
+
+v0.1 只解释采样点本身，不把点间区间冒充连续轨迹，也不声明控制器、G-code、五轴运动学或真实设备可执行性。

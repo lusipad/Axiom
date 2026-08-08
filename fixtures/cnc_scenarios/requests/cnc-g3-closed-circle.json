@@ -1,0 +1,39 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [10.0, 0.0, -2.0],
+      [7.071068, 7.071068, -2.0],
+      [0.0, 10.0, -2.0],
+      [-7.071068, 7.071068, -2.0],
+      [-10.0, 0.0, -2.0],
+      [-7.071068, -7.071068, -2.0],
+      [0.0, -10.0, -2.0],
+      [7.071068, -7.071068, -2.0]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": true
+    }
+  },
+  "case": {
+    "caseId": "cnc-g3-closed-circle@1",
+    "requiredMetrics": [
+      "point.count",
+      "path.length.open",
+      "closure.gap",
+      {
+        "metricId": "path.length.closed",
+        "threshold": {
+          "operator": "<=",
+          "value": 61.3,
+          "unit": "mm"
+        }
+      },
+      "step.length.mean",
+      "step.length.std"
+    ]
+  }
+}

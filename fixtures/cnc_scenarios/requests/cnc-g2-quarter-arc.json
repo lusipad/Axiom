@@ -1,0 +1,40 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [0.0, 20.0, -1.5],
+      [3.901806, 19.615706, -1.5],
+      [7.653669, 18.477591, -1.5],
+      [11.111405, 16.629392, -1.5],
+      [14.142136, 14.142136, -1.5],
+      [16.629392, 11.111405, -1.5],
+      [18.477591, 7.653669, -1.5],
+      [19.615706, 3.901806, -1.5],
+      [20.0, 0.0, -1.5]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": false
+    }
+  },
+  "case": {
+    "caseId": "cnc-g2-quarter-arc@1",
+    "requiredMetrics": [
+      "point.count",
+      "coordinate.dimension",
+      {
+        "metricId": "path.length.open",
+        "threshold": {
+          "operator": "<=",
+          "value": 31.4,
+          "unit": "mm"
+        }
+      },
+      "closure.gap",
+      "step.length.mean",
+      "step.length.std"
+    ]
+  }
+}

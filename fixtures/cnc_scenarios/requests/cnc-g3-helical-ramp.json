@@ -1,0 +1,57 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [10.0, 0.0, 0.0],
+      [7.071068, 7.071068, -0.25],
+      [0.0, 10.0, -0.5],
+      [-7.071068, 7.071068, -0.75],
+      [-10.0, 0.0, -1.0],
+      [-7.071068, -7.071068, -1.25],
+      [0.0, -10.0, -1.5],
+      [7.071068, -7.071068, -1.75],
+      [10.0, 0.0, -2.0],
+      [7.071068, 7.071068, -2.25],
+      [0.0, 10.0, -2.5],
+      [-7.071068, 7.071068, -2.75],
+      [-10.0, 0.0, -3.0],
+      [-7.071068, -7.071068, -3.25],
+      [0.0, -10.0, -3.5],
+      [7.071068, -7.071068, -3.75],
+      [10.0, 0.0, -4.0]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": false
+    },
+    "parameter": {
+      "kind": "time",
+      "unit": "s",
+      "values": [
+        0.0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0,
+        13.5, 15.0, 16.5, 18.0, 19.5, 21.0, 22.5, 24.0
+      ]
+    }
+  },
+  "case": {
+    "caseId": "cnc-g3-helical-ramp@1",
+    "requiredMetrics": [
+      "coordinate.dimension",
+      "bounds.axis_aligned",
+      {
+        "metricId": "path.length.open",
+        "threshold": {
+          "operator": "<=",
+          "value": 123.0,
+          "unit": "mm"
+        }
+      },
+      "closure.gap",
+      "step.length.mean",
+      "step.length.std",
+      "parameter.interval.mean"
+    ]
+  }
+}

@@ -60,6 +60,8 @@ flowchart LR
     RunSpec -->|"uses"| Runner
     RunSpec --> Run
     Run -->|"produces"| Observation
+    ComparisonSpec -->|"selects compatible"| Run
+    Run --> ComparisonReport
     Observation --> MetricResult
     MetricResult -->|"supports or refutes"| Claim
     Evidence -->|"justifies"| Claim
@@ -102,6 +104,8 @@ flowchart LR
 | `ParameterSet` | Subject 或 Model 的显式参数 | 模式、值、单位、合法域或来源 |
 | `RunSpec` | 把 Case、Subject、Runner、参数和环境冻结为一次执行请求 | 所有引用对象的精确版本或内容标识 |
 | `Run` | 一次实际执行及其状态 | 唯一 ID、开始/结束、状态、RunSpec 指纹 |
+| `ComparisonSpec` | 冻结待比较 Run/Subject 与版本化比较策略 | 操作数、策略 ID、内容标识 |
+| `ComparisonReport` | 记录兼容性判定及允许产生的差异 | 原始 Run 引用、结构化冲突、逐指标差值、内容标识 |
 | `Observation` | 执行产生的原始或对齐后观测 | 来源、时间/索引语义、质量标记 |
 | `MetricDefinition` | 一个指标的数学含义和适用条件 | ID、版本、单位、方向、前置能力 |
 | `MetricResult` | 指标在一次评估中的值或不可计算原因 | 值/区间/分布、状态、定义版本 |
@@ -123,6 +127,18 @@ flowchart LR
 - 需要从功能描述逐步实例化为具体试验。
 
 这避免平台被某一种场景本体绑死，同时为更复杂真实世界保留组合空间。
+
+### 5.3 比较是独立派生，不改写 Run
+
+比较器必须是由 `ComparisonSpec` 和所引用 Run 决定的确定性派生过程。它先按版本化策略生成兼容性报告，再决定能否计算差值或偏好；不得为完成比较而改写原始 Run、补猜单位或转换 Artifact。
+
+`ComparisonReport` 必须保留双方 Run 或其不可变内容引用，并区分：
+
+- `error`：直接比较不成立；报告结构化冲突字段，且不得输出指标差值、综合分数差值或优胜方；
+- `finding`：上下文存在可审计差异，但当前策略仍允许比较；差异必须随报告保存；
+- `compatible = true`：只表示比较上下文满足策略，不表示双方 Run 都通过 Case，也不自动产生偏好方向。
+
+内容身份与兼容身份不得混用。原始 Request/Observation 的内容标识必须保留“字段未提供”和“明确声明未知”的差异；比较策略只能对规范已声明为语义等价的默认字段做规范化，并必须把该规则纳入策略版本。
 
 ## 6. Domain Pack 契约
 

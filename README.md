@@ -1,6 +1,6 @@
 # Axiom 文档入口
 
-> 状态：规范演进中，已有有序离散点 v0.1 可运行原型
+> 状态：规范演进中，已有有序离散点 v0.2 可运行原型
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1`  
 > 更新日期：2026-08-08
 
@@ -70,21 +70,56 @@ flowchart LR
 
 这个闭环成立后，再把五轴 M0–M5 作为领域包接入，而不是把通用框架重新改写成 CNC 专用系统。
 
-## v0.1 快速开始
+## v0.2 快速开始
 
-当前 Python 原型实现了单序列内在指标、显式参考比较、时间间隔指标、三条公共状态轴，以及可选且版本化的评分 Profile。没有 `ScoreProfile` 时不会生成总分；硬门槛失败也不会被分数抵消。
+当前 Python 原型实现了单序列内在指标、显式参考比较、时间间隔指标、三条公共状态轴，以及可选且版本化的评分 Profile。v0.2 在原有数值内核外增加了静态 `DomainPack`、确定性的 `RunSpec → Observation → Run → Claim/Evidence` 谱系，以及两个导入式 Run 的严格 A/B 比较。没有 `ScoreProfile` 时不会生成总分；硬门槛失败也不会被分数抵消。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[test]"
 .\.venv\Scripts\python.exe -m axiom evaluate examples\basic-evaluation.json
+.\.venv\Scripts\python.exe -m axiom compare fixtures\cnc_scenarios\comparisons\cnc-contour-ab-pass-vs-fail.json
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-输入契约示例见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)。命令退出码为：`0` 表示 `Passed`，`1` 表示 `Failed / Inconclusive / Unsupported`，`2` 表示请求读取失败或 `Invalid`。
+单次输入契约示例见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，完整 CNC A/B 输入见 [`cnc-contour-ab-pass-vs-fail.json`](fixtures/cnc_scenarios/comparisons/cnc-contour-ab-pass-vs-fail.json)。`evaluate` 的退出码为：`0` 表示 `Passed`，`1` 表示 `Failed / Inconclusive / Unsupported`，`2` 表示请求读取失败或 `Invalid`。`compare` 的退出码为：`0` 表示两个 Run 兼容且比较成功，`1` 表示语义不兼容，`2` 表示文件或 `ComparisonSpec` 无效；左右 Subject 自身一个通过、一个失败并不意味着比较执行失败。
 
-v0.1 的资源预算为：单个请求文件最多 8 MiB，单个序列最多 100,000 点，非逐点参考比较最多分配 5,000,000 个距离单元；当前 Fréchet 实现另有更严格的路径存储预算。超过计算预算会返回 `UnsupportedCapability / ComplexityBudgetExceeded`，不会尝试分配矩阵。
+`ComparisonSpec` 把两个 Subject 与各自的完整 `EvaluationRequest` 冻结在同一文件中：
+
+```json
+{
+  "policyId": "ordered-point.run-comparison.strict@1",
+  "left": {
+    "subjectId": "algorithm-a",
+    "request": {
+      "artifact": {
+        "artifactType": "ordered-point-sequence",
+        "schemaVersion": 1,
+        "points": [[0, 0], [3, 4]],
+        "semantics": {"unit": "mm", "coordinateFrame": "G54-workpiece"}
+      },
+      "case": {"caseId": "path-ab@1", "requiredMetrics": ["path.length.open"]}
+    }
+  },
+  "right": {
+    "subjectId": "algorithm-b",
+    "request": {
+      "artifact": {
+        "artifactType": "ordered-point-sequence",
+        "schemaVersion": 1,
+        "points": [[0, 0], [0, 6]],
+        "semantics": {"unit": "mm", "coordinateFrame": "G54-workpiece"}
+      },
+      "case": {"caseId": "path-ab@1", "requiredMetrics": ["path.length.open"]}
+    }
+  }
+}
+```
+
+首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
+
+v0.2 的资源预算为：单个评估请求文件最多 8 MiB，单个比较文件最多 16 MiB，单个序列最多 100,000 点，非逐点参考比较最多分配 5,000,000 个距离单元；当前 Fréchet 实现另有更严格的路径存储预算。超过计算预算会返回 `UnsupportedCapability / ComplexityBudgetExceeded`，不会尝试分配矩阵。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.1 只解释采样点本身，不把点间区间冒充连续轨迹，也不声明控制器、G-code、五轴运动学或真实设备可执行性。
+v0.2 仍只解释导入的采样点本身：它不会启动厂商算法，也不把点间区间冒充连续轨迹，不声明控制器、G-code、五轴运动学或真实设备可执行性。`ComparisonSpec` 尚不包含上游算法输入和 `ParameterSet`，所以只能证明两个输出在共同 Case 下可比，不能证明两种算法使用了相同输入参数。当前可查询、注册静态 `DomainPack` 描述，但只有内建 `ordered-point.domain-pack@1` 绑定了可执行 evaluator；其他已注册描述会明确返回 `DomainPackEvaluatorUnavailable`，不会借用内建实现生成伪谱系。数据库、动态插件、Experiment 调度与持久化 Run 历史仍属于后续工作。

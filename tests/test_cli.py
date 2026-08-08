@@ -1,7 +1,17 @@
 import json
+from pathlib import Path
 
 import axiom.cli as cli_module
 from axiom.cli import main
+
+
+COMPARISON_FIXTURE = (
+    Path(__file__).parents[1]
+    / "fixtures"
+    / "cnc_scenarios"
+    / "comparisons"
+    / "cnc-contour-ab-pass-vs-fail.json"
+)
 
 
 def test_cli_evaluates_a_json_request(tmp_path, capsys):
@@ -95,3 +105,46 @@ def test_cli_returns_a_structured_invalid_report_with_exit_code_two(tmp_path, ca
     output = json.loads(capsys.readouterr().out)
     assert output["caseOutcome"] == "Invalid"
     assert output["domainFailures"][0]["code"] == "EmptySequence"
+
+
+def test_cli_compares_two_imported_runs(capsys):
+    exit_code = main(["compare", str(COMPARISON_FIXTURE)])
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert output["compatibility"]["compatible"] is True
+    assert {item["metricId"] for item in output["metricComparisons"]} == {
+        "paired.euclidean.max",
+        "paired.euclidean.rms",
+    }
+
+
+def test_cli_returns_one_without_deltas_for_incompatible_runs(tmp_path, capsys):
+    comparison = json.loads(COMPARISON_FIXTURE.read_text(encoding="utf-8"))
+    comparison["right"]["request"]["case"]["caseId"] = "different-case@1"
+    comparison_path = tmp_path / "incompatible.json"
+    comparison_path.write_text(json.dumps(comparison), encoding="utf-8")
+
+    assert main(["compare", str(comparison_path)]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["compatibility"]["compatible"] is False
+    assert output["metricComparisons"] == []
+    assert "CaseMismatch" in {item["code"] for item in output["compatibility"]["issues"]}
+
+
+def test_cli_returns_two_for_a_malformed_comparison_spec(tmp_path, capsys):
+    comparison_path = tmp_path / "malformed-comparison.json"
+    comparison_path.write_text(json.dumps({"left": {}}), encoding="utf-8")
+
+    assert main(["compare", str(comparison_path)]) == 2
+    output = json.loads(capsys.readouterr().out)
+    assert output["compatibility"]["issues"][0]["code"] == "MalformedComparisonSpec"
+
+
+def test_cli_rejects_a_comparison_larger_than_its_byte_budget(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(cli_module, "MAX_COMPARISON_BYTES", 8)
+    comparison_path = tmp_path / "oversized-comparison.json"
+    comparison_path.write_bytes(b" " * 9)
+
+    assert main(["compare", str(comparison_path)]) == 2
+    assert "比较请求超过 8 字节限制" in capsys.readouterr().err

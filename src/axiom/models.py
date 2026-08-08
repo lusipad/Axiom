@@ -45,6 +45,12 @@ class CaseOutcome(str, Enum):
     INVALID = "Invalid"
 
 
+class ClaimStatus(str, Enum):
+    SUPPORTED = "Supported"
+    REFUTED = "Refuted"
+    INCONCLUSIVE = "Inconclusive"
+
+
 class PointSemantics(AxiomModel):
     unit: str | None = None
     coordinate_frame: str | None = Field(default=None, alias="coordinateFrame")
@@ -249,3 +255,118 @@ class EvaluationReport(AxiomModel):
             if result.metric_id == metric_id:
                 return result
         raise KeyError(metric_id)
+
+
+class RunSpec(AxiomModel):
+    subject_id: str = Field(alias="subjectId", min_length=1)
+    request: EvaluationRequest
+    domain_pack_id: str = Field(default="ordered-point.domain-pack@1", alias="domainPackId", min_length=1)
+    runner_id: str = Field(default="artifact-import@1", alias="runnerId", min_length=1)
+    evaluator_version: str = Field(default="ordered-point-evaluator@1", alias="evaluatorVersion")
+
+
+class Observation(AxiomModel):
+    observation_id: str = Field(alias="observationId")
+    subject_id: str | None = Field(default=None, alias="subjectId")
+    artifact: OrderedPointSequence
+    artifact_hash: str = Field(alias="artifactHash")
+    observation_hash: str = Field(alias="observationHash")
+    source: Literal["ImportedArtifact"] = "ImportedArtifact"
+
+
+class Claim(AxiomModel):
+    claim_id: str = Field(alias="claimId")
+    claim_definition_id: str = Field(alias="claimDefinitionId")
+    subject_id: str | None = Field(default=None, alias="subjectId")
+    status: ClaimStatus
+    predicate: str
+    metric_id: str | None = Field(default=None, alias="metricId")
+    report_content_hash: str | None = Field(default=None, alias="reportContentHash")
+    reason_code: str | None = Field(default=None, alias="reasonCode")
+    evidence: Evidence | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    content_hash: str = Field(alias="contentHash")
+
+
+class Run(AxiomModel):
+    run_id: str = Field(alias="runId")
+    subject_id: str | None = Field(default=None, alias="subjectId")
+    domain_pack_id: str = Field(alias="domainPackId")
+    runner_id: str = Field(alias="runnerId")
+    run_spec_hash: str | None = Field(default=None, alias="runSpecHash")
+    report_content_hash: str = Field(alias="reportContentHash")
+    execution_status: ExecutionStatus = Field(alias="executionStatus")
+    case_outcome: CaseOutcome = Field(alias="caseOutcome")
+    evaluator_version: str = Field(alias="evaluatorVersion")
+    numeric_environment: dict[str, str] = Field(default_factory=dict, alias="numericEnvironment")
+    provenance: Provenance | None = None
+    content_hash: str = Field(alias="contentHash")
+
+
+class RunBundle(AxiomModel):
+    run_spec: RunSpec | None = Field(default=None, alias="runSpec")
+    run: Run
+    observation: Observation | None = None
+    report: EvaluationReport
+    claims: list[Claim] = Field(default_factory=list)
+    bundle_hash: str = Field(alias="bundleHash")
+
+    def metric_result(self, metric_id: str) -> MetricResult:
+        return self.report.metric_result(metric_id)
+
+
+class ComparisonOperand(AxiomModel):
+    subject_id: str = Field(alias="subjectId", min_length=1)
+    request: EvaluationRequest
+
+
+class ComparisonSpec(AxiomModel):
+    left: ComparisonOperand
+    right: ComparisonOperand
+    policy_id: Literal["ordered-point.run-comparison.strict@1"] = Field(
+        default="ordered-point.run-comparison.strict@1",
+        alias="policyId",
+    )
+
+
+class CompatibilityIssue(AxiomModel):
+    code: str
+    message: str
+    path: str | None = Field(default=None, alias="field")
+    severity: Literal["error", "finding"] = "error"
+    left_value: Any = Field(default=None, alias="leftValue")
+    right_value: Any = Field(default=None, alias="rightValue")
+
+
+class CompatibilityReport(AxiomModel):
+    compatible: bool
+    issues: list[CompatibilityIssue] = Field(default_factory=list)
+    content_hash: str = Field(alias="contentHash")
+
+
+class MetricComparison(AxiomModel):
+    metric_id: str = Field(alias="metricId")
+    metric_definition_id: str | None = Field(default=None, alias="metricDefinitionId")
+    left_status: MetricStatus | None = Field(default=None, alias="leftStatus")
+    right_status: MetricStatus | None = Field(default=None, alias="rightStatus")
+    left_value: Any = Field(default=None, alias="left")
+    right_value: Any = Field(default=None, alias="right")
+    unit: str | None = None
+    comparable: bool
+    reason_code: str | None = Field(default=None, alias="reasonCode")
+    direction: Literal["lower-is-better", "higher-is-better"] | None = None
+    preferred_subject_id: str | None = Field(default=None, alias="preferredSubjectId")
+    delta: float | None = None
+
+
+class ComparisonReport(AxiomModel):
+    comparison_id: str = Field(alias="comparisonId")
+    left_run: RunBundle | None = Field(default=None, alias="leftRun")
+    right_run: RunBundle | None = Field(default=None, alias="rightRun")
+    policy_id: str = Field(alias="policyId")
+    comparison_spec_hash: str | None = Field(default=None, alias="comparisonSpecHash")
+    compatibility: CompatibilityReport
+    differences: list[CompatibilityIssue] = Field(default_factory=list, alias="differences")
+    metric_comparisons: list[MetricComparison] = Field(default_factory=list, alias="metricComparisons")
+    score_comparison: MetricComparison | None = Field(default=None, alias="scoreComparison")
+    content_hash: str = Field(alias="contentHash")

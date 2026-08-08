@@ -1033,10 +1033,10 @@ def _build_provenance(request: EvaluationRequest, request_hash: str) -> Provenan
     return Provenance(
         request_hash=request_hash,
         artifact_hash=_content_hash(request.artifact),
-        case_hash=_content_hash(request.case),
+        case_hash=_canonical_content_hash(request.case),
         reference_hash=_content_hash(binding.reference) if binding is not None else None,
         reference_binding_hash=_content_hash(binding) if binding is not None else None,
-        score_profile_hash=_content_hash(profile) if profile is not None else None,
+        score_profile_hash=_canonical_content_hash(profile) if profile is not None else None,
         execution_outcome_policy=request.case.execution_outcome_policy,
         numeric_environment={
             "python": platform.python_version(),
@@ -1054,6 +1054,19 @@ def _content_hash(payload: Any) -> str:
         if hasattr(payload, "model_dump")
         else payload
     )
+    return _hash_serializable(serializable)
+
+
+def _canonical_content_hash(payload: Any) -> str:
+    serializable = (
+        payload.model_dump(mode="json", by_alias=True, exclude_unset=False, exclude_none=False)
+        if hasattr(payload, "model_dump")
+        else payload
+    )
+    return _hash_serializable(serializable)
+
+
+def _hash_serializable(serializable: Any) -> str:
     canonical = json.dumps(
         serializable,
         ensure_ascii=False,

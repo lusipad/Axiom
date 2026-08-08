@@ -11,6 +11,198 @@
     "https://linuxcnc.org/docs/stable/html/gcode/g-code.html",
     "https://linuxcnc.org/docs/html/user/user-concepts.html"
   ],
+  "comparisonCases": [
+    {
+      "id": "cnc-contour-ab-pass-vs-fail@1",
+      "file": "comparisons/cnc-contour-ab-pass-vs-fail.json",
+      "expectedMetrics": {
+        "paired.euclidean.max": {
+          "left": 0.025,
+          "right": 0.08,
+          "delta": 0.055,
+          "direction": "lower-is-better"
+        },
+        "paired.euclidean.rms": {
+          "left": 0.01670828137980285,
+          "right": 0.035237290853109955,
+          "delta": 0.018529009473307105,
+          "direction": "lower-is-better"
+        }
+      }
+    },
+    {
+      "id": "cnc-run-compatibility-matrix@1",
+      "file": "comparisons/cnc-run-compatibility-matrix.json",
+      "commonMutations": [],
+      "cases": [
+        {
+          "id": "case-hash-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.caseHash",
+              "value": "sha256:case-other"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "CaseMismatch",
+              "path": "report.provenance.caseHash"
+            }
+          ]
+        },
+        {
+          "id": "schema-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.schemaVersion",
+              "value": 2
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "SchemaMismatch",
+              "path": "runSpec.request.artifact.schemaVersion"
+            }
+          ]
+        },
+        {
+          "id": "metric-definition-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.metricResults.0.metricDefinitionId",
+              "value": "paired.euclidean.max@2"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "MetricDefinitionMismatch",
+              "path": "report.metricResults[paired.euclidean.rms].metricDefinitionId"
+            }
+          ]
+        },
+        {
+          "id": "profile-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.scoreProfileHash",
+              "value": "sha256:other-profile"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ProfileMismatch",
+              "path": "report.provenance.scoreProfileHash"
+            }
+          ]
+        },
+        {
+          "id": "reference-binding-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.referenceBindingHash",
+              "value": "sha256:different-reference-binding"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ReferenceBindingMismatch",
+              "path": "report.provenance.referenceBindingHash"
+            }
+          ]
+        },
+        {
+          "id": "execution-policy-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.executionOutcomePolicy",
+              "value": "axiom.core.execution-outcome.relaxed@1"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ExecutionPolicyMismatch",
+              "path": "report.provenance.executionOutcomePolicy"
+            }
+          ]
+        },
+        {
+          "id": "unit-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.metricResults.0.unit",
+              "value": "coordinate-unit"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "UnitMismatch",
+              "path": "report.metricResults[paired.euclidean.rms].unit"
+            }
+          ]
+        },
+        {
+          "id": "frame-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.semantics.coordinateFrame",
+              "value": "G55-workpiece"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "FrameMismatch",
+              "path": "runSpec.request.artifact.semantics.coordinateFrame"
+            }
+          ]
+        },
+        {
+          "id": "artifact-unit-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.semantics.unit",
+              "value": "cm"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ArtifactUnitMismatch",
+              "path": "runSpec.request.artifact.semantics.unit"
+            }
+          ]
+        },
+        {
+          "id": "closed-semantics-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.semantics.closed",
+              "value": true
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ClosedSemanticsMismatch",
+              "path": "runSpec.request.artifact.semantics.closed"
+            }
+          ]
+        },
+        {
+          "id": "invalid-terminal-state",
+          "rightMutations": [
+            {
+              "path": "report.caseOutcome",
+              "value": "Invalid"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "InvalidRunState",
+              "path": "report.caseOutcome"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "cases": [
     {
       "id": "cnc-g1-linear-finishing@1",

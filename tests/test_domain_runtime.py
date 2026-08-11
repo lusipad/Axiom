@@ -67,6 +67,29 @@ def _scalar_domain_pack(pack_id: str, evaluator_version: str = "vendor.scalar-ev
     )
 
 
+def _scalar_descriptor_domain_pack(
+    pack_id: str,
+    artifact_type_descriptors: list[dict[str, Any]],
+    evaluator_version: str = "vendor.scalar-evaluator@7",
+) -> DomainPack:
+    return DomainPack(
+        domainPackId=pack_id,
+        artifactTypeDescriptors=artifact_type_descriptors,
+        evaluatorVersion=evaluator_version,
+        runnerId=ARTIFACT_IMPORT_RUNNER_ID,
+        runnerIds=[ARTIFACT_IMPORT_RUNNER_ID],
+        capabilityIds=["vendor.scalar.parsed@1"],
+        metricDefinitions=[
+            MetricDefinition(
+                metricId="value.count",
+                metricDefinitionId="vendor.scalar.value.count@1",
+            )
+        ],
+        claimDefinitionIds=["axiom.core.case-outcome-claim@1"],
+        comparisonPolicyIds=[],
+    )
+
+
 def _scalar_request(values: Any, *, reference_binding: dict[str, Any] | None = None) -> dict[str, Any]:
     request: dict[str, Any] = {
         "artifact": {
@@ -149,6 +172,193 @@ def _scalar_binding(pack_id: str, evaluator_version: str = "vendor.scalar-evalua
         domain_pack_id=pack_id,
         parse_request=parse_request,
         evaluate=evaluate_scalar,
+    )
+
+
+def _boolean_claim_pack(
+    pack_id: str,
+    evaluator_version: str = "vendor.boolean-evaluator@3",
+) -> DomainPack:
+    return DomainPack(
+        domainPackId=pack_id,
+        artifactType="boolean-sample",
+        artifactSchemaVersions=[1],
+        artifactTypeDescriptors=[
+            {"artifactType": "boolean-sample", "schemaVersion": 1, "role": "run-input"},
+            {"artifactType": "boolean-annotation", "schemaVersion": 1, "role": "reference"},
+        ],
+        evaluatorVersion=evaluator_version,
+        runnerId=ARTIFACT_IMPORT_RUNNER_ID,
+        runnerIds=[ARTIFACT_IMPORT_RUNNER_ID],
+        capabilityIds=["vendor.boolean.parsed@1"],
+        metricDefinitions=[
+            MetricDefinition(
+                metricId="boolean.pass",
+                metricDefinitionId="vendor.boolean.pass@1",
+                claimDefinitionId="vendor.boolean.pass-claim@1",
+                claimPredicate="boolean.pass is true",
+            ),
+            MetricDefinition(
+                metricId="value.count",
+                metricDefinitionId="vendor.boolean.value.count@1",
+            ),
+        ],
+        claimDefinitionIds=[
+            "axiom.core.case-outcome-claim@1",
+            "axiom.core.metric-threshold-claim@1",
+            "vendor.boolean.pass-claim@1",
+        ],
+        comparisonPolicyIds=[],
+    )
+
+
+def _boolean_claim_request() -> dict[str, Any]:
+    return {
+        "subjectId": "boolean-subject",
+        "domainPackId": "unused-placeholder",
+        "request": {
+            "artifact": {
+                "artifactType": "boolean-sample",
+                "schemaVersion": 1,
+                "passed": True,
+            },
+            "case": {
+                "caseId": "boolean-claim@1",
+                "requiredMetrics": [
+                    "boolean.pass",
+                    {"metricId": "value.count", "threshold": {"operator": ">=", "value": 1}},
+                ],
+            },
+        },
+    }
+
+
+def _boolean_claim_binding(
+    pack_id: str,
+    *,
+    computed_boolean: bool | None,
+    metric_status: MetricStatus,
+    evaluator_version: str = "vendor.boolean-evaluator@3",
+) -> DomainRuntimeBinding:
+    class BooleanArtifact(BaseModel):
+        model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+        artifact_type: Literal["boolean-sample"] = Field(alias="artifactType")
+        schema_version: Literal[1] = Field(alias="schemaVersion")
+        passed: bool
+
+    class BooleanRequest(BaseModel):
+        model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+        artifact: BooleanArtifact
+        case: EvaluationCase
+
+    def parse_request(request: Any) -> BooleanRequest:
+        payload = request.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        return BooleanRequest.model_validate(payload)
+
+    def evaluate_boolean(request: BooleanRequest) -> EvaluationReport:
+        artifact_payload = request.artifact.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        case_payload = request.case.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        request_payload = {
+            "artifact": artifact_payload,
+            "case": case_payload,
+        }
+        return EvaluationReport(
+            executionStatus=ExecutionStatus.SUCCEEDED,
+            caseOutcome=CaseOutcome.PASSED,
+            metricResults=[
+                MetricResult(
+                    metricId="boolean.pass",
+                    metricDefinitionId="vendor.boolean.pass@1",
+                    status=metric_status,
+                    value=computed_boolean,
+                ),
+                MetricResult(
+                    metricId="value.count",
+                    metricDefinitionId="vendor.boolean.value.count@1",
+                    status=MetricStatus.COMPUTED,
+                    value=1,
+                    thresholdPassed=True,
+                ),
+            ],
+            contentHash=_content_hash({"report": request_payload, "evaluatorVersion": evaluator_version}),
+            evaluatorVersion=evaluator_version,
+        )
+
+    return DomainRuntimeBinding(
+        domain_pack_id=pack_id,
+        parse_request=parse_request,
+        evaluate=evaluate_boolean,
+    )
+
+
+def _multi_artifact_pack(pack_id: str, evaluator_version: str = "vendor.multi-artifact-evaluator@1") -> DomainPack:
+    return DomainPack(
+        domainPackId=pack_id,
+        artifactType="scalar-sample",
+        artifactSchemaVersions=[1],
+        artifactTypeDescriptors=[
+            {"artifactType": "scalar-sample", "schemaVersion": 1, "role": "run-input"},
+            {"artifactType": "vector-sample", "schemaVersion": 1, "role": "run-input"},
+        ],
+        evaluatorVersion=evaluator_version,
+        runnerId=ARTIFACT_IMPORT_RUNNER_ID,
+        runnerIds=[ARTIFACT_IMPORT_RUNNER_ID],
+        capabilityIds=["vendor.multi.parsed@1"],
+        metricDefinitions=[
+            MetricDefinition(
+                metricId="value.count",
+                metricDefinitionId="vendor.multi.value.count@1",
+            )
+        ],
+        claimDefinitionIds=["axiom.core.case-outcome-claim@1"],
+        comparisonPolicyIds=[],
+    )
+
+
+def _multi_artifact_binding(
+    pack_id: str,
+    evaluator_version: str = "vendor.multi-artifact-evaluator@1",
+) -> DomainRuntimeBinding:
+    class GenericArtifact(BaseModel):
+        model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+        artifact_type: str = Field(alias="artifactType")
+        schema_version: int = Field(alias="schemaVersion")
+
+    class GenericRequest(BaseModel):
+        model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+        artifact: GenericArtifact
+        case: EvaluationCase
+
+    def parse_request(request: Any) -> GenericRequest:
+        payload = request.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        return GenericRequest.model_validate(payload)
+
+    def evaluate_generic(request: GenericRequest) -> EvaluationReport:
+        artifact_payload = request.artifact.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        case_payload = request.case.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        return EvaluationReport(
+            executionStatus=ExecutionStatus.SUCCEEDED,
+            caseOutcome=CaseOutcome.PASSED,
+            metricResults=[
+                MetricResult(
+                    metricId="value.count",
+                    metricDefinitionId="vendor.multi.value.count@1",
+                    status=MetricStatus.COMPUTED,
+                    value=1,
+                )
+            ],
+            contentHash=_content_hash({"artifact": artifact_payload, "case": case_payload}),
+            evaluatorVersion=evaluator_version,
+        )
+
+    return DomainRuntimeBinding(
+        domain_pack_id=pack_id,
+        parse_request=parse_request,
+        evaluate=evaluate_generic,
     )
 
 
@@ -284,7 +494,15 @@ def test_validate_run_bundle_integrity_rejects_tampered_claim_report_hash_even_w
 
 def test_descriptor_only_pack_returns_structured_evaluator_unavailable():
     pack_id = _scalar_pack_id("descriptor-only")
-    register_domain_pack(_scalar_domain_pack(pack_id))
+    register_domain_pack(
+        _scalar_descriptor_domain_pack(
+            pack_id,
+            [
+                {"artifactType": "scalar-sample", "schemaVersion": 1, "role": "run-input"},
+                {"artifactType": "scalar-annotation", "schemaVersion": 1, "role": "reference"},
+            ],
+        )
+    )
     payload = _scalar_request([1.0])
     payload["domainPackId"] = pack_id
 
@@ -300,6 +518,89 @@ def test_descriptor_only_pack_returns_structured_evaluator_unavailable():
             "severity": "error",
         }
     ]
+
+
+def test_runtime_preflight_rejects_unknown_run_input_artifact_type_with_a_single_structured_failure():
+    pack_id = _scalar_pack_id("unknown-run-input-artifact-type")
+    pack = _scalar_descriptor_domain_pack(
+        pack_id,
+        [
+            {"artifactType": "scalar-sample", "schemaVersion": 1, "role": "run-input"},
+            {"artifactType": "scalar-annotation", "schemaVersion": 1, "role": "reference"},
+        ],
+    )
+    register_domain_pack(pack)
+    register_domain_runtime_binding(_scalar_binding(pack_id, pack.evaluator_version))
+    payload = _scalar_request([1.0])
+    payload["domainPackId"] = pack_id
+    payload["request"]["artifact"]["artifactType"] = "vendor.unknown-scalar"
+
+    bundle = evaluate_run(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    assert bundle["report"]["domainFailures"] == [
+        {
+            "code": "ArtifactTypeMismatch",
+            "message": "RunSpec request artifactType does not match the registered DomainPack.",
+            "path": "request.artifact.artifactType",
+            "severity": "error",
+        }
+    ]
+
+
+def test_runtime_preflight_rejects_unknown_run_input_artifact_schema_version_without_type_failure_noise():
+    pack_id = _scalar_pack_id("unknown-run-input-schema")
+    pack = _scalar_descriptor_domain_pack(
+        pack_id,
+        [
+            {"artifactType": "scalar-sample", "schemaVersion": 1, "role": "run-input"},
+            {"artifactType": "scalar-annotation", "schemaVersion": 1, "role": "reference"},
+        ],
+    )
+    register_domain_pack(pack)
+    register_domain_runtime_binding(_scalar_binding(pack_id, pack.evaluator_version))
+    payload = _scalar_request([1.0])
+    payload["domainPackId"] = pack_id
+    payload["request"]["artifact"]["schemaVersion"] = 2
+
+    bundle = evaluate_run(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    assert bundle["report"]["domainFailures"] == [
+        {
+            "code": "ArtifactSchemaVersionMismatch",
+            "message": "RunSpec request schemaVersion is not supported by the registered DomainPack.",
+            "path": "request.artifact.schemaVersion",
+            "severity": "error",
+        }
+    ]
+
+
+@pytest.mark.parametrize("artifact_type", ["scalar-sample", "vector-sample"])
+def test_same_pack_allows_multiple_run_input_artifact_types(artifact_type: str):
+    pack_id = _scalar_pack_id(f"multi-run-input-{artifact_type}")
+    pack = _multi_artifact_pack(pack_id)
+    register_domain_pack(pack)
+    register_domain_runtime_binding(_multi_artifact_binding(pack_id, pack.evaluator_version))
+    payload = {
+        "subjectId": "multi-artifact-subject",
+        "domainPackId": pack_id,
+        "request": {
+            "artifact": {
+                "artifactType": artifact_type,
+                "schemaVersion": 1,
+                "payload": [1, 2, 3],
+            },
+            "case": {
+                "caseId": "multi-artifact-case@1",
+                "requiredMetrics": ["value.count"],
+            },
+        },
+    }
+
+    bundle = evaluate_run(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    assert bundle["run"]["executionStatus"] == "Succeeded"
+    assert bundle["report"]["domainFailures"] == []
+    assert bundle["observation"]["artifact"]["artifactType"] == artifact_type
 
 
 def test_runtime_binding_registration_rejects_conflicting_redefinition():
@@ -500,3 +801,81 @@ def test_run_py_has_no_ordered_point_specific_routing_branch_for_explicit_domain
     source = inspect.getsource(run_module._apply_domain_pack_defaults)
 
     assert "ORDERED_POINT_DOMAIN_PACK_ID" not in source
+
+
+def test_computed_boolean_metric_projections_add_domain_claims_without_changing_core_claims():
+    pack_id = _scalar_pack_id("boolean-claim-supported")
+    pack = _boolean_claim_pack(pack_id)
+    register_domain_pack(pack)
+    register_domain_runtime_binding(
+        _boolean_claim_binding(
+            pack_id,
+            computed_boolean=True,
+            metric_status=MetricStatus.COMPUTED,
+            evaluator_version=pack.evaluator_version,
+        )
+    )
+    payload = _boolean_claim_request()
+    payload["domainPackId"] = pack_id
+
+    bundle = evaluate_run(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    assert [claim["claimDefinitionId"] for claim in bundle["claims"]] == [
+        "axiom.core.case-outcome-claim@1",
+        "axiom.core.metric-threshold-claim@1",
+        "vendor.boolean.pass-claim@1",
+    ]
+    assert bundle["claims"][0]["predicate"] == "case.outcome == Passed"
+    assert bundle["claims"][1]["status"] == "Supported"
+    assert bundle["claims"][2]["status"] == "Supported"
+    assert bundle["claims"][2]["predicate"] == "boolean.pass is true"
+    assert bundle["claims"][2]["metricId"] == "boolean.pass"
+
+
+def test_computed_false_boolean_metric_projection_is_refuted():
+    pack_id = _scalar_pack_id("boolean-claim-refuted")
+    pack = _boolean_claim_pack(pack_id)
+    register_domain_pack(pack)
+    register_domain_runtime_binding(
+        _boolean_claim_binding(
+            pack_id,
+            computed_boolean=False,
+            metric_status=MetricStatus.COMPUTED,
+            evaluator_version=pack.evaluator_version,
+        )
+    )
+    payload = _boolean_claim_request()
+    payload["domainPackId"] = pack_id
+
+    bundle = evaluate_run(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    assert bundle["claims"][-1]["claimDefinitionId"] == "vendor.boolean.pass-claim@1"
+    assert bundle["claims"][-1]["status"] == "Refuted"
+
+
+def test_noncomputed_boolean_metric_projection_is_inconclusive():
+    pack_id = _scalar_pack_id("boolean-claim-inconclusive")
+    pack = _boolean_claim_pack(pack_id)
+    register_domain_pack(pack)
+    register_domain_runtime_binding(
+        _boolean_claim_binding(
+            pack_id,
+            computed_boolean=None,
+            metric_status=MetricStatus.UNSUPPORTED_CAPABILITY,
+            evaluator_version=pack.evaluator_version,
+        )
+    )
+    payload = _boolean_claim_request()
+    payload["domainPackId"] = pack_id
+
+    bundle = evaluate_run(payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    assert bundle["claims"][-1]["claimDefinitionId"] == "vendor.boolean.pass-claim@1"
+    assert bundle["claims"][-1]["status"] == "Inconclusive"
+    assert bundle["claims"][-1]["details"]["metricStatus"] == "UnsupportedCapability"
+
+
+def test_run_py_domain_claim_projection_has_no_five_axis_special_case():
+    source = inspect.getsource(run_module._build_metric_projection_claim)
+
+    assert "five-axis" not in source

@@ -600,10 +600,11 @@
   font-size: 10px;
 }
 
-.f3-empty-row {
-  padding: 24px !important;
+.f3-sample-table td.f3-empty-row,
+.f3-interval-table td.f3-empty-row {
+  padding: 24px;
   color: #81939b;
-  text-align: center !important;
+  text-align: center;
 }
 
 .f3-summary-strip {
@@ -640,9 +641,9 @@
   overflow-wrap: anywhere;
 }
 
-.f3-workspace .f3-status-positive { color: var(--f3-accent-3) !important; }
-.f3-workspace .f3-status-negative { color: #ff9875 !important; }
-.f3-workspace .f3-status-neutral { color: #d4c27a !important; }
+.f3-workspace .f3-status-positive { color: var(--f3-accent-3); }
+.f3-workspace .f3-status-negative { color: #ff9875; }
+.f3-workspace .f3-status-neutral { color: #d4c27a; }
 
 .f3-verdict-card {
   border-top-color: var(--f3-accent);

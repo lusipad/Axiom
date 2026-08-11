@@ -238,9 +238,9 @@
         "ompNumThreads": "1"
       },
       "bundleHashes": {
-        "canonical-dual-table-solver": "9ae638762285593976abcb5c7a66f3a0c3f38b3e73f16fca1b3724dd0b7d64e0",
-        "canonical-head-table-solver": "248d4941e80f259e1fe2054ca77c40afafe7ed7e86bb0dd56102f231d347cb90",
-        "canonical-dual-head-solver": "469449e775307a8480a6066fdfdfa3bdadd3c41967fd402fd65854997c3acbed"
+        "canonical-dual-table-solver": "66be71c2937de4365ea68b790f93e3fd1d663195c4c3f56211d79492208d89e8",
+        "canonical-head-table-solver": "beec29557d6bf8c22363616c65a73f4394e484c9b516478898e9c4039bc44d79",
+        "canonical-dual-head-solver": "64b46de0c8784dac3a5c67560dc3f033afe585a967dd0e99619cbb7abb534375"
       }
     }
   ]

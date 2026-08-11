@@ -2,7 +2,7 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
-## 0.7.0 - 2026-08-12
+## 0.7.0 - 2026-08-11
 
 ### 新增
 
@@ -36,7 +36,7 @@
 - F3 不生成 `ModelCollisionFree`、`DeviceSafe`、`ProcessSafe` 或控制器兼容声明；网页永久显示 `MATH ONLY / NOT DEVICE SAFE`。
 - R2 仍需 Math F4 的 Reference Solver/SUT Adapter、独立集成验收和完整 Claim gate；设备、学习与参数闭环属于后续 R3–R7。
 
-## 0.6.0 - 2026-08-12
+## 0.6.0 - 2026-08-11
 
 ### 新增
 

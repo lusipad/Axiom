@@ -81,8 +81,8 @@ def test_f3_manifest_scenarios_and_example_are_exposed() -> None:
     assert _contains_negative_zero(payload["runSpec"])
 
     # Regression: ISSUE-001 — JSON.stringify normalizes signed zero and invalidated M5 identity.
-    # Found by /qa on 2026-08-12.
-    # Report: .gstack/qa-reports/qa-report-localhost-2026-08-12.md
+    # Found by /qa on 2026-08-11.
+    # Report: .gstack/qa-reports/qa-report-localhost-2026-08-11.md
     bundle = client.post(
         "/api/v1/runs/evaluate",
         json=_javascript_json_roundtrip(payload["runSpec"]),

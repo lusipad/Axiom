@@ -465,8 +465,8 @@ describe("Five-Axis F3 workbench", () => {
     expect(screen.getByText("sampled trajectory")).toBeInTheDocument();
     expect(screen.getAllByTitle(hashD).length).toBeGreaterThan(0);
     // Regression: ISSUE-002 — the UI read claimId instead of the API claimDefinitionId.
-    // Found by /qa on 2026-08-12.
-    // Report: .gstack/qa-reports/qa-report-localhost-2026-08-12.md
+    // Found by /qa on 2026-08-11.
+    // Report: .gstack/qa-reports/qa-report-localhost-2026-08-11.md
     const verdictCard = screen.getByText("CLAIM VERDICT").closest(".verdict-card");
     expect(verdictCard).not.toBeNull();
     expect(within(verdictCard as HTMLElement).getByText("Supported")).toBeInTheDocument();

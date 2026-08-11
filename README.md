@@ -40,6 +40,7 @@ flowchart LR
 - 研究五轴数学：通用评估框架规范 → FiveAxisTrajectoryPack 全景规范。
 - 规划设备、机器学习或优化：项目规划蓝图中的对应阶段 → 通用评估框架规范的角色与安全边界。
 - 了解为何选择当前契约：对应规范 → ADR 索引 → 具体 ADR。
+- 查看版本变化与升级边界：[CHANGELOG](CHANGELOG.md)。
 
 ## 文档所有权规则
 

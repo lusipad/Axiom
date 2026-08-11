@@ -2,7 +2,7 @@
 
 > 状态：v0.7 可发布；R0/R1 契约闭合，R2 Math F3 时间与离散参考栈已接入
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F3`
-> 更新日期：2026-08-11
+> 更新日期：2026-08-12
 
 Axiom 的目标不是做一个只理解 CNC 术语的“语义化评分器”，而是建立一套可逐级定义、可扩展到真实设备、可沉淀训练数据，并最终支持受约束参数优化的工业评估、实验与证据框架。
 
@@ -74,6 +74,8 @@ F3 可独立发布 `ContinuouslyFeasible` 与 `IntervalCertified`。解析二阶
 ## v0.7 快速开始
 
 v0.7 保留 Point Lab、F1 Geometry Reference Workbench 与 F2 Kinematics Reference Workbench，并新增 F3 Time & Sampling Lab。七个 F3 场景覆盖三类 canonical 五轴拓扑、二阶已证最优、dwell/mandatory-stop、移动 ZOH 不支持，以及“采样端点速度为零、区间内部仍超限”的多项式反例；页面展示 σ(t)、逐轴 V/A/J、结点时间线、固定周期样本、重建策略、误差账本、标准 Claim 和 sealed M4/M5 身份，并永久标注 `MATH ONLY / NOT DEVICE SAFE`。
+
+v0.7 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程和 [`constraints/acceptance.txt`](constraints/acceptance.txt) 依赖版本。其他平台暂不属于本阶段支持矩阵；portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 ```powershell
 python -m venv .venv

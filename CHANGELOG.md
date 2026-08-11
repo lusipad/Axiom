@@ -16,6 +16,8 @@
 
 ### 契约变化
 
+- v0.7 将发布与阻断验收基线收敛为 Windows AMD64 + CPython 3.12.10，并固定 Haswell OpenBLAS core、OpenBLAS/OMP 单线程和 acceptance 依赖；其他平台暂不纳入本阶段支持矩阵。
+- F2/F3 数值环境新增 Pint、OpenBLAS core 与线程策略字段；发布 fixture 必须唯一匹配环境记录并覆盖全部场景，缺失金值不再静默退化为仅做同进程重放。
 - F3 runtime 在发布正向 Claim 前重算 M3/Profile 内容身份、时间律、边界状态、逐轴连续极值、结点契约、采样计划和重建能力，不信任 Artifact 内嵌证书的自报结论。
 - M5 明确区分对 M4 的 `SampledTrajectory` 与具有保持语义的 `DiscreteCommand`；所有区间按 `[t_k,t_{k+1})` 解释，终点之后是否保持由 `finalHold` 单独声明。
 - FOH/ZOH 不继承完整高阶连续证书；移动 ZOH 和未闭合高阶导数的 FOH 返回结构化 `Unsupported`，不会制造 `IntervalCertified` 正向 Claim。
@@ -29,6 +31,7 @@
 - 二阶解析 `ProvenOptimal` 严格拒绝内部连续通过的移动结点，保持在 ADR 冻结的线性 stop-to-stop 闭包内。
 - 规范化 SVD 派生的奇异性证据并把具体运行时版本移到 Manifest/Run 层，使 M3/M4/M5 内容身份在 Python 3.12/3.14 与 NumPy 2.4/2.5 验收环境间一致。
 - 将 portable 五轴 Artifact 哈希的浮点表示固定为 8 位有效数字并统一 signed zero；SVD 证据保留 12 位，raw gate 之后的小于 `1e-14` 的 IK 残差证据提升为保守上界，所有门槛判定仍使用原始 binary64 值；`RunBundle` 金值额外绑定操作系统与机器架构。
+- 固定 Windows 前端源码与内置构建产物的 LF 换行契约，避免 Vite 构建仅因 checkout 换行策略产生伪差异。
 - 单次 F3 评估只重放一次连续轨迹与区间重建 verifier，避免指标数量放大相同证明成本。
 
 ### 当前边界

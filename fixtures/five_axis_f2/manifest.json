@@ -104,7 +104,8 @@
         "numpy": "2.4.3",
         "scipy": "1.18.0",
         "pint": "0.25.3",
-        "pydantic": "2.12.5"
+        "pydantic": "2.12.5",
+        "platformVersion": "10.0.26200"
       },
       "bundleHashes": {
         "canonical-head-head": "415c6a81ec9062f00c806458529b24e8d75995010e857185f90afffb2bb472ef",
@@ -122,7 +123,8 @@
         "numpy": "2.5.2",
         "scipy": "1.18.0",
         "pint": "0.25.3",
-        "pydantic": "2.13.4"
+        "pydantic": "2.13.4",
+        "platformVersion": "10.0.26200"
       },
       "bundleHashes": {
         "canonical-head-head": "2a5676202b9546d40353732989e52084dbe67571a03c87f4d0465ba24e1d9722",
@@ -132,7 +134,7 @@
       }
     },
     {
-      "label": "windows-ci-python-3.12-reference-2026-08-12",
+      "label": "windows-python-3.12-reference-2026-08-12",
       "numericEnvironment": {
         "system": "Windows",
         "machine": "AMD64",
@@ -140,7 +142,27 @@
         "numpy": "2.5.2",
         "scipy": "1.18.0",
         "pint": "0.25.3",
-        "pydantic": "2.13.4"
+        "pydantic": "2.13.4",
+        "platformVersion": "10.0.26200"
+      },
+      "bundleHashes": {
+        "canonical-head-head": "a6ca261a92126b812b0fdc2921b850280505dba3ac0e907cba2a1ae26778a710",
+        "canonical-head-table": "e2badd2bd673828939191869d5eb7ff3cf7959e777254ebe6710817f8b1e02f2",
+        "canonical-table-table": "aac862bd76097e7d422fb5a924a7bd1cb9bdbe19522b2fe57bc56645f076e7db",
+        "configuration-interior-collision": "fa6a4f31c673599b98e28e17575d04bc0ec931f961dbd8e33a39f407a6528583"
+      }
+    },
+    {
+      "label": "windows-server-2025-python-3.12-reference-2026-08-11",
+      "numericEnvironment": {
+        "system": "Windows",
+        "machine": "AMD64",
+        "python": "3.12.10",
+        "numpy": "2.5.2",
+        "scipy": "1.18.0",
+        "pint": "0.25.3",
+        "pydantic": "2.13.4",
+        "platformVersion": "10.0.26100"
       },
       "bundleHashes": {
         "canonical-head-head": "a6ca261a92126b812b0fdc2921b850280505dba3ac0e907cba2a1ae26778a710",

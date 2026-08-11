@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,10 @@ def _load_manifest() -> dict[str, Any]:
 
 
 def _fixture_environment() -> dict[str, str]:
-    return current_f2_numeric_environment()
+    return {
+        **current_f2_numeric_environment(),
+        "platformVersion": platform.version(),
+    }
 
 
 def _actual_bundle_hashes(scenario_ids: list[str]) -> dict[str, str]:

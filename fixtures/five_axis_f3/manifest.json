@@ -203,7 +203,8 @@
         "python": "3.14.3",
         "numpy": "2.4.3",
         "scipy": "1.18.0",
-        "pydantic": "2.12.5"
+        "pydantic": "2.12.5",
+        "platformVersion": "10.0.26200"
       },
       "bundleHashes": {
         "canonical-head-head-jerk": "7f202a52de5864e5648bb0d4798cff3ad52e6245099872c3dfe79bca077d20e9",
@@ -223,7 +224,8 @@
         "python": "3.12.13",
         "numpy": "2.5.2",
         "scipy": "1.18.0",
-        "pydantic": "2.13.4"
+        "pydantic": "2.13.4",
+        "platformVersion": "10.0.26200"
       },
       "bundleHashes": {
         "canonical-head-head-jerk": "4238f3fded425cd5548ee660728e6e12f4c7f022305fd34663a3dc2a874d73f9",
@@ -236,14 +238,15 @@
       }
     },
     {
-      "label": "windows-ci-python-3.12-reference-2026-08-12",
+      "label": "windows-python-3.12-reference-2026-08-12",
       "numericEnvironment": {
         "system": "Windows",
         "machine": "AMD64",
         "python": "3.12.10",
         "numpy": "2.5.2",
         "scipy": "1.18.0",
-        "pydantic": "2.13.4"
+        "pydantic": "2.13.4",
+        "platformVersion": "10.0.26200"
       },
       "bundleHashes": {
         "canonical-head-head-jerk": "d64de2ef0fb989846a91f0698231d25f6dd1573adb371c707ec9e5afcf39a138",
@@ -253,6 +256,27 @@
         "polynomial-interior-violation": "2dd409f622a363f02a6d3fa810a1b86f6dd4374d7e6a7a2070f402e8626886ec",
         "second-order-proven-optimal": "3a390f5be76f08303ad7bd25c9c9860e37dd805beb3ea860c8bc7187014c28c3",
         "zoh-moving-unsupported": "26a75e7b939a40ffe0348ea638147354eb58e91a8a56faa20c80b300efdc4613"
+      }
+    },
+    {
+      "label": "windows-server-2025-python-3.12-reference-2026-08-11",
+      "numericEnvironment": {
+        "system": "Windows",
+        "machine": "AMD64",
+        "python": "3.12.10",
+        "numpy": "2.5.2",
+        "scipy": "1.18.0",
+        "pydantic": "2.13.4",
+        "platformVersion": "10.0.26100"
+      },
+      "bundleHashes": {
+        "canonical-head-head-jerk": "337c5981b8d4dc3505125993d5713193cc2099a849a8d022576f9fe2bbcc3235",
+        "canonical-head-table-jerk": "78bf5a45586bf41621ec7b01b296ec63d873397a9b5b01bd8c882d2176d44a1a",
+        "canonical-table-table-jerk": "7aceee62cfa08236b72d17f658fd5a4d68c7f7dc3576e4735d6c132961d878f7",
+        "dwell-mandatory-stop": "9c05ab75e1648556a9e841086593a7466882af915bd08628029c5a9b903d314b",
+        "polynomial-interior-violation": "db16c095f045430f76b89425c2ad2fa764d52ad5f9c31e655da3e791017d27f3",
+        "second-order-proven-optimal": "d2c1e7cb80cc40baa4de53ad8d573269d4a624bf5e3dd56cc195d70ee2b247be",
+        "zoh-moving-unsupported": "09ad4eb9680e3ad6b7efc55ca4906fcbccc2a74eede8e553ec0ff7eeaaf30165"
       }
     }
   ]

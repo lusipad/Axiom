@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import os
 import platform
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -46,7 +47,7 @@ from .f2_collision import (
     ConfigurationCollisionModel,
     evaluate_configuration_path_collision,
 )
-from .f2_kinematics import forward_kinematics, jacobian_evidence
+from .f2_kinematics import forward_kinematics, jacobian_evidence, normalize_numeric_identity
 from .f2_models import M3CandidateAxisPath
 
 
@@ -81,7 +82,6 @@ _REQUIRED_POLICY_IDS = frozenset(
 )
 _EPSILON = 1e-12
 _JOINT_CONTINUITY_TOLERANCE = 1e-9
-_SINGULARITY_TOLERANCE = 1e-8
 _REPLAY_METHOD = "five-axis.f2.endpoint-midpoint-fk-replay@1"
 _CLAIM_METHOD = "five-axis.f2.linear-fixed-branch-lift-closure@1"
 
@@ -104,6 +104,7 @@ class _ReplaySample:
     orientation_residual: float
     normalized_axis_margin: float
     minimum_singular_value: float
+    singular: bool
 
 
 @dataclass(frozen=True)
@@ -234,10 +235,16 @@ FIVE_AXIS_F2_DOMAIN_PACK = register_domain_pack(
 
 def current_f2_numeric_environment() -> dict[str, str]:
     return {
+        "system": platform.system(),
+        "machine": platform.machine(),
         "python": platform.python_version(),
         "numpy": package_version("numpy"),
         "scipy": package_version("scipy"),
+        "pint": package_version("pint"),
         "pydantic": package_version("pydantic"),
+        "openblasCoreType": os.environ.get("OPENBLAS_CORETYPE", "auto"),
+        "openblasNumThreads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
+        "ompNumThreads": os.environ.get("OMP_NUM_THREADS", "auto"),
     }
 
 
@@ -316,7 +323,7 @@ def _selected_branch_solutions(artifact: M3CandidateAxisPath) -> tuple[Any, ...]
 
 
 def _model_content_hash(model: AxiomModel) -> str:
-    return _content_hash(model.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _content_hash(normalize_numeric_identity(model.model_dump(mode="json", by_alias=True, exclude_none=True)))
 
 
 def _position_tolerance_absolute(artifact: M3CandidateAxisPath) -> float:
@@ -637,16 +644,18 @@ def _replay_lift(artifact: M3CandidateAxisPath) -> tuple[_LiftReplayResult | Non
         pose = forward_kinematics(artifact.machine_profile, _joint_mapping(artifact, joint_values))
         expected_position = _expected_position(_matching_line_segments(artifact, sigma)[0], sigma)
         expected_axis = _matching_orientation_segments(artifact, sigma)[0].axis
+        singularity = jacobian_evidence(
+            artifact.machine_profile,
+            _joint_mapping(artifact, joint_values),
+        )
         samples.append(
             _ReplaySample(
                 sigma=sigma,
                 position_residual=_norm3(_sub3(pose.position, expected_position)),
                 orientation_residual=_orientation_error(pose.tool_axis, expected_axis),
                 normalized_axis_margin=_normalized_axis_limit_margin(artifact, joint_values),
-                minimum_singular_value=jacobian_evidence(
-                    artifact.machine_profile,
-                    _joint_mapping(artifact, joint_values),
-                ).minimum_singular_value,
+                minimum_singular_value=singularity.minimum_singular_value,
+                singular=singularity.singular,
             )
         )
     return (
@@ -684,7 +693,7 @@ def _replay_refutation(artifact: M3CandidateAxisPath) -> tuple[str, dict[str, An
         )
     if (
         artifact.kinematics_certificate.singularity_handling == "regular-only"
-        and replay.minimum_singular_value_min <= _SINGULARITY_TOLERANCE
+        and any(sample.singular for sample in replay.samples)
     ):
         return (
             "SelectedLiftTouchesSingularity",
@@ -825,7 +834,9 @@ def _collision_model_binding_failure(
 
 
 def _artifact_content_hash(artifact: M3CandidateAxisPath) -> str:
-    return _content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _content_hash(
+        normalize_numeric_identity(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    )
 
 
 def _collision_path_evaluation(

@@ -8,15 +8,21 @@ on:
 permissions:
   contents: write
 
+env:
+  AXIOM_REQUIRE_ENVIRONMENT_BOUND_GOLDENS: "1"
+  OPENBLAS_CORETYPE: Haswell
+  OPENBLAS_NUM_THREADS: "1"
+  OMP_NUM_THREADS: "1"
+
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  publish-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12.13"
+          python-version: "3.12.10"
           cache: pip
 
       - uses: pnpm/setup@v1
@@ -80,44 +86,86 @@ jobs:
       - name: Smoke test installed wheel
         run: |
           python -m venv release-smoke
-          release-smoke/bin/python -m pip install dist/*.whl
-          release-smoke/bin/axiom --help
-          release-smoke/bin/axiom serve --host 127.0.0.1 --port 8765 > release-smoke/server.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid"' EXIT
-          ready=false
-          for attempt in {1..20}; do
-            if curl --fail --silent http://127.0.0.1:8765/api/v1/health > release-smoke/health.json; then
-              ready=true
-              break
-            fi
-            sleep 0.25
-          done
-          test "$ready" = true
-          curl --fail --silent http://127.0.0.1:8765/ | grep '<div id="root"></div>'
-          curl --fail --silent \
-            --header 'Content-Type: application/json' \
-            --data-binary @fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json \
-            http://127.0.0.1:8765/api/v1/experiments/run \
-            > release-smoke/report.json
-          release-smoke/bin/python -c "import json; report=json.load(open('release-smoke/report.json')); assert report['caseOutcome'] == 'Failed'; assert report['comparison']['compatibility']['compatible'] is True; assert report['contentHash']"
-          curl --fail --silent \
-            'http://127.0.0.1:8765/api/v1/examples/five-axis-f2?scenarioId=configuration-interior-collision' \
-            > release-smoke/f2-example.json
-          release-smoke/bin/python -c "import json; payload=json.load(open('release-smoke/f2-example.json')); json.dump(payload['runSpec'], open('release-smoke/f2-run-spec.json', 'w'))"
-          curl --fail --silent \
-            --header 'Content-Type: application/json' \
-            --data-binary @release-smoke/f2-run-spec.json \
-            http://127.0.0.1:8765/api/v1/runs/evaluate \
-            > release-smoke/f2-run-bundle.json
-          release-smoke/bin/python -c "import json; bundle=json.load(open('release-smoke/f2-run-bundle.json')); claims={claim['claimDefinitionId']: claim['status'] for claim in bundle['claims']}; assert bundle['run']['executionStatus'] == 'Succeeded'; assert bundle['run']['caseOutcome'] == 'Passed'; assert bundle['report']['caseOutcome'] == 'Passed'; assert claims['five-axis.kinematically-feasible-claim@1'] == 'Supported'; assert claims['five-axis.configuration-collision-free-claim@1'] == 'Refuted'; assert bundle['bundleHash']"
+          $wheel = (Get-ChildItem -Path dist -Filter *.whl -File | Select-Object -First 1).FullName
+          & .\release-smoke\Scripts\python.exe -m pip install $wheel
+          & .\release-smoke\Scripts\axiom.exe --help
+          @'
+          from importlib.metadata import version
+          from pathlib import Path
+
+          import axiom
+          from axiom import evaluate_run
+          from axiom.five_axis.f2_runtime import current_f2_numeric_environment
+          from axiom.five_axis.f2_scenarios import validate_f2_example_run_spec
+          from axiom.five_axis.f3_scenarios import (
+              current_f3_numeric_environment,
+              validate_f3_example_run_spec,
+          )
+          from axiom.run import validate_run_bundle_integrity
+
+          assert version("axiom-evaluator") == "0.7.0"
+          assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
+          expected_policy = {
+              "openblasCoreType": "Haswell",
+              "openblasNumThreads": "1",
+              "ompNumThreads": "1",
+          }
+          for environment in (current_f2_numeric_environment(), current_f3_numeric_environment()):
+              assert expected_policy.items() <= environment.items()
+
+          f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
+          assert validate_run_bundle_integrity(f2) == []
+          assert f2.run.case_outcome.value == "Passed"
+
+          f3 = evaluate_run(validate_f3_example_run_spec("canonical-table-table-jerk"))
+          assert validate_run_bundle_integrity(f3) == []
+          assert f3.run.case_outcome.value == "Passed"
+
+          unsupported = evaluate_run(validate_f3_example_run_spec("second-order-proven-optimal"))
+          assert validate_run_bundle_integrity(unsupported) == []
+          assert unsupported.run.case_outcome.value == "Unsupported"
+          '@ | & .\release-smoke\Scripts\python.exe -
+          $server = Start-Process `
+            -FilePath .\release-smoke\Scripts\axiom.exe `
+            -ArgumentList @("serve", "--host", "127.0.0.1", "--port", "8765") `
+            -WindowStyle Hidden `
+            -PassThru `
+            -RedirectStandardOutput release-smoke\server.stdout.log `
+            -RedirectStandardError release-smoke\server.stderr.log
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 40; $attempt++) {
+              try {
+                $health = Invoke-RestMethod http://127.0.0.1:8765/api/v1/health
+                if ($health.status -eq "ok") {
+                  $ready = $true
+                  break
+                }
+              } catch {}
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not $ready) {
+              Get-Content release-smoke\server.stderr.log
+              throw "installed-wheel server did not become ready"
+            }
+            $index = (Invoke-WebRequest http://127.0.0.1:8765/).Content
+            if ($index -notmatch '<div id="root"></div>') {
+              throw "installed wheel did not serve the bundled workbench"
+            }
+          } finally {
+            if (-not $server.HasExited) { Stop-Process -Id $server.Id }
+          }
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Axiom $GITHUB_REF_NAME"
-          fi
+          $tag = $env:GITHUB_REF_NAME
+          $artifacts = Get-ChildItem -Path dist -File | Select-Object -ExpandProperty FullName
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $artifacts --clobber
+          } else {
+            gh release create $tag $artifacts --verify-tag --generate-notes --title "Axiom $tag"
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

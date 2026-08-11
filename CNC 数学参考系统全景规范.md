@@ -2,7 +2,7 @@
 
 > 文档类型：领域包规范  
 > 领域包：`FiveAxisTrajectoryPack`  
-> 状态：Draft v0.6 / F2 已实现
+> 状态：Draft v0.7 / F3 已实现
 > 依赖：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)  
 > 上位路线：[Axiom 项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 相邻领域包：[有序离散点领域包规范](有序离散点领域包规范.md)
@@ -883,13 +883,17 @@ F1 允许正向发布 `GeometryValid` 与 `TaskGeometryCollisionFree`，前者�
 
 完成通用运动链、三类闭式基准、一般数值 IK、分支图、wrap、限位、\(Q_{free}\)、连续碰撞/间隙和奇异性证书。
 
-v0.6 的 F2 实现以 `five-axis.domain-pack@3` 接入既有领域中立运行时，并冻结三个 canonical `MachineProfile`、通用 FK、三类闭式 IK 和确定性一般数值 IK。首个可发布的连续正向子集限定为 M2 直线位置 + 常量刀轴 + 固定解析分支/wrap；M3 以 `local-power@1` 轴段、分支图、结点事件、归一化无量纲轴限位裕量、奇异性下界和内容身份绑定构成可独立复算证书。运行时不会信任 Artifact 自报结论，而会重算内容哈希、策略白名单、FK 回放、节点连续、整段限位和奇异性条件。
+v0.6 的 F2 实现以 `five-axis.domain-pack@3` 接入既有领域中立运行时，并冻结三个 canonical `MachineProfile`、通用 FK、三类闭式 IK 和确定性一般数值 IK。首个可发布的连续正向子集限定为 M2 直线位置 + 常量刀轴 + 固定解析分支/wrap；M3 以 `local-power@1` 轴段、分支图、结点事件、归一化无量纲轴限位裕量、奇异性下界和内容身份绑定构成可独立复算证书。SVD 派生的最小奇异值与条件数按十进制 12 位有效数字、round-to-nearest/ties-to-even 保存为证据；FK/IK raw gate 之后，小于 `1e-14` 的回代残差证据提升到该保守上界；portable Artifact 哈希另将 JSON 浮点表示规范为 8 位有效数字并统一 signed zero，以吸收受支持 CPU/BLAS 后端的末位差异。证据 floor 与哈希归一化都不改写 gate 输入，奇异阈值、限位、碰撞、连续约束和 Claim 判定必须使用原始 binary64 值。具体运行时版本只进入 Manifest/Run 数值环境；固定 `RunBundle.bundleHash` 必须绑定操作系统、机器架构、依赖版本、BLAS core 与线程策略。v0.7 的唯一发布阻断基线为 Windows AMD64、CPython 3.12.10、Haswell OpenBLAS core 和 OpenBLAS/OMP 单线程；发布模式缺少唯一环境金值或场景覆盖时必须失败。运行时不会信任 Artifact 自报结论，而会重算内容哈希、策略白名单、FK 回放、节点连续、整段限位和奇异性条件。
 
 `ConfigurationCollisionFree` 另由显式机床组件/环境实体、碰撞对、覆盖状态和连续区间聚合证书闭合。内建场景覆盖三类 canonical 拓扑，以及一个端点均分离但区间内部在 \(\sigma=0.5\) 碰撞的反例。F2 不生成 `ContinuouslyFeasible`、`IntervalCertified`、`DeviceSafe` 或 `ProcessSafe`；一般数值 IK、非直线/变姿态路径和未闭合碰撞覆盖不得借用解析子集的正向 Claim。
 
 ### Math F3：时间与离散参考栈
 
 完成二阶 TOPP、Jerk 可行规划、结点事件处理、连续约束验证、固定周期采样、标准命令重建和类型化数值误差账本。
+
+v0.7 的 F3 实现以 `five-axis.domain-pack@4` 接入既有领域中立运行时。动态约束不写回已发布的 `MachineProfile`，而由 `five-axis.motion-constraint-profile@1` 绑定 M3 内容身份、逐轴 V/A/J 上限、零边界状态和结点/dwell 语义。首个二阶 `ProvenOptimal` 子集限定为全局线性 (q(\sigma))、零端点速度/加速度、无移动中间结点的 stop-to-stop block，采用可独立重放的解析三角/梯形时间律；Jerk 子集采用七次 smoothstep、保守导数常数与向外舍入，只标记 `FeasibleOnly`。
+
+M5 将 `SampledTrajectory` 与 `DiscreteCommand` 分开，固定周期、非整周期 remainder、终点样本、`[t_k,t_{k+1})` 和 final-hold 均进入机器契约。`reference-m4` 只有在 M4 内容身份、连续证书与样本重放全部复核后才能继承正向区间结论；多项式策略冻结系数并检查区间内部解析极值与保守界；移动 FOH/ZOH 不生成完整高阶正向证书。内建七个场景覆盖三类 canonical 拓扑、二阶最优、dwell/mandatory-stop、移动 ZOH `Unsupported` 与采样端点不可见的多项式内部超限 `Refuted`。F3 只发布 `ContinuouslyFeasible` 和 `IntervalCertified`，不生成 `ModelCollisionFree`、`DeviceSafe` 或 `ProcessSafe`。
 
 ### Math F4：参考系统验收
 
@@ -983,6 +987,16 @@ Math F2 按 [ADR-0010](架构决策记录/ADR-0010-F2参考机床与运动学证
 - 解析 IK 必须枚举姿态分支和限位内全部周期 wrap，并用同一通用 FK 回代；一般 Profile 使用固定 seed、残差尺度、边界、终止条件、去重和 tie-break 的 `scipy.optimize.least_squares` 路径，未找到解不得解释为严格无解；
 - `KinematicallyFeasible` 需要整条路径的连续提升、分支/限位/正则性和回代证据。`ConfigurationCollisionFree` 另需覆盖完整区间的 `Q_free` 证书；任一单姿态、有限无界采样、F1 任务碰撞或 UI 可视化均不能替代这些 Claim；
 - 一般数值 IK 候选首版最高为 `Validated`。只有解析恒等或可独立复核的保守区间方法才能产生 `Exact` / `Certified` 证据；任何 F2 结果仍不构成设备安全或执行许可。
+
+### 18.3 Math F3 已冻结实现选择
+
+Math F3 按 [ADR-0011](架构决策记录/ADR-0011-F3时间参数化与区间重建证据边界.md) 冻结以下选择：
+
+- `MotionConstraintProfile` 与 M3 的 `MachineProfile` 内容身份绑定，逐轴动态单位沿用 `mm` / `rad` 并显式派生每秒阶次；缺失 Jerk 上限时只进入二阶子集，不能伪造 Jerk 约束。
+- 二阶解析时间律只对线性 stop-to-stop block 发布 `ProvenOptimal`；七次 smoothstep 以 (35/16)、(26.25)、(210) 和 `nextafter` 保守界构造 Jerk 可行证书，固定为 `FeasibleOnly`。
+- `mandatory-stop`、dwell、分支/wrap/奇异边界必须停启；dwell 期间 (\sigma) 保持不变。`collision-violation` 直接反驳连续可行性，不能靠延长时间消除。
+- `reference-m4` 重建重新调用独立 M4 verifier，不用区间 Hermite 多项式替代权威源轨迹；多项式策略分别报告解析见证和保守证书界，Refuted 优先级高于 Unsupported。
+- F3 网页与 API 始终分开展示 Core 运行状态、M4/M5 Claim 和设备安全边界，并永久标注 `MATH ONLY / NOT DEVICE SAFE`。
 
 ---
 

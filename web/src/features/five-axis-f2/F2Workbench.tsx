@@ -381,7 +381,7 @@ export function F2Workbench({ catalog }: { catalog: Catalog | null }) {
             <div className="section-title compact"><span>02</span><h2>标准声明</h2></div>
             <div className="f2-claim-list">
               {(bundle?.claims ?? []).filter((item) => item.metricId === KINEMATICS_METRIC || item.metricId === COLLISION_METRIC).map((item) => (
-                <article key={item.claimId}><header><strong className={statusClass(item.status)}>{item.status}</strong><span>{item.evidence?.level ?? "—"}</span></header><p>{item.predicate}</p><code>{item.evidence?.method ?? "no method"}</code></article>
+                <article key={item.claimDefinitionId}><header><strong className={statusClass(item.status)}>{item.status}</strong><span>{item.evidence?.level ?? "—"}</span></header><p>{item.predicate}</p><code>{item.evidence?.method ?? "no method"}</code></article>
               ))}
               {!bundle && <div className="placeholder-lines"><i /><i /><i /></div>}
             </div>

@@ -1,7 +1,7 @@
 # Axiom 文档入口
 
-> 状态：v0.6 可发布；R0/R1 契约闭合，R2 Math F2 运动学参考栈已接入
-> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F2`
+> 状态：v0.7 可发布；R0/R1 契约闭合，R2 Math F3 时间与离散参考栈已接入
+> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F3`
 > 更新日期：2026-08-12
 
 Axiom 的目标不是做一个只理解 CNC 术语的“语义化评分器”，而是建立一套可逐级定义、可扩展到真实设备、可沉淀训练数据，并最终支持受约束参数优化的工业评估、实验与证据框架。
@@ -27,7 +27,7 @@ flowchart LR
 | [项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md) | 产品边界、总体架构、Roadmap、阶段门与非目标 | Draft |
 | [通用评估框架规范](Axiom%20通用评估框架规范.md) | 跨领域核心对象、角色、能力协商、三状态轴、证据与执行语义 | Draft v0.5 |
 | [有序离散点领域包规范](有序离散点领域包规范.md) | 第一个最小领域包及其输入、指标和验收闭环 | Draft v0.4 |
-| [FiveAxisTrajectoryPack — CNC 五轴数学参考系统全景规范](CNC%20数学参考系统全景规范.md) | M0–M5 数学模型、进度/对应/重建契约、模型碰撞边界、证明义务和测试族 | Draft v0.6 / F2 implemented |
+| [FiveAxisTrajectoryPack — CNC 五轴数学参考系统全景规范](CNC%20数学参考系统全景规范.md) | M0–M5 数学模型、进度/对应/重建契约、模型碰撞边界、证明义务和测试族 | Draft v0.7 / F3 implemented |
 | [ADR 索引](架构决策记录/README.md) | 长期架构决策、替代方案与后果的审计历史 | Active |
 | 本文档 | 总入口、阅读路径与文档治理 | Active |
 
@@ -65,28 +65,31 @@ flowchart LR
 
 ## 当前最近目标
 
-R1 的离散点最小闭环已经成立。v0.6 在不向 Core 写入五轴分支的前提下，把第二个领域包推进到可执行的 F2 运动学参考栈：
+R1 的离散点最小闭环已经成立。v0.7 在不向 Core 写入五轴分支、也不改写 F2 Artifact 的前提下，把第二个领域包推进到可执行的 F3 时间与离散参考栈：
 
-> F1 的 M0→M2 几何证据链继续保留；F2 新增版本化 `MachineProfile`、通用运动链、三类 canonical 闭式 IK、确定性一般数值 IK、分支/wrap 图、M2→M3 连续提升、归一化轴限位裕量、奇异性证据，以及覆盖完整区间的 `Q_free` 配置空间碰撞证书。
+> F1 的 M0→M2 几何证据链和 F2 的 M3 运动学/`Q_free` 证据继续保留；F3 新增独立 `MotionConstraintProfile`、M4 连续时间律、逐轴 V/A/J 重验、结点停启与 dwell、M5 固定周期采样，以及绑定重建策略的区间证书和分量化误差账本。
 
-F2 可独立发布 `KinematicallyFeasible` 与 `ConfigurationCollisionFree`，但只对冻结数学机床、分支策略、碰撞模型和已证明的连续区间成立。F1 与 F2 的 Claim 不能互相替代；当前尚无 M4 时间参数化、M5 离散重建、控制器、驱动器或真实设备执行许可。下一个数学阶段是 F3 时间与离散参考栈。
+F3 可独立发布 `ContinuouslyFeasible` 与 `IntervalCertified`。解析二阶 `ProvenOptimal` 只覆盖冻结的线性 stop-to-stop 子集；七次 smoothstep 只声明 Jerk 可行。F1/F2/F3 的 Claim 不能互相替代，F3 也不生成 `ModelCollisionFree`、`DeviceSafe` 或 `ProcessSafe`。下一个数学阶段是 F4 Reference Solver/SUT 集成与完整验收。
 
-## v0.6 快速开始
+## v0.7 快速开始
 
-v0.6 保留 Point Lab 与 F1 Geometry Reference Workbench，并新增独立的 F2 Kinematics Reference Workbench。F2 的四个版本化场景覆盖三类 canonical 五轴拓扑和一个“端点安全、区间内部碰撞”反例；页面展示 CL 输入、MachineProfile、连续轴路径、分支/wrap、`Q_free` 区间证据、标准 Claim 和 sealed M3 身份，并永久标注 `NOT DEVICE SAFE`。
+v0.7 保留 Point Lab、F1 Geometry Reference Workbench 与 F2 Kinematics Reference Workbench，并新增 F3 Time & Sampling Lab。七个 F3 场景覆盖三类 canonical 五轴拓扑、二阶已证最优、dwell/mandatory-stop、移动 ZOH 不支持，以及“采样端点速度为零、区间内部仍超限”的多项式反例；页面展示 σ(t)、逐轴 V/A/J、结点时间线、固定周期样本、重建策略、误差账本、标准 Claim 和 sealed M4/M5 身份，并永久标注 `MATH ONLY / NOT DEVICE SAFE`。
+
+v0.7 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程和 [`constraints/acceptance.txt`](constraints/acceptance.txt) 依赖版本。其他平台暂不属于本阶段支持矩阵；portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[test]"
 .\.venv\Scripts\python.exe -m axiom evaluate examples\basic-evaluation.json
-.\.venv\Scripts\python.exe -m axiom run <run-spec.json>
+# 准备符合 run-spec@1 的 JSON 后：
+.\.venv\Scripts\python.exe -m axiom run .\path\to\run-spec.json
 .\.venv\Scripts\python.exe -m axiom compare fixtures\cnc_scenarios\comparisons\cnc-contour-ab-pass-vs-fail.json
 .\.venv\Scripts\python.exe -m axiom experiment fixtures\cnc_scenarios\experiments\cnc-contour-true-ab.json
 .\.venv\Scripts\python.exe -m axiom serve --host 127.0.0.1 --port 8000
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1 与 Five-Axis F2 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)，Five-Axis F2 的 CL 输入、内容身份和 Claim 金值见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)。F1/F2 示例 API 都返回包含 `manifest / scenario / source / artifacts / runSpec` 的完整 envelope，再由公共 `POST /api/v1/runs/evaluate` 执行。
+启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1、F2 与 F3 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F2 机床/碰撞参考见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)，F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)；这些文件是源码仓库的冻结验收资料，不承诺为 wheel 内部文件路径。安装发布包后，可由 F1/F2/F3 示例 API 获取包含 `manifest / scenario / source / artifacts / runSpec` 的完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
 
 Python 中可直接执行内建 F0 示例：
 
@@ -118,6 +121,17 @@ bundle = evaluate_run(validate_f2_example_run_spec("configuration-interior-colli
 claims = {claim.claim_definition_id: claim.status.value for claim in bundle.claims}
 assert claims["five-axis.kinematically-feasible-claim@1"] == "Supported"
 assert claims["five-axis.configuration-collision-free-claim@1"] == "Refuted"
+```
+
+F3 也沿用同一 Core 路径。下面的多项式反例在采样端点看不到违规，但区间重建会反驳 `IntervalCertified`：
+
+```python
+from axiom import evaluate_run, validate_f3_example_run_spec
+
+bundle = evaluate_run(validate_f3_example_run_spec("polynomial-interior-violation"))
+claims = {claim.claim_definition_id: claim.status.value for claim in bundle.claims}
+assert claims["five-axis.continuously-feasible-claim@1"] == "Supported"
+assert claims["five-axis.interval-certified-claim@1"] == "Refuted"
 ```
 
 CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Failed / Inconclusive / Unsupported`，`2` 表示读取失败或 `Invalid`；`compare` 的 `0` 表示两个导入式 Run 兼容且比较成功，`1` 表示语义不兼容，`2` 表示请求无效；`experiment` 只有在两个 Arm 执行、严格比较和实验硬门槛都通过时返回 `0`，结构化业务失败返回 `1`，请求无效返回 `2`。
@@ -156,8 +170,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.6 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集和 F2 连续配置碰撞细分都有确定性上限；超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用无界采样伪造正向证书。
+v0.7 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分和 F3 区间重建都有确定性证明边界；超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.6 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis F1 只覆盖任务几何，F2 只覆盖冻结 M3 数学机床及显式 `Q_free` 碰撞模型。M4/M5、数据库、认证、远程队列、动态 Solver/SUT Adapter、持久化历史、设备接入、机器学习训练和参数回写仍属于后续阶段。
+v0.7 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis F1 覆盖任务几何，F2 覆盖冻结 M3 数学机床及显式 `Q_free` 碰撞模型，F3 覆盖 M4/M5 数学时间与重建语义。数据库、认证、远程队列、动态 Solver/SUT Adapter、持久化历史、设备接入、机器学习训练和参数回写仍属于后续阶段。

@@ -2,7 +2,45 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
-## 0.6.0 - 2026-08-12
+## 0.7.0 - 2026-08-12
+
+### 新增
+
+- 增加 Five-Axis Math F3 时间与离散参考栈：独立 `MotionConstraintProfile`、M4 连续时间轨迹、M5 采样轨迹/离散命令，以及内容身份和 provenance 绑定。
+- 增加线性固定路径、零边界状态下的解析二阶三角/梯形时间律；只有该闭合子集标记为 `ProvenOptimal`。
+- 增加七次停到停 smoothstep Jerk 可行时间律、逐轴 V/A/J 约束重放和向外舍入的保守界；最优性保持 `FeasibleOnly`。
+- 增加结点停启与 dwell 语义、固定周期与 remainder/终点/final-hold 契约，以及 `reference-m4`、多项式、FOH、ZOH 四种版本化重建策略。
+- 增加覆盖三类 canonical 五轴拓扑、二阶最优、dwell/mandatory-stop、移动 ZOH 不支持和多项式区间内部违反的确定性 F3 场景与 fixture。
+- 将 `five-axis.domain-pack@4` 接入公共 `RunSpec → RunBundle` 路径，只发布 `ContinuouslyFeasible` 与 `IntervalCertified` 两项标准 Claim，并提供 manifest、场景目录和示例 envelope API。
+- 增加 Five-Axis F3 Time & Sampling Lab，展示 σ(t)、逐轴 V/A/J、结点时间线、固定周期样本、重建策略、分量化误差账本、Claim 与 sealed M4/M5 身份。
+
+### 契约变化
+
+- v0.7 将发布与阻断验收基线收敛为 Windows AMD64 + CPython 3.12.10，并固定 Haswell OpenBLAS core、OpenBLAS/OMP 单线程和 acceptance 依赖；其他平台暂不纳入本阶段支持矩阵。
+- F2/F3 数值环境新增 Pint、OpenBLAS core 与线程策略字段；发布 fixture 必须唯一匹配环境记录并覆盖全部场景，缺失金值不再静默退化为仅做同进程重放。
+- F3 runtime 在发布正向 Claim 前重算 M3/Profile 内容身份、时间律、边界状态、逐轴连续极值、结点契约、采样计划和重建能力，不信任 Artifact 内嵌证书的自报结论。
+- M5 明确区分对 M4 的 `SampledTrajectory` 与具有保持语义的 `DiscreteCommand`；所有区间按 `[t_k,t_{k+1})` 解释，终点之后是否保持由 `finalHold` 单独声明。
+- FOH/ZOH 不继承完整高阶连续证书；移动 ZOH 和未闭合高阶导数的 FOH 返回结构化 `Unsupported`，不会制造 `IntervalCertified` 正向 Claim。
+- 误差账本按 quantity/unit/source/bound/method 分项记录，位置、姿态、时间与浮点误差不再合并为无量纲依据的单一总误差。
+
+### 修复
+
+- 统一 M5 内容身份中的 signed zero，使示例 RunSpec 经浏览器 `JSON.stringify` 往返后仍能通过冻结哈希校验。
+- 统一网页运行态 Claim 与 API 的 `claimDefinitionId` 字段，确保 Supported、Inconclusive 与 Refuted 结论按真实证据展示。
+- 将区间验证的 `Unsupported` 明确投影为标准 `IntervalCertified = Inconclusive`，并让场景摘要、MathStageManifest、RunBundle 与 fixture 使用同一状态和证据语义。
+- 二阶解析 `ProvenOptimal` 严格拒绝内部连续通过的移动结点，保持在 ADR 冻结的线性 stop-to-stop 闭包内。
+- 规范化 SVD 派生的奇异性证据并把具体运行时版本移到 Manifest/Run 层，使 M3/M4/M5 内容身份在 Python 3.12/3.14 与 NumPy 2.4/2.5 验收环境间一致。
+- 将 portable 五轴 Artifact 哈希的浮点表示固定为 8 位有效数字并统一 signed zero；SVD 证据保留 12 位，raw gate 之后的小于 `1e-14` 的 IK 残差证据提升为保守上界，所有门槛判定仍使用原始 binary64 值；`RunBundle` 金值额外绑定操作系统与机器架构。
+- 固定 Windows 前端源码与内置构建产物的 LF 换行契约，避免 Vite 构建仅因 checkout 换行策略产生伪差异。
+- 单次 F3 评估只重放一次连续轨迹与区间重建 verifier，避免指标数量放大相同证明成本。
+
+### 当前边界
+
+- F3 的二阶 `ProvenOptimal` 仅适用于冻结的线性 stop-to-stop 子集；Jerk 路径只证明可行，不宣称一般三阶固定路径全局最优。
+- F3 不生成 `ModelCollisionFree`、`DeviceSafe`、`ProcessSafe` 或控制器兼容声明；网页永久显示 `MATH ONLY / NOT DEVICE SAFE`。
+- R2 仍需 Math F4 的 Reference Solver/SUT Adapter、独立集成验收和完整 Claim gate；设备、学习与参数闭环属于后续 R3–R7。
+
+## 0.6.0 - 2026-08-11
 
 ### 新增
 

@@ -378,7 +378,7 @@ export function F1Workbench({ catalog }: { catalog: Catalog | null }) {
             <div className="section-title compact"><span>01</span><h2>标准声明</h2></div>
             <div className="claims-list">
               {[geometryClaim, collisionClaim].map((item, index) => item ? (
-                <article key={item.claimId}><div><strong>{index ? "Task collision" : "Geometry"}</strong><em className={statusClass(item.status)}>{item.status}</em></div><p>{item.predicate}</p><footer><code>{shortHash(item.claimId)}</code><span>{item.evidence?.level ?? "—"}</span></footer></article>
+                <article key={item.claimDefinitionId}><div><strong>{index ? "Task collision" : "Geometry"}</strong><em className={statusClass(item.status)}>{item.status}</em></div><p>{item.predicate}</p><footer><code>{shortHash(item.claimDefinitionId)}</code><span>{item.evidence?.level ?? "—"}</span></footer></article>
               ) : <div className="empty-state" key={index}>声明尚未产生</div>)}
             </div>
           </section>

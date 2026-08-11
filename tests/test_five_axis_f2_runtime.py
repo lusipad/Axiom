@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import copy
 import math
+import platform
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from axiom.evaluator import _content_hash
 from axiom.five_axis.f2_collision import ConfigurationCollisionModel, hash_configuration_collision_model
 from axiom.five_axis.f1_models import M2CandidateTaskGeometry
+from axiom.five_axis.f2_kinematics import normalize_numeric_identity
 from axiom.five_axis.f2_models import M3CandidateAxisPath, MachineProfile
 from axiom.five_axis.f2_runtime import (
     AXIS_LIMIT_MARGIN_MIN_METRIC_ID,
@@ -21,6 +25,7 @@ from axiom.five_axis.f2_runtime import (
     ORIENTATION_RESIDUAL_MAX_METRIC_ID,
     POSITION_RESIDUAL_MAX_METRIC_ID,
     SINGULARITY_MINIMUM_SINGULAR_VALUE_METRIC_ID,
+    current_f2_numeric_environment,
 )
 from axiom.models import ClaimStatus, MetricStatus
 from axiom.run import evaluate_run
@@ -29,6 +34,25 @@ from axiom.runtime import get_domain_runtime_binding
 
 _HASH_A = "a" * 64
 _TILT_RAD = 0.25
+
+
+def test_f2_numeric_environment_records_blas_execution_policy(monkeypatch) -> None:
+    monkeypatch.setenv("OPENBLAS_CORETYPE", "Haswell")
+    monkeypatch.setenv("OPENBLAS_NUM_THREADS", "1")
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+
+    environment = current_f2_numeric_environment()
+
+    assert environment["openblasCoreType"] == "Haswell"
+    assert environment["openblasNumThreads"] == "1"
+    assert environment["ompNumThreads"] == "1"
+    assert environment["pint"]
+
+
+def _portable_content_hash(value: dict) -> str:
+    return _content_hash(normalize_numeric_identity(value))
+
+
 def _lineage(statement_id: str, index: int, text: str) -> dict:
     return {
         "statementId": statement_id,
@@ -182,7 +206,7 @@ def _m2_payload(*, end_x: float = 20.0) -> dict:
 
 def _m2_content_hash() -> str:
     artifact = M2CandidateTaskGeometry.model_validate(_m2_payload())
-    return _content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _portable_content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
 
 
 def _machine_profile_payload() -> dict:
@@ -283,7 +307,7 @@ def _machine_profile_payload() -> dict:
 
 def _machine_profile_content_hash() -> str:
     profile = MachineProfile.model_validate(_machine_profile_payload())
-    return _content_hash(profile.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _portable_content_hash(profile.model_dump(mode="json", by_alias=True, exclude_none=True))
 
 
 def _axis_limit_state(*, violated: bool = False) -> list[dict]:
@@ -337,7 +361,11 @@ def _m3_payload(
     node_id = "m3.node.1"
     end_x = 520.0 if violated_end_solution else 20.0
     m2_payload = _m2_payload(end_x=end_x)
-    m2_content_hash = _content_hash(M2CandidateTaskGeometry.model_validate(m2_payload).model_dump(mode="json", by_alias=True, exclude_none=True))
+    m2_content_hash = _portable_content_hash(
+        M2CandidateTaskGeometry.model_validate(m2_payload).model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
+    )
     machine_profile_content_hash = _machine_profile_content_hash()
     if rotary_motion:
         coefficients = [
@@ -554,7 +582,7 @@ def test_m3_runs_through_generic_core_binding_and_freezes_continuous_metrics() -
     assert bundle.metric_result(ORIENTATION_RESIDUAL_MAX_METRIC_ID).value == 0.0
     assert bundle.metric_result(AXIS_LIMIT_MARGIN_MIN_METRIC_ID).unit == "dimensionless"
     assert bundle.metric_result(AXIS_LIMIT_MARGIN_MIN_METRIC_ID).value == 0.48
-    assert bundle.metric_result(SINGULARITY_MINIMUM_SINGULAR_VALUE_METRIC_ID).value == 0.025932131196837585
+    assert bundle.metric_result(SINGULARITY_MINIMUM_SINGULAR_VALUE_METRIC_ID).value == 0.0259321311968
     assert [capability.capability_id for capability in bundle.report.capabilities] == [
         "five-axis.path-progress.bound@1",
         "five-axis.regularity.certified@1",
@@ -572,6 +600,27 @@ def test_kinematically_feasible_claim_is_supported_only_for_certified_selected_c
     assert result.status is MetricStatus.COMPUTED
     assert result.value is True
     assert result.evidence is not None and result.evidence.level == "Certified"
+    assert claim.status is ClaimStatus.SUPPORTED
+
+
+def test_replay_singularity_gate_uses_raw_decision_instead_of_canonical_evidence() -> None:
+    artifact = _axis_path()
+    canonical_evidence_above_raw_threshold = SimpleNamespace(
+        minimum_singular_value=1e-8,
+        singular=False,
+    )
+
+    with patch(
+        "axiom.five_axis.f2_runtime.jacobian_evidence",
+        return_value=canonical_evidence_above_raw_threshold,
+    ):
+        bundle = evaluate_run(_run_spec(artifact, KINEMATICALLY_FEASIBLE_METRIC_ID))
+
+    result = bundle.metric_result(KINEMATICALLY_FEASIBLE_METRIC_ID)
+    claim = _claim(bundle, KINEMATICALLY_FEASIBLE_CLAIM_ID)
+    assert result.status is MetricStatus.COMPUTED
+    assert result.value is True
+    assert result.details["minimumSingularValueMin"] == 1e-8
     assert claim.status is ClaimStatus.SUPPORTED
 
 
@@ -749,3 +798,5 @@ def test_f2_runtime_provenance_and_claim_hashes_are_deterministic() -> None:
     assert first == second
     assert first["report"]["provenance"]["runnerId"] == F2_RUNNER_ID
     assert first["report"]["provenance"]["evaluatorVersion"] == F2_EVALUATOR_ID
+    assert first["report"]["provenance"]["numericEnvironment"]["system"] == platform.system()
+    assert first["report"]["provenance"]["numericEnvironment"]["machine"] == platform.machine()

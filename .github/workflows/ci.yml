@@ -7,15 +7,21 @@ on:
 permissions:
   contents: read
 
+env:
+  AXIOM_REQUIRE_ENVIRONMENT_BOUND_GOLDENS: "1"
+  OPENBLAS_CORETYPE: Haswell
+  OPENBLAS_NUM_THREADS: "1"
+  OMP_NUM_THREADS: "1"
+
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  verify-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12.13"
+          python-version: "3.12.10"
           cache: pip
 
       - uses: pnpm/setup@v1

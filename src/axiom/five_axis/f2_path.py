@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import platform
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -25,7 +24,7 @@ from .f1_models import (
     SegmentRegularityEvidence,
     ToleranceBinding,
 )
-from .f2_kinematics import inverse_kinematics
+from .f2_kinematics import canonical_numeric_evidence, inverse_kinematics, normalize_numeric_identity
 from .f2_models import (
     BranchGraph,
     BranchNode,
@@ -264,7 +263,7 @@ def _contract_solution(
 ) -> IKSolution:
     maximum = max(candidate.singularity.singular_values, default=0.0)
     minimum = candidate.singularity.minimum_singular_value
-    conditioning = maximum / minimum if minimum > _EPSILON else None
+    conditioning = canonical_numeric_evidence(maximum / minimum) if minimum > _EPSILON else None
     return IKSolution(
         solutionId=f"{branch_id}.k{knot_index}.s{solution_index}",
         sigma=sigma,
@@ -501,9 +500,8 @@ def _kinematics_certificate(
             _BRANCH_SELECTION_POLICY_ID,
         ),
         numericEnvironment={
-            "python": platform.python_version(),
-            "runtime": platform.python_implementation(),
-            "solver": _SOLVER_VERSION,
+            "arithmetic": "ieee-754-binary64",
+            "numericEvidencePolicy": "twelve-significant-digits-with-1e-14-residual-floor@1",
         },
         positionTolerance=position_tolerance,
         orientationTolerance=orientation_tolerance,
@@ -556,6 +554,7 @@ def _tuple3(values: Any) -> tuple[float, float, float]:
 
 def _content_id(model: Any) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

@@ -30,6 +30,9 @@ _POSITION_TOLERANCE_MM = 1e-6
 _ORIENTATION_TOLERANCE_RAD = 1e-9
 _POSITION_RESIDUAL_SCALE_MM = 1.0
 _ORIENTATION_RESIDUAL_SCALE_RAD = 1.0
+_NUMERIC_EVIDENCE_SIGNIFICANT_DIGITS = 12
+_NUMERIC_IDENTITY_SIGNIFICANT_DIGITS = 8
+_RESIDUAL_EVIDENCE_FLOOR = 1e-14
 _DEFAULT_TOOL_OFFSET = (0.0, 0.0, -100.0)
 _LINEAR_LIMITS = (-500.0, 500.0)
 _TILT_LIMITS = (-2.0 * math.pi / 3.0, 2.0 * math.pi / 3.0)
@@ -44,6 +47,30 @@ _STANDARD_KIND_BY_PROFILE_ID = {profile_id: kind for kind, profile_id in _STANDA
 
 class KinematicsError(ValueError):
     """Raised when a kinematics artifact cannot be evaluated deterministically."""
+
+
+def canonical_numeric_evidence(value: float) -> float:
+    return float(f"{value:.{_NUMERIC_EVIDENCE_SIGNIFICANT_DIGITS}g}")
+
+
+def _canonical_residual_evidence(value: float) -> float:
+    """Raise backend roundoff to a conservative evidence bound after raw gating."""
+
+    return max(value, _RESIDUAL_EVIDENCE_FLOOR)
+
+
+def normalize_numeric_identity(value: Any) -> Any:
+    """Canonicalize JSON numbers for portable hashes without changing evaluated values."""
+
+    if isinstance(value, float):
+        if value == 0.0:
+            return 0.0
+        return float(f"{value:.{_NUMERIC_IDENTITY_SIGNIFICANT_DIGITS}g}")
+    if isinstance(value, list):
+        return [normalize_numeric_identity(item) for item in value]
+    if isinstance(value, dict):
+        return {key: normalize_numeric_identity(item) for key, item in value.items()}
+    return value
 
 
 @dataclass(frozen=True)
@@ -311,13 +338,15 @@ def jacobian_evidence(
         )
         columns.append((upper_vector - lower_vector) / (2.0 * step))
     matrix = np.stack(columns, axis=1) if columns else np.zeros((6, 0), dtype=np.float64)
-    singular_values = tuple(float(value) for value in np.linalg.svd(matrix, compute_uv=False))
+    raw_singular_values = tuple(float(value) for value in np.linalg.svd(matrix, compute_uv=False))
+    raw_minimum = raw_singular_values[-1] if raw_singular_values else math.inf
+    singular_values = tuple(canonical_numeric_evidence(value) for value in raw_singular_values)
     minimum = singular_values[-1] if singular_values else math.inf
     return JacobianEvidence(
         matrix=tuple(tuple(float(value) for value in row) for row in matrix.tolist()),
         singular_values=singular_values,
         minimum_singular_value=float(minimum),
-        singular=bool(minimum <= singular_tolerance),
+        singular=bool(raw_minimum <= singular_tolerance),
         method_id="five-axis.central-difference-scaled-jacobian@1",
         position_scale_mm=_POSITION_RESIDUAL_SCALE_MM,
         orientation_scale_rad=_ORIENTATION_RESIDUAL_SCALE_RAD,
@@ -356,7 +385,7 @@ def inverse_kinematics(
 def ik_candidate_to_contract(candidate: IKSolutionCandidate, *, sigma: float) -> IKSolution:
     maximum = max(candidate.singularity.singular_values, default=0.0)
     minimum = candidate.singularity.minimum_singular_value
-    condition = maximum / minimum if minimum > _EPSILON else None
+    condition = canonical_numeric_evidence(maximum / minimum) if minimum > _EPSILON else None
     return IKSolution(
         solutionId=candidate.solution_id,
         sigma=sigma,
@@ -901,12 +930,12 @@ def _residual_models(residuals: Mapping[str, float]) -> tuple[KinematicResidual,
     return (
         KinematicResidual(
             metricId="five-axis.position-residual.max@1",
-            value=residuals["five-axis.position-residual.max@1"],
+            value=_canonical_residual_evidence(residuals["five-axis.position-residual.max@1"]),
             unit="mm",
         ),
         KinematicResidual(
             metricId="five-axis.orientation-residual.max@1",
-            value=residuals["five-axis.orientation-residual.max@1"],
+            value=_canonical_residual_evidence(residuals["five-axis.orientation-residual.max@1"]),
             unit="rad",
         ),
     )

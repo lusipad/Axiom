@@ -15,6 +15,7 @@ from ..evaluator import _content_hash
 from ..models import AxiomModel
 from .f1_collision import _box_distance
 from .f1_models import AxisAlignedBoundingBox, NumericTolerance, ProvenanceRef, ToleranceBinding
+from .f2_kinematics import normalize_numeric_identity
 from .f2_models import JointPolynomialSegment, M3CandidateAxisPath, MachineAxis, MachineProfile
 
 
@@ -316,6 +317,7 @@ class _PairResolution:
 
 def _hash_collision_model(model: ConfigurationCollisionModel) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude={"content_id"})
+    payload = normalize_numeric_identity(payload)
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -691,7 +693,8 @@ def _normalize_collision_model(collision_model: ConfigurationCollisionModel | Ma
 
 
 def _artifact_content_hash(artifact: AxiomModel) -> str:
-    return _content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    payload = artifact.model_dump(mode="json", by_alias=True, exclude_none=True)
+    return _content_hash(normalize_numeric_identity(payload))
 
 
 def _content_binding_error(

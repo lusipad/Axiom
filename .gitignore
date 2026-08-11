@@ -3,6 +3,8 @@ implementation-notes.md
 __pycache__/
 .pytest_cache/
 .hypothesis/
+.coverage
+htmlcov/
 *.egg-info/
 build/
 dist/
@@ -10,3 +12,4 @@ web/node_modules/
 web/coverage/
 web/.vite/
 .omx/
+.gstack/

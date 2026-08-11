@@ -7,6 +7,7 @@ import {
 } from "./api";
 import { F1Workbench } from "./features/five-axis-f1/F1Workbench";
 import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
+import { F3Workbench } from "./features/five-axis-f3/F3Workbench";
 import type {
   Catalog,
   ExperimentArmResult,
@@ -16,7 +17,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3";
 type PointView = "geometry" | "metrics";
 
 const futureLabs = ["Machine", "Intelligence", "Optimization"];
@@ -228,12 +229,16 @@ export function App() {
     ? "Experiment Workbench"
     : activeLab === "five-axis-f1"
       ? "Five-Axis Geometry Reference Workbench"
-      : "Five-Axis Kinematics Reference Workbench";
+      : activeLab === "five-axis-f2"
+        ? "Five-Axis Kinematics Reference Workbench"
+        : "Five-Axis Time & Sampling Lab";
   const activeManifestId = activeLab === "point"
     ? spec?.experimentId ?? "loading"
     : activeLab === "five-axis-f1"
       ? "five-axis.f1-math-stage-manifest@1"
-      : "five-axis.f2-math-stage-manifest@1";
+      : activeLab === "five-axis-f2"
+        ? "five-axis.f2-math-stage-manifest@1"
+        : "five-axis.f3-math-stage-manifest@1";
 
   const buildPointSpec = (): ExperimentSpec => {
     if (!spec) throw new Error("实验模板尚未加载。");
@@ -361,9 +366,12 @@ export function App() {
         <button className={`lab ${activeLab === "five-axis-f2" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f2")}>
           <span>03</span>Five-Axis<small>F2</small>
         </button>
+        <button className={`lab ${activeLab === "five-axis-f3" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f3")}>
+          <span>04</span>Five-Axis<small>F3</small>
+        </button>
         {futureLabs.map((lab, index) => (
           <button className="lab" type="button" disabled key={lab} title="领域包尚未接入">
-            <span>0{index + 4}</span>{lab}<small>planned</small>
+            <span>0{index + 5}</span>{lab}<small>planned</small>
           </button>
         ))}
       </div>
@@ -553,8 +561,10 @@ export function App() {
         </main>
       ) : activeLab === "five-axis-f1" ? (
         <F1Workbench catalog={catalog} />
-      ) : (
+      ) : activeLab === "five-axis-f2" ? (
         <F2Workbench catalog={catalog} />
+      ) : (
+        <F3Workbench catalog={catalog} />
       )}
 
       {activeLab === "point" && (

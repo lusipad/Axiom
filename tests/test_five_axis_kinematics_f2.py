@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
 
+import axiom.five_axis.f2_kinematics as f2_kinematics
 from axiom.five_axis.f2_kinematics import (
     AxisLimitSpec,
     AxisSpec,
@@ -18,6 +20,7 @@ from axiom.five_axis.f2_kinematics import (
     ik_candidate_to_contract,
     inverse_kinematics,
     jacobian_evidence,
+    normalize_numeric_identity,
 )
 
 
@@ -140,6 +143,97 @@ def test_jacobian_evidence_distinguishes_singular_and_regular_pose() -> None:
     assert singular.singular is True
     assert regular.singular is False
     assert singular.minimum_singular_value < regular.minimum_singular_value
+
+
+def test_jacobian_evidence_canonicalizes_backend_roundoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = build_canonical_head_head_cb_profile()
+    joint_values = {"X": 0.0, "Y": 0.0, "Z": 0.0, "C": 0.5, "B": 0.4}
+
+    monkeypatch.setattr(
+        np.linalg,
+        "svd",
+        lambda *args, **kwargs: np.asarray((9599.616210932809, 0.010418170376752588)),
+    )
+    first = jacobian_evidence(profile, joint_values)
+    monkeypatch.setattr(
+        np.linalg,
+        "svd",
+        lambda *args, **kwargs: np.asarray((9599.61621093286, 0.010418170376752576)),
+    )
+    second = jacobian_evidence(profile, joint_values)
+
+    assert first.singular_values == second.singular_values == (9599.61621093, 0.0104181703768)
+    assert first.minimum_singular_value == second.minimum_singular_value
+
+
+def test_jacobian_evidence_keeps_raw_value_for_singularity_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = build_canonical_head_head_cb_profile()
+    joint_values = {"X": 0.0, "Y": 0.0, "Z": 0.0, "C": 0.5, "B": 0.4}
+    monkeypatch.setattr(
+        np.linalg,
+        "svd",
+        lambda *args, **kwargs: np.asarray((1.0, 1.000000000004e-8)),
+    )
+
+    evidence = jacobian_evidence(profile, joint_values)
+
+    assert evidence.minimum_singular_value == 1e-8
+    assert evidence.singular is False
+
+
+def test_numeric_identity_absorbs_supported_backend_roundoff() -> None:
+    windows_like = {
+        "conditioningMetric": 7.96369400488,
+        "minimumSingularValue": 0.18091034853,
+    }
+    linux_like = {
+        "conditioningMetric": 7.96369401105,
+        "minimumSingularValue": 0.18091034839,
+    }
+
+    assert normalize_numeric_identity(windows_like) == normalize_numeric_identity(linux_like)
+
+
+def test_numeric_identity_canonicalizes_signed_zero() -> None:
+    normalized = normalize_numeric_identity(-0.0)
+
+    assert normalized == 0.0
+    assert math.copysign(1.0, normalized) == 1.0
+
+
+def test_ik_residual_evidence_uses_conservative_roundoff_floor() -> None:
+    haswell_like = f2_kinematics._residual_models(
+        {
+            "five-axis.position-residual.max@1": 3.44345433022e-15,
+            "five-axis.orientation-residual.max@1": 0.0,
+        }
+    )
+    skylake_like = f2_kinematics._residual_models(
+        {
+            "five-axis.position-residual.max@1": 3.4630857905e-15,
+            "five-axis.orientation-residual.max@1": 0.0,
+        }
+    )
+
+    assert haswell_like == skylake_like
+    assert {residual.value for residual in haswell_like} == {1e-14}
+
+
+def test_ik_residual_evidence_floor_does_not_change_raw_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = build_canonical_head_table_bc_profile()
+    pose = forward_kinematics(profile, {"X": 25.0, "Y": -8.0, "Z": 40.0, "C": -0.7, "B": 0.4})
+    monkeypatch.setattr(
+        f2_kinematics,
+        "_pose_residuals",
+        lambda *args: {
+            "five-axis.position-residual.max@1": 1.000001e-6,
+            "five-axis.orientation-residual.max@1": 0.0,
+        },
+    )
+
+    result = inverse_kinematics(profile, pose)
+
+    assert result.status == "NoSolutionProven"
 
 
 def test_general_profile_uses_numeric_fallback_and_round_trips() -> None:

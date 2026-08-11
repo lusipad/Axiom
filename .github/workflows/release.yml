@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -e ".[test]"
+          python -m pip install build
+          pnpm --dir web install --frozen-lockfile
+
+      - name: Verify release source
+        run: |
+          pnpm --dir web test
+          pnpm --dir web check
+          pnpm --dir web build
+          git diff --exit-code -- src/axiom/web_dist
+          python -m pytest
+
+      - name: Verify tag matches package version
+        shell: python
+        run: |
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag != f"v{version}":
+              raise SystemExit(f"tag {tag!r} does not match package version {version!r}")
+
+      - name: Build release artifacts
+        run: python -m build
+
+      - name: Verify bundled workbench
+        shell: python
+        run: |
+          import zipfile
+          from pathlib import Path
+
+          wheel = next(Path("dist").glob("*.whl"))
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          required = ("axiom/web_dist/index.html", "axiom/web_dist/assets/")
+          for entry in required:
+              if not any(name == entry or name.startswith(entry) for name in names):
+                  raise SystemExit(f"release wheel is missing {entry}")
+
+      - name: Smoke test installed wheel
+        run: |
+          python -m venv release-smoke
+          release-smoke/bin/python -m pip install dist/*.whl
+          release-smoke/bin/axiom --help
+          release-smoke/bin/axiom serve --host 127.0.0.1 --port 8765 > release-smoke/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          ready=false
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/api/v1/health > release-smoke/health.json; then
+              ready=true
+              break
+            fi
+            sleep 0.25
+          done
+          test "$ready" = true
+          curl --fail --silent http://127.0.0.1:8765/ | grep '<div id="root"></div>'
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data-binary @fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json \
+            http://127.0.0.1:8765/api/v1/experiments/run \
+            > release-smoke/report.json
+          release-smoke/bin/python -c "import json; report=json.load(open('release-smoke/report.json')); assert report['caseOutcome'] == 'Failed'; assert report['comparison']['compatibility']['compatible'] is True; assert report['contentHash']"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Axiom $GITHUB_REF_NAME"

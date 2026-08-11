@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from enum import Enum
 from typing import Any, Literal
 
@@ -178,6 +179,75 @@ class EvaluationRequest(AxiomModel):
     reference_binding: ReferenceBinding | None = Field(default=None, alias="referenceBinding")
 
 
+class ParameterSet(AxiomModel):
+    parameter_set_id: str = Field(alias="parameterSetId", pattern=r"^.+@[0-9]+$")
+    parameter_schema_id: str = Field(alias="parameterSchemaId", pattern=r"^.+@[0-9]+$")
+    schema_version: int = Field(alias="schemaVersion", ge=1)
+    values: dict[str, Any] = Field(min_length=1)
+    units: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_finite_json_values(self) -> "ParameterSet":
+        try:
+            json.dumps(self.values, allow_nan=False, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ParameterSet values must be finite JSON values") from exc
+        unknown_units = set(self.units) - set(self.values)
+        if unknown_units:
+            raise ValueError("ParameterSet units may only describe declared values")
+        return self
+
+
+class ExperimentArm(AxiomModel):
+    arm_id: str = Field(alias="armId", min_length=1)
+    subject_id: str = Field(alias="subjectId", min_length=1)
+    subject_version: str = Field(alias="subjectVersion", min_length=1)
+    runner_id: Literal["python-call@1"] = Field(default="python-call@1", alias="runnerId")
+
+
+class ExperimentEvaluation(AxiomModel):
+    case: EvaluationCase
+    reference_binding: ReferenceBinding | None = Field(default=None, alias="referenceBinding")
+
+
+class ExperimentSpec(AxiomModel):
+    experiment_id: str = Field(alias="experimentId", min_length=1)
+    shared_input: OrderedPointSequence = Field(alias="sharedInput")
+    parameter_set: ParameterSet = Field(alias="parameterSet")
+    arms: list[ExperimentArm] = Field(min_length=2, max_length=2)
+    evaluation: ExperimentEvaluation
+    domain_pack_id: str = Field(default="ordered-point.domain-pack@1", alias="domainPackId")
+    evaluator_version: str = Field(default="ordered-point-evaluator@1", alias="evaluatorVersion")
+    comparison_policy_id: Literal["ordered-point.experiment-comparison.strict@1"] = Field(
+        default="ordered-point.experiment-comparison.strict@1",
+        alias="comparisonPolicyId",
+    )
+
+    @model_validator(mode="after")
+    def require_distinct_arms(self) -> "ExperimentSpec":
+        if len({arm.arm_id for arm in self.arms}) != len(self.arms):
+            raise ValueError("Experiment armId values must be unique")
+        identities = {(arm.subject_id, arm.subject_version) for arm in self.arms}
+        if len(identities) != len(self.arms):
+            raise ValueError("Experiment arms must reference distinct Subject versions")
+        return self
+
+
+class SubjectDefinition(AxiomModel):
+    subject_id: str = Field(alias="subjectId")
+    subject_version: str = Field(alias="subjectVersion")
+    display_name: str = Field(alias="displayName")
+    description: str
+    runner_id: Literal["python-call@1"] = Field(default="python-call@1", alias="runnerId")
+    input_artifact_type: Literal["ordered-point-sequence"] = Field(
+        default="ordered-point-sequence", alias="inputArtifactType"
+    )
+    output_artifact_type: Literal["ordered-point-sequence"] = Field(
+        default="ordered-point-sequence", alias="outputArtifactType"
+    )
+    parameter_schema_id: str = Field(alias="parameterSchemaId")
+
+
 class DomainFailure(AxiomModel):
     code: str
     message: str
@@ -229,7 +299,7 @@ class Provenance(AxiomModel):
     reference_hash: str | None = Field(default=None, alias="referenceHash")
     reference_binding_hash: str | None = Field(default=None, alias="referenceBindingHash")
     score_profile_hash: str | None = Field(default=None, alias="scoreProfileHash")
-    runner_id: Literal["artifact-import@1"] = Field(default="artifact-import@1", alias="runnerId")
+    runner_id: str = Field(default="artifact-import@1", alias="runnerId")
     evaluator_version: Literal["ordered-point-evaluator@1"] = Field(
         default="ordered-point-evaluator@1",
         alias="evaluatorVersion",
@@ -237,6 +307,10 @@ class Provenance(AxiomModel):
     execution_outcome_policy: str = Field(alias="executionOutcomePolicy")
     numeric_type: Literal["float64"] = Field(default="float64", alias="numericType")
     numeric_environment: dict[str, str] = Field(alias="numericEnvironment")
+    subject_version: str | None = Field(default=None, alias="subjectVersion")
+    input_artifact_hash: str | None = Field(default=None, alias="inputArtifactHash")
+    parameter_set_hash: str | None = Field(default=None, alias="parameterSetHash")
+    experiment_spec_hash: str | None = Field(default=None, alias="experimentSpecHash")
 
 
 class EvaluationReport(AxiomModel):
@@ -263,6 +337,10 @@ class RunSpec(AxiomModel):
     domain_pack_id: str = Field(default="ordered-point.domain-pack@1", alias="domainPackId", min_length=1)
     runner_id: str = Field(default="artifact-import@1", alias="runnerId", min_length=1)
     evaluator_version: str = Field(default="ordered-point-evaluator@1", alias="evaluatorVersion")
+    subject_version: str | None = Field(default=None, alias="subjectVersion")
+    input_artifact_hash: str | None = Field(default=None, alias="inputArtifactHash")
+    parameter_set_hash: str | None = Field(default=None, alias="parameterSetHash")
+    experiment_spec_hash: str | None = Field(default=None, alias="experimentSpecHash")
 
 
 class Observation(AxiomModel):
@@ -271,7 +349,7 @@ class Observation(AxiomModel):
     artifact: OrderedPointSequence
     artifact_hash: str = Field(alias="artifactHash")
     observation_hash: str = Field(alias="observationHash")
-    source: Literal["ImportedArtifact"] = "ImportedArtifact"
+    source: Literal["ImportedArtifact", "ExecutedSubject"] = "ImportedArtifact"
 
 
 class Claim(AxiomModel):
@@ -369,4 +447,28 @@ class ComparisonReport(AxiomModel):
     differences: list[CompatibilityIssue] = Field(default_factory=list, alias="differences")
     metric_comparisons: list[MetricComparison] = Field(default_factory=list, alias="metricComparisons")
     score_comparison: MetricComparison | None = Field(default=None, alias="scoreComparison")
+    content_hash: str = Field(alias="contentHash")
+
+
+class ExperimentArmResult(AxiomModel):
+    arm_id: str = Field(alias="armId")
+    subject_id: str = Field(alias="subjectId")
+    subject_version: str = Field(alias="subjectVersion")
+    execution_status: ExecutionStatus = Field(alias="executionStatus")
+    case_outcome: CaseOutcome = Field(alias="caseOutcome")
+    output_artifact_hash: str | None = Field(default=None, alias="outputArtifactHash")
+    run_bundle: RunBundle | None = Field(default=None, alias="runBundle")
+    failure: DomainFailure | None = None
+
+
+class ExperimentReport(AxiomModel):
+    experiment_spec: ExperimentSpec = Field(alias="experimentSpec")
+    experiment_spec_hash: str = Field(alias="experimentSpecHash")
+    shared_input_hash: str = Field(alias="sharedInputHash")
+    parameter_set_hash: str = Field(alias="parameterSetHash")
+    execution_status: ExecutionStatus = Field(alias="executionStatus")
+    case_outcome: CaseOutcome = Field(alias="caseOutcome")
+    arm_results: list[ExperimentArmResult] = Field(alias="armResults", min_length=2, max_length=2)
+    comparison: ComparisonReport | None = None
+    failures: list[DomainFailure] = Field(default_factory=list)
     content_hash: str = Field(alias="contentHash")

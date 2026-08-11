@@ -3,7 +3,7 @@
 > 数据集 ID：`axiom.cnc-synthetic-scenarios@1`
 > 数据性质：确定性工程合成数据，不是机床、控制器、测头或数字孪生的实测输出。
 
-本目录把常见 CNC 运动语义适配为 Axiom 当前可处理的 `ordered-point-sequence@1`。每个 `requests/*.json` 都是可以直接交给 `axiom evaluate` 的完整请求；`manifest.json` 保存场景来源语义与预期结果。
+本目录把常见 CNC 运动语义适配为 Axiom 当前可处理的 `ordered-point-sequence@1`。`requests/*.json` 可直接交给 `axiom evaluate`，`comparisons/*.json` 用于导入式比较，`experiments/*.json` 会在共同输入和参数下实际执行两个静态 Subject；`manifest.json` 保存场景来源语义与预期结果。
 
 ## 场景
 
@@ -17,6 +17,7 @@
 | `cnc-sampled-corner-missing-timestamps@1` | 只导出位置、缺少时间戳 | 几何仍合法，但时间间隔指标因上下文不足而无法计算 |
 | `cnc-contour-observation-pass@1` | 名义直线轮廓与合成观测偏差 | 显式逐点参考比较，通过 0.03 mm 门槛 |
 | `cnc-contour-observation-fail@1` | 局部超差的合成观测 | 显式逐点参考比较，硬门槛失败且评分不能抵消 |
+| `cnc-contour-true-ab@1` | 同一名义轮廓上运行基线与补偿 Subject | 共享输入与偏差参数的真实双臂本地 Experiment；候选消除已知偏差，基线保留偏差 |
 
 ## 构造依据与边界
 
@@ -32,10 +33,12 @@
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\test_cnc_scenario_files.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_cnc_experiment_fixture.py -v
 ```
 
 运行单个场景：
 
 ```powershell
 .\.venv\Scripts\axiom.exe evaluate .\fixtures\cnc_scenarios\requests\cnc-g1-linear-finishing.json
+.\.venv\Scripts\axiom.exe experiment .\fixtures\cnc_scenarios\experiments\cnc-contour-true-ab.json
 ```

@@ -4,20 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-evaluator"
-version = "0.2.0"
+version = "0.3.0"
 description = "A deterministic evaluator for ordered two- and three-dimensional point sequences"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "fastapi>=0.141,<0.142",
   "numpy>=2.0",
   "pint>=0.24",
   "pydantic>=2.10",
   "scipy>=1.14",
+  "uvicorn>=0.52,<0.53",
 ]
 
 [project.optional-dependencies]
 test = [
   "hypothesis>=6.120",
+  "httpx>=0.28,<0.29",
   "pytest>=8.3",
 ]
 
@@ -29,6 +32,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+axiom = ["web_dist/**"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

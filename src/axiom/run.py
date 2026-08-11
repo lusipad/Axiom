@@ -59,6 +59,7 @@ def evaluate_run(payload: Mapping[str, Any] | EvaluationRequest | RunSpec) -> Ru
 
     preflight = _preflight_report(spec)
     report = preflight if preflight is not None else evaluate(spec.request)
+    report = _bind_run_provenance(spec, report)
     observation = _build_observation(spec)
     claims = _build_claims(spec, report)
     run = _build_run(
@@ -114,7 +115,7 @@ def _preflight_report(spec: RunSpec) -> EvaluationReport | None:
             )
             case_outcome = CaseOutcome.INVALID
             metric_status = MetricStatus.INVALID_OBSERVATION
-        if spec.runner_id != pack.runner_id:
+        if not pack.supports_runner(spec.runner_id):
             failures.append(
                 DomainFailure(
                     code="RunnerMismatch",
@@ -185,11 +186,12 @@ def _preflight_metric_result(metric_id: str, status: MetricStatus, pack: Any) ->
 
 def _build_observation(spec: RunSpec) -> Observation:
     artifact_hash = _content_hash(spec.request.artifact)
+    source = "ImportedArtifact" if spec.runner_id == ARTIFACT_IMPORT_RUNNER_ID else "ExecutedSubject"
     payload = {
         "subjectId": spec.subject_id,
         "artifact": spec.request.artifact.model_dump(mode="json", by_alias=True, exclude_unset=True),
         "artifactHash": artifact_hash,
-        "source": "ImportedArtifact",
+        "source": source,
     }
     observation_hash = _content_hash(payload)
     return Observation(
@@ -198,7 +200,7 @@ def _build_observation(spec: RunSpec) -> Observation:
         artifact=spec.request.artifact,
         artifact_hash=artifact_hash,
         observation_hash=observation_hash,
-        source="ImportedArtifact",
+        source=source,
     )
 
 
@@ -310,17 +312,17 @@ def _build_run(
 ) -> Run:
     provenance = report.provenance
     report_hash = _evaluation_report_hash(report)
-    payload = {
-        "subjectId": subject_id,
-        "domainPackId": domain_pack_id,
-        "runnerId": runner_id,
-        "runSpecHash": run_spec_hash,
-        "reportContentHash": report_hash,
-        "executionStatus": report.execution_status.value,
-        "caseOutcome": report.case_outcome.value,
-        "evaluatorVersion": report.evaluator_version,
-        "numericEnvironment": provenance.numeric_environment if provenance is not None else {},
-    }
+    payload = _run_identity_payload(
+        subject_id=subject_id,
+        domain_pack_id=domain_pack_id,
+        runner_id=runner_id,
+        run_spec_hash=run_spec_hash,
+        report_content_hash=report_hash,
+        execution_status=report.execution_status,
+        case_outcome=report.case_outcome,
+        evaluator_version=report.evaluator_version,
+        numeric_environment=provenance.numeric_environment if provenance is not None else {},
+    )
     content_hash = _content_hash(payload)
     return Run(
         run_id=f"run:{content_hash}",
@@ -338,6 +340,31 @@ def _build_run(
     )
 
 
+def _run_identity_payload(
+    *,
+    subject_id: str | None,
+    domain_pack_id: str,
+    runner_id: str,
+    run_spec_hash: str | None,
+    report_content_hash: str,
+    execution_status: ExecutionStatus,
+    case_outcome: CaseOutcome,
+    evaluator_version: str,
+    numeric_environment: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "subjectId": subject_id,
+        "domainPackId": domain_pack_id,
+        "runnerId": runner_id,
+        "runSpecHash": run_spec_hash,
+        "reportContentHash": report_content_hash,
+        "executionStatus": execution_status.value,
+        "caseOutcome": case_outcome.value,
+        "evaluatorVersion": evaluator_version,
+        "numericEnvironment": numeric_environment,
+    }
+
+
 def _build_bundle(
     run_spec: RunSpec | None,
     run: Run,
@@ -345,15 +372,7 @@ def _build_bundle(
     report: EvaluationReport,
     claims: list[Claim],
 ) -> RunBundle:
-    payload = {
-        "runSpec": run_spec.model_dump(mode="json", by_alias=True, exclude_none=True) if run_spec is not None else None,
-        "run": run.model_dump(mode="json", by_alias=True, exclude_none=True),
-        "observation": observation.model_dump(mode="json", by_alias=True, exclude_none=True)
-        if observation is not None
-        else None,
-        "report": report.model_dump(mode="json", by_alias=True, exclude_none=True),
-        "claims": [claim.model_dump(mode="json", by_alias=True, exclude_none=True) for claim in claims],
-    }
+    payload = _bundle_identity_payload(run_spec, run, observation, report, claims)
     bundle_hash = _content_hash(payload)
     return RunBundle(
         run_spec=run_spec,
@@ -365,6 +384,120 @@ def _build_bundle(
     )
 
 
+def _bundle_identity_payload(
+    run_spec: RunSpec | None,
+    run: Run,
+    observation: Observation | None,
+    report: EvaluationReport,
+    claims: list[Claim],
+) -> dict[str, Any]:
+    return {
+        "runSpec": run_spec.model_dump(mode="json", by_alias=True, exclude_none=True) if run_spec is not None else None,
+        "run": run.model_dump(mode="json", by_alias=True, exclude_none=True),
+        "observation": observation.model_dump(mode="json", by_alias=True, exclude_none=True)
+        if observation is not None
+        else None,
+        "report": report.model_dump(mode="json", by_alias=True, exclude_none=True),
+        "claims": [claim.model_dump(mode="json", by_alias=True, exclude_none=True) for claim in claims],
+    }
+
+
+def validate_run_bundle_integrity(bundle: RunBundle) -> list[DomainFailure]:
+    failures: list[DomainFailure] = []
+    if bundle.run_spec is not None:
+        _record_hash_failure(
+            failures,
+            code="RunSpecHashMismatch",
+            path="run.runSpecHash",
+            actual=bundle.run.run_spec_hash,
+            expected=_run_spec_hash(bundle.run_spec),
+        )
+    _record_hash_failure(
+        failures,
+        code="ReportHashMismatch",
+        path="run.reportContentHash",
+        actual=bundle.run.report_content_hash,
+        expected=_evaluation_report_hash(bundle.report),
+    )
+    if bundle.observation is not None:
+        artifact_hash = _content_hash(bundle.observation.artifact)
+        _record_hash_failure(
+            failures,
+            code="ObservationArtifactHashMismatch",
+            path="observation.artifactHash",
+            actual=bundle.observation.artifact_hash,
+            expected=artifact_hash,
+        )
+        observation_payload = {
+            "subjectId": bundle.observation.subject_id,
+            "artifact": bundle.observation.artifact.model_dump(
+                mode="json", by_alias=True, exclude_unset=True
+            ),
+            "artifactHash": artifact_hash,
+            "source": bundle.observation.source,
+        }
+        _record_hash_failure(
+            failures,
+            code="ObservationHashMismatch",
+            path="observation.observationHash",
+            actual=bundle.observation.observation_hash,
+            expected=_content_hash(observation_payload),
+        )
+    run_payload = _run_identity_payload(
+        subject_id=bundle.run.subject_id,
+        domain_pack_id=bundle.run.domain_pack_id,
+        runner_id=bundle.run.runner_id,
+        run_spec_hash=bundle.run.run_spec_hash,
+        report_content_hash=bundle.run.report_content_hash,
+        execution_status=bundle.run.execution_status,
+        case_outcome=bundle.run.case_outcome,
+        evaluator_version=bundle.run.evaluator_version,
+        numeric_environment=bundle.run.numeric_environment,
+    )
+    _record_hash_failure(
+        failures,
+        code="RunHashMismatch",
+        path="run.contentHash",
+        actual=bundle.run.content_hash,
+        expected=_content_hash(run_payload),
+    )
+    _record_hash_failure(
+        failures,
+        code="BundleHashMismatch",
+        path="bundleHash",
+        actual=bundle.bundle_hash,
+        expected=_content_hash(
+            _bundle_identity_payload(
+                bundle.run_spec,
+                bundle.run,
+                bundle.observation,
+                bundle.report,
+                bundle.claims,
+            )
+        ),
+    )
+    return failures
+
+
+def _record_hash_failure(
+    failures: list[DomainFailure],
+    *,
+    code: str,
+    path: str,
+    actual: str | None,
+    expected: str,
+) -> None:
+    if actual == expected:
+        return
+    failures.append(
+        DomainFailure(
+            code=code,
+            message=f"Stored content identity does not match the serialized {path} payload.",
+            path=path,
+        )
+    )
+
+
 def _run_spec_hash(spec: RunSpec) -> str:
     return _content_hash(
         {
@@ -373,6 +506,29 @@ def _run_spec_hash(spec: RunSpec) -> str:
             "domainPackId": spec.domain_pack_id,
             "runnerId": spec.runner_id,
             "evaluatorVersion": spec.evaluator_version,
+            "subjectVersion": spec.subject_version,
+            "inputArtifactHash": spec.input_artifact_hash,
+            "parameterSetHash": spec.parameter_set_hash,
+            "experimentSpecHash": spec.experiment_spec_hash,
+        }
+    )
+
+
+def _bind_run_provenance(spec: RunSpec, report: EvaluationReport) -> EvaluationReport:
+    provenance = report.provenance
+    if provenance is None:
+        return report
+    return report.model_copy(
+        update={
+            "provenance": provenance.model_copy(
+                update={
+                    "runner_id": spec.runner_id,
+                    "subject_version": spec.subject_version,
+                    "input_artifact_hash": spec.input_artifact_hash,
+                    "parameter_set_hash": spec.parameter_set_hash,
+                    "experiment_spec_hash": spec.experiment_spec_hash,
+                }
+            )
         }
     )
 

@@ -189,7 +189,10 @@ def test_domain_pack_registry_exposes_ordered_point_pack_and_rejects_unknown_ids
     assert pack["artifactSchemaVersions"] == [1]
     assert "ordered-point.reference.bound@1" in pack["capabilityIds"]
     assert "axiom.core.metric-threshold-claim@1" in pack["claimDefinitionIds"]
-    assert pack["comparisonPolicyIds"] == ["ordered-point.run-comparison.strict@1"]
+    assert pack["comparisonPolicyIds"] == [
+        "ordered-point.run-comparison.strict@1",
+        "ordered-point.experiment-comparison.strict@1",
+    ]
 
     with pytest.raises(LookupError, match="vendor\\.pack\\.unknown@1"):
         query_pack("vendor.pack.unknown@1")

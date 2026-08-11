@@ -4,7 +4,7 @@ from typing import Any, Mapping
 
 from pydantic import ValidationError
 
-from .domain import STRICT_COMPARISON_POLICY_ID, find_domain_pack
+from .domain import EXPERIMENT_COMPARISON_POLICY_ID, STRICT_COMPARISON_POLICY_ID, find_domain_pack
 from .evaluator import _content_hash
 from .models import (
     CaseOutcome,
@@ -14,15 +14,17 @@ from .models import (
     ComparisonReport,
     ComparisonSpec,
     ExecutionStatus,
+    ExperimentSpec,
     MetricComparison,
     MetricResult,
     MetricStatus,
     RunBundle,
     RunSpec,
 )
-from .run import evaluate_run
+from .run import evaluate_run, validate_run_bundle_integrity
 
 _COMPARISON_POLICY_ID = STRICT_COMPARISON_POLICY_ID
+_SUPPORTED_COMPARISON_POLICIES = {_COMPARISON_POLICY_ID, EXPERIMENT_COMPARISON_POLICY_ID}
 _TERMINAL_EXECUTION_STATUSES = {
     ExecutionStatus.SUCCEEDED,
     ExecutionStatus.EXECUTION_FAILED,
@@ -37,25 +39,52 @@ def compare_runs(
     *,
     policy_id: str = _COMPARISON_POLICY_ID,
     comparison_spec_hash: str | None = None,
+    experiment_spec: Mapping[str, Any] | ExperimentSpec | None = None,
 ) -> ComparisonReport:
     left_bundle, left_issue = _normalize_bundle(left_payload, side="left")
     right_bundle, right_issue = _normalize_bundle(right_payload, side="right")
     errors = [issue for issue in (left_issue, right_issue) if issue is not None]
-    if policy_id != _COMPARISON_POLICY_ID:
+    if policy_id not in _SUPPORTED_COMPARISON_POLICIES:
         errors.append(
             CompatibilityIssue(
                 code="UnknownComparisonPolicy",
                 message="The requested comparison policy is not registered by this DomainPack.",
                 path="policyId",
                 left_value=policy_id,
-                right_value=_COMPARISON_POLICY_ID,
+                right_value=sorted(_SUPPORTED_COMPARISON_POLICIES),
             )
         )
     differences: list[CompatibilityIssue] = []
+    expected_experiment: ExperimentSpec | None = None
+
+    if policy_id == EXPERIMENT_COMPARISON_POLICY_ID:
+        expected_experiment, experiment_issue = _normalize_experiment_spec(experiment_spec)
+        if experiment_issue is not None:
+            errors.append(experiment_issue)
+        elif expected_experiment is not None:
+            expected_hash = _content_hash(
+                expected_experiment.model_dump(mode="json", by_alias=True, exclude_none=True)
+            )
+            if comparison_spec_hash is None:
+                comparison_spec_hash = expected_hash
+            elif comparison_spec_hash != expected_hash:
+                errors.append(
+                    CompatibilityIssue(
+                        code="ExperimentSpecHashMismatch",
+                        message="comparisonSpecHash does not identify the supplied ExperimentSpec.",
+                        path="comparisonSpecHash",
+                        left_value=comparison_spec_hash,
+                        right_value=expected_hash,
+                    )
+                )
 
     if left_bundle is not None and right_bundle is not None:
         side_errors, differences = _compare_context(left_bundle, right_bundle)
         errors.extend(side_errors)
+        if policy_id == EXPERIMENT_COMPARISON_POLICY_ID and expected_experiment is not None:
+            errors.extend(_integrity_issues(left_bundle, "left"))
+            errors.extend(_integrity_issues(right_bundle, "right"))
+            errors.extend(_compare_experiment_lineage(left_bundle, right_bundle, expected_experiment))
 
     compatibility = _build_compatibility(errors)
     metric_comparisons: list[MetricComparison] = []
@@ -151,6 +180,124 @@ def _normalize_bundle(
         )
 
 
+def _normalize_experiment_spec(
+    payload: Mapping[str, Any] | ExperimentSpec | None,
+) -> tuple[ExperimentSpec | None, CompatibilityIssue | None]:
+    if payload is None:
+        return None, CompatibilityIssue(
+            code="ExperimentSpecRequired",
+            message="The experiment comparison policy requires the complete frozen ExperimentSpec.",
+            path="experimentSpec",
+        )
+    if isinstance(payload, ExperimentSpec):
+        return payload, None
+    try:
+        return ExperimentSpec.model_validate(payload), None
+    except ValidationError as exc:
+        return None, CompatibilityIssue(
+            code="MalformedExperimentSpec",
+            message="experimentSpec does not satisfy the executable experiment contract.",
+            path=f"experimentSpec.{_validation_path(exc) or ''}".rstrip("."),
+        )
+
+
+def _compare_experiment_lineage(
+    left: RunBundle,
+    right: RunBundle,
+    experiment_spec: ExperimentSpec,
+) -> list[CompatibilityIssue]:
+    errors: list[CompatibilityIssue] = []
+    expected_spec_hash = _content_hash(
+        experiment_spec.model_dump(mode="json", by_alias=True, exclude_none=True)
+    )
+    expected_input_hash = _content_hash(experiment_spec.shared_input)
+    expected_parameter_hash = _content_hash(experiment_spec.parameter_set)
+    for side, bundle, arm in zip(
+        ("left", "right"),
+        (left, right),
+        experiment_spec.arms,
+        strict=True,
+    ):
+        run_spec = bundle.run_spec
+        provenance = bundle.report.provenance
+        checks = [
+            ("ExperimentArmSubjectMismatch", "runSpec.subjectId", run_spec.subject_id if run_spec else None, arm.subject_id),
+            ("ExperimentArmSubjectVersionMismatch", "runSpec.subjectVersion", run_spec.subject_version if run_spec else None, arm.subject_version),
+            ("ExperimentArmRunnerMismatch", "runSpec.runnerId", run_spec.runner_id if run_spec else None, arm.runner_id),
+            ("ExperimentDomainPackMismatch", "runSpec.domainPackId", run_spec.domain_pack_id if run_spec else None, experiment_spec.domain_pack_id),
+            ("ExperimentEvaluatorMismatch", "runSpec.evaluatorVersion", run_spec.evaluator_version if run_spec else None, experiment_spec.evaluator_version),
+            ("InputArtifactMismatch", "runSpec.inputArtifactHash", run_spec.input_artifact_hash if run_spec else None, expected_input_hash),
+            ("ParameterSetMismatch", "runSpec.parameterSetHash", run_spec.parameter_set_hash if run_spec else None, expected_parameter_hash),
+            ("ExperimentSpecMismatch", "runSpec.experimentSpecHash", run_spec.experiment_spec_hash if run_spec else None, expected_spec_hash),
+            ("ExperimentRunSubjectMismatch", "run.subjectId", bundle.run.subject_id, arm.subject_id),
+            ("ExperimentRunRunnerMismatch", "run.runnerId", bundle.run.runner_id, arm.runner_id),
+            (
+                "ExperimentObservationSubjectMismatch",
+                "observation.subjectId",
+                bundle.observation.subject_id if bundle.observation else None,
+                arm.subject_id,
+            ),
+            (
+                "ExperimentObservationSourceMismatch",
+                "observation.source",
+                bundle.observation.source if bundle.observation else None,
+                "ExecutedSubject",
+            ),
+            (
+                "ExperimentProvenanceRunnerMismatch",
+                "report.provenance.runnerId",
+                provenance.runner_id if provenance else None,
+                arm.runner_id,
+            ),
+            (
+                "ExperimentProvenanceSubjectVersionMismatch",
+                "report.provenance.subjectVersion",
+                provenance.subject_version if provenance else None,
+                arm.subject_version,
+            ),
+            (
+                "ExperimentProvenanceInputMismatch",
+                "report.provenance.inputArtifactHash",
+                provenance.input_artifact_hash if provenance else None,
+                expected_input_hash,
+            ),
+            (
+                "ExperimentProvenanceParameterMismatch",
+                "report.provenance.parameterSetHash",
+                provenance.parameter_set_hash if provenance else None,
+                expected_parameter_hash,
+            ),
+            (
+                "ExperimentProvenanceSpecMismatch",
+                "report.provenance.experimentSpecHash",
+                provenance.experiment_spec_hash if provenance else None,
+                expected_spec_hash,
+            ),
+        ]
+        for code, path, actual, expected in checks:
+            _require_equal(
+                errors,
+                code,
+                f"{side}.{path}",
+                actual,
+                expected,
+                f"{side} run lineage must match the frozen ExperimentSpec arm.",
+                require_present=True,
+            )
+    return errors
+
+
+def _integrity_issues(bundle: RunBundle, side: str) -> list[CompatibilityIssue]:
+    return [
+        CompatibilityIssue(
+            code=failure.code,
+            message=failure.message,
+            path=f"{side}.{failure.path}" if failure.path else side,
+        )
+        for failure in validate_run_bundle_integrity(bundle)
+    ]
+
+
 def _compare_context(
     left: RunBundle, right: RunBundle
 ) -> tuple[list[CompatibilityIssue], list[CompatibilityIssue]]:
@@ -199,7 +346,7 @@ def _compare_context(
             errors.append(
                 CompatibilityIssue(
                     code="ObservationMissing",
-                    message=f"{side} run must retain its imported Observation.",
+                    message=f"{side} run must retain its original Observation.",
                     path=f"{side}.observation",
                 )
             )
@@ -651,8 +798,10 @@ def _require_equal(
     left_value: Any,
     right_value: Any,
     message: str,
+    *,
+    require_present: bool = False,
 ) -> None:
-    if left_value == right_value:
+    if left_value == right_value and (not require_present or left_value is not None):
         return
     errors.append(
         CompatibilityIssue(

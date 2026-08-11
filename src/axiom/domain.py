@@ -27,9 +27,11 @@ from .models import AxiomModel
 ORDERED_POINT_DOMAIN_PACK_ID = "ordered-point.domain-pack@1"
 ORDERED_POINT_EVALUATOR_ID = "ordered-point-evaluator@1"
 ARTIFACT_IMPORT_RUNNER_ID = "artifact-import@1"
+PYTHON_CALL_RUNNER_ID = "python-call@1"
 CASE_OUTCOME_CLAIM_DEFINITION_ID = "axiom.core.case-outcome-claim@1"
 METRIC_THRESHOLD_CLAIM_DEFINITION_ID = "axiom.core.metric-threshold-claim@1"
 STRICT_COMPARISON_POLICY_ID = "ordered-point.run-comparison.strict@1"
+EXPERIMENT_COMPARISON_POLICY_ID = "ordered-point.experiment-comparison.strict@1"
 
 
 class FrozenDomainModel(AxiomModel):
@@ -50,6 +52,7 @@ class DomainPack(FrozenDomainModel):
     artifact_schema_versions: tuple[int, ...] = Field(alias="artifactSchemaVersions", min_length=1)
     evaluator_version: str = Field(alias="evaluatorVersion")
     runner_id: str = Field(alias="runnerId")
+    runner_ids: tuple[str, ...] = Field(default_factory=tuple, alias="runnerIds")
     capability_ids: tuple[str, ...] = Field(default_factory=tuple, alias="capabilityIds")
     metric_definitions: tuple[MetricDefinition, ...] = Field(default_factory=tuple, alias="metricDefinitions")
     claim_definition_ids: tuple[str, ...] = Field(default_factory=tuple, alias="claimDefinitionIds")
@@ -60,6 +63,9 @@ class DomainPack(FrozenDomainModel):
             if definition.metric_id == metric_id:
                 return definition
         raise KeyError(metric_id)
+
+    def supports_runner(self, runner_id: str) -> bool:
+        return runner_id == self.runner_id or runner_id in self.runner_ids
 
 
 _DOMAIN_PACKS: dict[str, DomainPack] = {}
@@ -112,6 +118,7 @@ ORDERED_POINT_DOMAIN_PACK = register_domain_pack(
         artifact_schema_versions=[1],
         evaluator_version=ORDERED_POINT_EVALUATOR_ID,
         runner_id=ARTIFACT_IMPORT_RUNNER_ID,
+        runner_ids=[ARTIFACT_IMPORT_RUNNER_ID, PYTHON_CALL_RUNNER_ID],
         capability_ids=sorted(
             {
                 _CAP_PARSED,
@@ -132,6 +139,6 @@ ORDERED_POINT_DOMAIN_PACK = register_domain_pack(
             CASE_OUTCOME_CLAIM_DEFINITION_ID,
             METRIC_THRESHOLD_CLAIM_DEFINITION_ID,
         ],
-        comparison_policy_ids=[STRICT_COMPARISON_POLICY_ID],
+        comparison_policy_ids=[STRICT_COMPARISON_POLICY_ID, EXPERIMENT_COMPARISON_POLICY_ID],
     )
 )

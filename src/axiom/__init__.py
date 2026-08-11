@@ -10,6 +10,7 @@ from .domain import (
     register_domain_pack,
 )
 from .evaluator import evaluate
+from .experiment import contour_ab_example, run_experiment
 from .models import (
     CaseOutcome,
     Claim,
@@ -21,15 +22,22 @@ from .models import (
     CompatibilityReport,
     EvaluationReport,
     EvaluationRequest,
+    ExperimentArm,
+    ExperimentArmResult,
+    ExperimentReport,
+    ExperimentSpec,
     ExecutionStatus,
     MetricComparison,
     MetricStatus,
     Observation,
+    ParameterSet,
     Run,
     RunBundle,
     RunSpec,
+    SubjectDefinition,
 )
 from .run import evaluate_run
+from .subjects import list_subjects, register_subject
 
 __all__ = [
     "Claim",
@@ -45,12 +53,17 @@ __all__ = [
     "DomainPack",
     "EvaluationReport",
     "EvaluationRequest",
+    "ExperimentArm",
+    "ExperimentArmResult",
+    "ExperimentReport",
+    "ExperimentSpec",
     "ExecutionStatus",
     "evaluate_run",
     "MetricStatus",
     "MetricComparison",
     "MetricDefinition",
     "Observation",
+    "ParameterSet",
     "ORDERED_POINT_DOMAIN_PACK",
     "get_domain_pack",
     "list_domain_packs",
@@ -58,5 +71,10 @@ __all__ = [
     "Run",
     "RunBundle",
     "RunSpec",
+    "SubjectDefinition",
+    "contour_ab_example",
     "evaluate",
+    "list_subjects",
+    "register_subject",
+    "run_experiment",
 ]

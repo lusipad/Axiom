@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 
 import axiom.cli as cli_module
+import axiom.web as web_module
 from axiom.cli import main
+from axiom.experiment import contour_ab_example
+import uvicorn
 
 
 COMPARISON_FIXTURE = (
@@ -148,3 +151,51 @@ def test_cli_rejects_a_comparison_larger_than_its_byte_budget(tmp_path, capsys, 
 
     assert main(["compare", str(comparison_path)]) == 2
     assert "比较请求超过 8 字节限制" in capsys.readouterr().err
+
+
+def test_cli_executes_a_true_two_arm_experiment(tmp_path, capsys):
+    experiment_path = tmp_path / "experiment.json"
+    experiment_path.write_text(
+        contour_ab_example().model_dump_json(by_alias=True),
+        encoding="utf-8",
+    )
+
+    assert main(["experiment", str(experiment_path)]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["executionStatus"] == "Succeeded"
+    assert output["caseOutcome"] == "Failed"
+    assert output["comparison"]["compatibility"]["compatible"] is True
+    assert len(output["armResults"]) == 2
+
+
+def test_cli_returns_two_for_a_malformed_experiment_spec(tmp_path, capsys):
+    experiment_path = tmp_path / "malformed-experiment.json"
+    experiment_path.write_text(json.dumps({"experimentId": "broken"}), encoding="utf-8")
+
+    assert main(["experiment", str(experiment_path)]) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["code"] == "MalformedExperimentSpec"
+
+
+def test_cli_rejects_an_experiment_larger_than_its_byte_budget(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(cli_module, "MAX_EXPERIMENT_BYTES", 8)
+    experiment_path = tmp_path / "oversized-experiment.json"
+    experiment_path.write_bytes(b" " * 9)
+
+    assert main(["experiment", str(experiment_path)]) == 2
+    assert "实验请求超过 8 字节限制" in capsys.readouterr().err
+
+
+def test_cli_serve_forwards_the_explicit_bind_address(monkeypatch):
+    app = object()
+    captured = {}
+
+    monkeypatch.setattr(web_module, "create_app", lambda: app)
+
+    def fake_run(received_app, *, host, port):
+        captured.update(app=received_app, host=host, port=port)
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+
+    assert main(["serve", "--host", "0.0.0.0", "--port", "9123"]) == 0
+    assert captured == {"app": app, "host": "0.0.0.0", "port": 9123}

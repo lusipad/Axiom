@@ -6,13 +6,17 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from pydantic import ValidationError
+
 from .comparison import compare
 from .evaluator import evaluate
-from .models import CaseOutcome
+from .experiment import run_experiment
+from .models import CaseOutcome, ExecutionStatus
 
 
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
 MAX_COMPARISON_BYTES = 2 * MAX_REQUEST_BYTES
+MAX_EXPERIMENT_BYTES = 2 * MAX_REQUEST_BYTES
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -25,14 +29,30 @@ def _parser() -> argparse.ArgumentParser:
     evaluate_command.add_argument("request", type=Path, help="path to an evaluation-request@1 JSON file")
     compare_command = commands.add_parser("compare", help="compare two imported runs from one JSON spec")
     compare_command.add_argument("comparison", type=Path, help="path to a comparison-spec@1 JSON file")
+    experiment_command = commands.add_parser("experiment", help="execute and compare two local Subjects")
+    experiment_command.add_argument("experiment", type=Path, help="path to an experiment-spec@1 JSON file")
+    serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
+    serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
+    serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    path = args.request if args.command == "evaluate" else args.comparison
-    label = "评估请求" if args.command == "evaluate" else "比较请求"
-    limit = MAX_REQUEST_BYTES if args.command == "evaluate" else MAX_COMPARISON_BYTES
+    if args.command == "serve":
+        import uvicorn
+
+        from .web import create_app
+
+        uvicorn.run(create_app(), host=args.host, port=args.port)
+        return 0
+
+    if args.command == "evaluate":
+        path, label, limit = args.request, "评估请求", MAX_REQUEST_BYTES
+    elif args.command == "compare":
+        path, label, limit = args.comparison, "比较请求", MAX_COMPARISON_BYTES
+    else:
+        path, label, limit = args.experiment, "实验请求", MAX_EXPERIMENT_BYTES
     try:
         with path.open("rb") as stream:
             raw_request = stream.read(limit + 1)
@@ -50,6 +70,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         if any(issue.code == "MalformedComparisonSpec" for issue in report.compatibility.issues):
             return 2
         return 0 if report.compatibility.compatible else 1
+
+    if args.command == "experiment":
+        try:
+            report = run_experiment(payload)
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            print(
+                json.dumps(
+                    {
+                        "code": "MalformedExperimentSpec",
+                        "path": ".".join(str(part) for part in errors[0]["loc"]) if errors else None,
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        if report.execution_status is not ExecutionStatus.SUCCEEDED:
+            return 1
+        if report.comparison is None or not report.comparison.compatibility.compatible:
+            return 1
+        return 0 if report.case_outcome is CaseOutcome.PASSED else 1
 
     report = evaluate(payload)
     print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))

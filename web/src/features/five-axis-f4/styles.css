@@ -1,0 +1,152 @@
+@import "../five-axis-f3/styles.css";
+
+.f4-workspace {
+  grid-template-columns: 310px minmax(620px, 1fr) 340px;
+}
+
+.f4-scenario-note {
+  color: #c98f79;
+  margin: 10px 0 0;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.f4-note-positive {
+  color: #7ea3b8;
+}
+
+.f4-coverage-grid,
+.f4-subject-grid,
+.f4-gap-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.f4-coverage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.f4-subject-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.f4-gap-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.f4-coverage-card,
+.f4-subject-card,
+.f4-gap-card {
+  background: #10181c;
+  border: 1px solid #2b3a42;
+  padding: 11px 12px;
+}
+
+.f4-workspace .f3-hero-card {
+  background:
+    radial-gradient(circle at 18% 0%, #6fd3ff29, transparent 31%),
+    radial-gradient(circle at 82% 0%, #96e08d1f, transparent 28%),
+    #0f171b;
+  border-top: 2px solid #5ecf95;
+}
+
+.f4-workspace .f3-hero-card > header {
+  min-height: 54px;
+  padding: 12px 14px;
+}
+
+.f4-workspace .f4-gap-grid {
+  padding: 4px;
+}
+
+.f4-workspace .f4-gap-card {
+  border-color: #263940;
+  padding: 13px 14px;
+}
+
+.f4-workspace > .f3-config-panel .f4-coverage-card {
+  background: transparent;
+  border-color: #26363e;
+  border-width: 0 0 0 2px;
+  padding: 7px 9px;
+}
+
+.f4-workspace .f3-section .f4-subject-card {
+  padding: 8px 10px;
+}
+
+.f4-workspace .f3-table-wrap {
+  max-height: 252px;
+  overflow: auto;
+}
+
+.f4-workspace .f4-collision-table thead {
+  background: #10191e;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.f4-coverage-card span,
+.f4-subject-card span,
+.f4-gap-card span {
+  color: #72858e;
+  display: block;
+  font: 8px var(--mono);
+  text-transform: uppercase;
+}
+
+.f4-coverage-card strong,
+.f4-subject-card strong,
+.f4-gap-card strong {
+  color: #d9e4e9;
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.f4-coverage-card small,
+.f4-subject-card small,
+.f4-gap-card small {
+  color: #8ea1aa;
+  display: block;
+  margin-top: 5px;
+  font-size: 9px;
+}
+
+.f4-claims-list article footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.f4-collision-table td code,
+.f4-subject-card code,
+.f4-gap-card code {
+  color: #8ea1aa;
+  font: 8px var(--mono);
+}
+
+.f4-counterexample-chip {
+  border: 1px solid #6c4536;
+  background: #231a18;
+  color: #f0c3b2;
+  display: inline-flex;
+  padding: 4px 7px;
+  font: 8px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+@media (width <= 1180px) {
+  .f4-workspace {
+    grid-template-columns: 280px minmax(520px, 1fr);
+  }
+
+  .f4-workspace > .f3-evidence-panel {
+    grid-column: 1 / -1;
+  }
+
+  .f4-gap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

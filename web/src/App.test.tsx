@@ -384,6 +384,24 @@ describe("Axiom workbench", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
   });
 
+  it("Five-Axis F4 入口失败时仍保留导航并显示 API 错误", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.includes("/five-axis/f4/")) return Promise.resolve(jsonResponse({ detail: "F4 unavailable" }, 503));
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F4/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
+    expect(screen.getByRole("button", { name: /Five-Axis.*F4/i })).toBeInTheDocument();
+  });
+
   it("运行工程化 F1 场景并在碰撞场景中拒绝标准声明", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

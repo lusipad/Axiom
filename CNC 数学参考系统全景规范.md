@@ -2,7 +2,7 @@
 
 > 文档类型：领域包规范  
 > 领域包：`FiveAxisTrajectoryPack`  
-> 状态：Draft v0.7 / F3 已实现
+> 状态：Draft v0.8 / F4 已实现
 > 依赖：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)  
 > 上位路线：[Axiom 项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 相邻领域包：[有序离散点领域包规范](有序离散点领域包规范.md)
@@ -908,7 +908,19 @@ M5 将 `SampledTrajectory` 与 `DiscreteCommand` 分开，固定周期、非整�
 - 结果确定、可复现、可追溯；
 - 已知开放问题没有被静默近似。
 
-只有通过 Math F4，`FiveAxisTrajectoryPack` 才能完成 Axiom Roadmap 的 R2 数学领域 gate，并进入正式 Five-Axis Algorithm Lab。面向下游验证/审批的候选还必须同时具有 `GeometryValid`、`ModelCollisionFree`、`KinematicallyFeasible`、`ContinuouslyFeasible` 和 `IntervalCertified`；任一项为 `CollisionUnchecked` 或 `Inconclusive` 时不得进入 R3/R4 的后续 gate。该结论仍不构成设备执行许可。设备、学习与优化的全局阶段顺序由项目蓝图定义，不由本领域规范重复定义。
+v0.8.0 的 F4 实现已经完成上述验收闭环，`FiveAxisTrajectoryPack` 现在关闭 Axiom Roadmap 的 R2 数学领域 gate，并进入正式 Five-Axis Algorithm Lab。F4 公开的七个数学 claims 如下：
+
+| Claim | 典型证据闭环 | 仍然不允许 |
+|---|---|---|
+| `GeometryValid` | M1→M2 连续几何、`PathProgress`、对应策略、连续误差证书 | 设备安全、过程安全 |
+| `TaskGeometryCollisionFree` | M2 名义扫掠、允许/禁止接触、过程状态时间线 | 设备安全、过程安全 |
+| `KinematicallyFeasible` | M3 运动学提升、分支、限位、`Q_free` 与回代证据 | 设备安全、过程安全 |
+| `ConfigurationCollisionFree` | M3 配置路径与连续区间碰撞证书 | 设备安全、过程安全 |
+| `ContinuouslyFeasible` | M4 连续时间律、边界状态、逐轴 V/A/J 证书 | 设备安全、过程安全 |
+| `IntervalCertified` | M5 固定周期采样、重建策略、区间复核 | 设备安全、过程安全 |
+| `ModelCollisionFree` | F1 任务碰撞 + F2 配置碰撞 + F4 M5 重建碰撞证据 | 设备安全、过程安全、上机许可 |
+
+任何一项为 `CollisionUnchecked` 或 `Inconclusive` 时都不得进入 R3/R4 的后续 gate。`DeviceSafe`、`ProcessSafe` 和任何上机许可在 F4 中都不发布。设备、学习与优化的全局阶段顺序由项目蓝图定义，不由本领域规范重复定义。
 
 ---
 
@@ -997,6 +1009,14 @@ Math F3 按 [ADR-0011](架构决策记录/ADR-0011-F3时间参数化与区间重
 - `mandatory-stop`、dwell、分支/wrap/奇异边界必须停启；dwell 期间 (\sigma) 保持不变。`collision-violation` 直接反驳连续可行性，不能靠延长时间消除。
 - `reference-m4` 重建重新调用独立 M4 verifier，不用区间 Hermite 多项式替代权威源轨迹；多项式策略分别报告解析见证和保守证书界，Refuted 优先级高于 Unsupported。
 - F3 网页与 API 始终分开展示 Core 运行状态、M4/M5 Claim 和设备安全边界，并永久标注 `MATH ONLY / NOT DEVICE SAFE`。
+
+### 18.4 Math F4 已冻结实现选择
+
+- `five-axis.domain-pack@5` 接入静态进程内 `five-axis.solver-adapter@1`，Reference 与 SUT 都以 typed adapter invocation / receipt 表示，且必须指向不同 subject。
+- F4 保持一次 Run 仍以单个 `M5DiscreteCommand` 为主制品，`referenceArtifact`、`artifact`、`referenceInvocation`、`sutInvocation`、`referenceReceipt` 和 `sutReceipt` 都进入 typed request。
+- F4 Manifest 冻结 M0–M5 artifactDescriptors、三类 canonical solver 拓扑、`adapter-input-hash-mismatch` 与 `interval-interior-collision` 反例、M0–M5 内容身份和 `five-axis.model-collision-free-claim@1` 等七个数学 gate claims。
+- F4 网页工作台的数据源来自 `/api/v1/five-axis/f4/manifest`、`/api/v1/five-axis/f4/scenarios` 和 `/api/v1/examples/five-axis-f4`，页面读取的 example payload 以 `manifest / scenario / source / artifacts / evidence / acceptanceReport` 分块。
+- F4 的数学闭环只到 `ModelCollisionFree`，不会把 reference/sut cross-validation 误写成 `DeviceSafe` 或 `ProcessSafe`，也不会自动放宽到真实控制器写入。
 
 ---
 

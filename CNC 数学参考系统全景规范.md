@@ -2,7 +2,7 @@
 
 > 文档类型：领域包规范  
 > 领域包：`FiveAxisTrajectoryPack`  
-> 状态：Draft v0.5 / F1 已实现
+> 状态：Draft v0.6 / F2 已实现
 > 依赖：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)  
 > 上位路线：[Axiom 项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 相邻领域包：[有序离散点领域包规范](有序离散点领域包规范.md)
@@ -883,6 +883,10 @@ F1 允许正向发布 `GeometryValid` 与 `TaskGeometryCollisionFree`，前者�
 
 完成通用运动链、三类闭式基准、一般数值 IK、分支图、wrap、限位、\(Q_{free}\)、连续碰撞/间隙和奇异性证书。
 
+v0.6 的 F2 实现以 `five-axis.domain-pack@3` 接入既有领域中立运行时，并冻结三个 canonical `MachineProfile`、通用 FK、三类闭式 IK 和确定性一般数值 IK。首个可发布的连续正向子集限定为 M2 直线位置 + 常量刀轴 + 固定解析分支/wrap；M3 以 `local-power@1` 轴段、分支图、结点事件、归一化无量纲轴限位裕量、奇异性下界和内容身份绑定构成可独立复算证书。运行时不会信任 Artifact 自报结论，而会重算内容哈希、策略白名单、FK 回放、节点连续、整段限位和奇异性条件。
+
+`ConfigurationCollisionFree` 另由显式机床组件/环境实体、碰撞对、覆盖状态和连续区间聚合证书闭合。内建场景覆盖三类 canonical 拓扑，以及一个端点均分离但区间内部在 \(\sigma=0.5\) 碰撞的反例。F2 不生成 `ContinuouslyFeasible`、`IntervalCertified`、`DeviceSafe` 或 `ProcessSafe`；一般数值 IK、非直线/变姿态路径和未闭合碰撞覆盖不得借用解析子集的正向 Claim。
+
 ### Math F3：时间与离散参考栈
 
 完成二阶 TOPP、Jerk 可行规划、结点事件处理、连续约束验证、固定周期采样、标准命令重建和类型化数值误差账本。
@@ -968,6 +972,17 @@ Math F1 按 [ADR-0008](架构决策记录/ADR-0008-领域包多Artifact声明与
 - 连续误差的首版数值核使用显式定义域的解析曲线、分段多项式/B-spline 和球面插值；每项结果仍必须记录 Axiom 冻结的导数界、细分容差、求解器版本与数值环境；
 - 首版 Certified 任务碰撞只覆盖 Manifest 声明的解析刀具基本体、解析路径和解析/AABB 上下文。一般 mesh/CAD 后端必须另行声明能力，有限查询最高为 `Validated`；
 - `five-axis.task-geometry.collision.checked@1` 与 `five-axis.configuration.collision.checked@1` 分层发布，禁止用 F1 的 M2 证据满足 M3 Claim。
+
+### 18.2 Math F2 已冻结实现选择
+
+Math F2 按 [ADR-0010](架构决策记录/ADR-0010-F2参考机床与运动学证据边界.md) 冻结以下选择：
+
+- 权威机器对象为 `five-axis.machine-profile@1`。轴的运动类型、安装侧、同侧父子顺序、局部方向/轴线原点、零位、方向符号、单位、限位、周期性和语义角色全部参与内容身份；不得从轴名或拓扑标签推断缺失语义；
+- 首版 `MachineProfile` 的直线量统一为 `mm`、旋转量统一为 `rad`，刚体变换四元数按 `[x,y,z,w]` 解释；跨轴聚合的限位裕量使用无量纲归一化距离 `min(q-lower, upper-q)/(upper-lower)`，禁止直接混合 `mm` 与 `rad`；M3 轴段按 `local-power@1` 局部幂基解释，`linear`/`cubic-hermite` 分别固定为 2/4 个轴向量，并必须回放端点解；
+- 通用 FK 固定为 \(T_{WT}(q)=T_W(q_W)^{-1}T_T(q_T)T_{tool}\)。三个闭式 oracle 分别为 `five-axis.machine-profile.canonical-table-table-ac@1`、`five-axis.machine-profile.canonical-head-table-workpiece-c-tool-b@1` 和 `five-axis.machine-profile.canonical-head-head-cb@1`；其精确轴序、方向、限位和几何参数由 ADR-0010 与版本化 fixture 共同冻结；
+- 解析 IK 必须枚举姿态分支和限位内全部周期 wrap，并用同一通用 FK 回代；一般 Profile 使用固定 seed、残差尺度、边界、终止条件、去重和 tie-break 的 `scipy.optimize.least_squares` 路径，未找到解不得解释为严格无解；
+- `KinematicallyFeasible` 需要整条路径的连续提升、分支/限位/正则性和回代证据。`ConfigurationCollisionFree` 另需覆盖完整区间的 `Q_free` 证书；任一单姿态、有限无界采样、F1 任务碰撞或 UI 可视化均不能替代这些 Claim；
+- 一般数值 IK 候选首版最高为 `Validated`。只有解析恒等或可独立复核的保守区间方法才能产生 `Exact` / `Certified` 证据；任何 F2 结果仍不构成设备安全或执行许可。
 
 ---
 

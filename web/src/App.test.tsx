@@ -380,7 +380,7 @@ describe("Axiom workbench", () => {
     render(<App />);
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Five-Axis/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F1/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
   });
 
@@ -407,7 +407,7 @@ describe("Axiom workbench", () => {
 
     render(<App />);
     await screen.findByText("证据包已封存");
-    fireEvent.click(screen.getByRole("button", { name: /Five-Axis/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F1/i }));
 
     expect(await screen.findByText("五轴数学场景")).toBeInTheDocument();
     expect(await screen.findAllByText("Supported")).toHaveLength(5);

@@ -6,6 +6,7 @@ import {
   loadContourExample,
 } from "./api";
 import { F1Workbench } from "./features/five-axis-f1/F1Workbench";
+import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
 import type {
   Catalog,
   ExperimentArmResult,
@@ -15,7 +16,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2";
 type PointView = "geometry" | "metrics";
 
 const futureLabs = ["Machine", "Intelligence", "Optimization"];
@@ -223,6 +224,16 @@ export function App() {
   const pointRunnerLabel = [...new Set(spec?.arms.map((arm) => arm.runnerId ?? "unknown-runner") ?? [])].join(", ");
   const pointBusyState = loading || pointBusy;
   const visibleError = error;
+  const workbenchTitle = activeLab === "point"
+    ? "Experiment Workbench"
+    : activeLab === "five-axis-f1"
+      ? "Five-Axis Geometry Reference Workbench"
+      : "Five-Axis Kinematics Reference Workbench";
+  const activeManifestId = activeLab === "point"
+    ? spec?.experimentId ?? "loading"
+    : activeLab === "five-axis-f1"
+      ? "five-axis.f1-math-stage-manifest@1"
+      : "five-axis.f2-math-stage-manifest@1";
 
   const buildPointSpec = (): ExperimentSpec => {
     if (!spec) throw new Error("实验模板尚未加载。");
@@ -303,13 +314,13 @@ export function App() {
           <div className="brand-mark" aria-hidden="true">A</div>
           <div>
             <strong>AXIOM</strong>
-            <span>{activeLab === "point" ? "Experiment Workbench" : "Five-Axis Geometry Reference Workbench"}</span>
+            <span>{workbenchTitle}</span>
           </div>
         </div>
         <div className="topbar-context">
           <span className={`connection-dot ${visibleError ? "offline" : ""}`} />
           <span className="context-label">{visibleError ? "需要检查" : "本地 API 可用"}</span>
-          <code>{activeLab === "point" ? spec?.experimentId ?? "loading" : "five-axis.f1-math-stage-manifest@1"}</code>
+          <code>{activeManifestId}</code>
         </div>
         <div className="topbar-actions">
           {activeLab === "point" ? (
@@ -344,12 +355,15 @@ export function App() {
         <button className={`lab ${activeLab === "point" ? "active" : ""}`} type="button" onClick={() => setActiveLab("point")}>
           <span>01</span>Point Lab
         </button>
-        <button className={`lab ${activeLab === "five-axis" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis")}>
+        <button className={`lab ${activeLab === "five-axis-f1" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f1")}>
           <span>02</span>Five-Axis<small>F1</small>
+        </button>
+        <button className={`lab ${activeLab === "five-axis-f2" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f2")}>
+          <span>03</span>Five-Axis<small>F2</small>
         </button>
         {futureLabs.map((lab, index) => (
           <button className="lab" type="button" disabled key={lab} title="领域包尚未接入">
-            <span>0{index + 3}</span>{lab}<small>planned</small>
+            <span>0{index + 4}</span>{lab}<small>planned</small>
           </button>
         ))}
       </div>
@@ -537,10 +551,10 @@ export function App() {
             </section>
           </aside>
         </main>
+      ) : activeLab === "five-axis-f1" ? (
+        <F1Workbench catalog={catalog} />
       ) : (
-        <>
-          <F1Workbench catalog={catalog} />
-        </>
+        <F2Workbench catalog={catalog} />
       )}
 
       {activeLab === "point" && (

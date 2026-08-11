@@ -2,6 +2,30 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.6.0 - 2026-08-12
+
+### 新增
+
+- 增加 Five-Axis Math F2 运动学参考栈：版本化 `MachineProfile`、通用运动链、双转台 AC / 摆头转台 BC / 双摆头 CB 三类闭式 IK，以及固定搜索策略的一般数值 IK。
+- 增加 M2→M3 连续提升、分支图、wrap、结点事件、局部幂基轴段、归一化轴限位裕量、奇异性下界和 FK 回放证书。
+- 增加显式 `Q_free` 配置空间碰撞模型、机床自身/环境碰撞对、连续区间聚合证明和内部碰撞反例见证。
+- 将 `five-axis.domain-pack@3` 接入公共 `RunSpec → RunBundle` 路径，发布 `KinematicallyFeasible` 与 `ConfigurationCollisionFree` 标准 Claim，并提供 manifest、场景目录和示例 envelope API。
+- 增加四个确定性工程参考场景和 `fixtures/five_axis_f2`：三类 canonical 拓扑的安全连续提升，以及端点安全但 \(\sigma=0.5\) 内部碰撞的反例。
+- 增加独立的 Five-Axis F2 Kinematics Reference Workbench，展示连续五轴坐标、分支/wrap、`Q_free` 证书、区间碰撞见证、内容身份和 sealed M3 输出。
+
+### 契约变化
+
+- F2 runtime 在发布正向 Claim 前重算 M2/M3/MachineProfile 内容身份、冻结方法与策略、FK 回放、节点连续、整段限位、奇异性和碰撞覆盖，不信任 Artifact 内嵌证书的自报结论。
+- `five-axis.axis-limit-margin.min@1` 使用逐轴行程归一化后的无量纲最小裕量，禁止把毫米和弧度直接聚合。
+- 配置碰撞正向 Claim 必须来自完整 path 查询和 `Certified` 区间覆盖；单点查询、端点采样、F1 任务几何碰撞或 partial coverage 都不能替代。
+- 网页把 Core 的执行/Case 状态与 F2 标准 Claim 分开显示；碰撞反例可得到 `caseOutcome=Passed`，同时保持 `ConfigurationCollisionFree=Refuted`。
+
+### 当前边界
+
+- F2 连续正向闭包首版只覆盖 canonical Profile 下的直线位置、常量刀轴和固定解析分支/wrap；一般数值 IK 最高为 `Validated`，超出可证明子集时返回 `Unsupported` / `Inconclusive`。
+- F2 尚不包含 M4 时间参数化、M5 控制周期采样/重建、厂商 Solver/SUT Adapter、控制器、驱动器或真实设备观测。
+- F2 的数学 Claim 不构成 `DeviceSafe`、`ProcessSafe` 或上机许可；R2 仍需完成 Math F3/F4 才能通过整体阶段门。
+
 ## 0.5.0 - 2026-08-11
 
 ### 新增

@@ -5,12 +5,12 @@ import json
 import math
 import platform
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Literal, cast
 
 import numpy as np
 
 from .f2_kinematics import forward_kinematics, normalize_numeric_identity
-from .f3_models import M4ContinuousTrajectory, ToleranceBinding
+from .f3_models import M4ContinuousTrajectory, NumericTolerance, ToleranceBinding
 from .f3_sampling import (
     M5DiscreteCommand,
     M5IntervalRecord,
@@ -29,6 +29,19 @@ _EPSILON = 1e-12
 _SUCCESS_WORK_UNITS_BASE = 5
 _REFERENCE_ADAPTER_ID = "five-axis.f4.reference-adapter"
 _SUT_ADAPTER_ID = "five-axis.f4.sut-adapter"
+
+_CrossValidationStatus = Literal["Supported", "Refuted", "Inconclusive"]
+_JointVector = tuple[float, float, float, float, float]
+_CertificateCoefficients = tuple[
+    _JointVector,
+    _JointVector,
+    _JointVector,
+    _JointVector,
+    _JointVector,
+    _JointVector,
+    _JointVector,
+    _JointVector,
+]
 
 REFERENCE_ADAPTER_DESCRIPTOR = AdapterDescriptor(
     adapterId=_REFERENCE_ADAPTER_ID,
@@ -56,22 +69,22 @@ FROZEN_CROSS_VALIDATION_TOLERANCES = (
     ToleranceBinding(
         toleranceId="f4.adapter.position-gap",
         target="position",
-        tolerance={"absolute": 1e-12, "unit": "axis-unit"},
+        tolerance=NumericTolerance(absolute=1e-12, unit="axis-unit"),
     ),
     ToleranceBinding(
         toleranceId="f4.adapter.velocity-gap",
         target="velocity",
-        tolerance={"absolute": 1e-12, "unit": "axis-unit/s"},
+        tolerance=NumericTolerance(absolute=1e-12, unit="axis-unit/s"),
     ),
     ToleranceBinding(
         toleranceId="f4.adapter.acceleration-gap",
         target="acceleration",
-        tolerance={"absolute": 1e-12, "unit": "axis-unit/s^2"},
+        tolerance=NumericTolerance(absolute=1e-12, unit="axis-unit/s^2"),
     ),
     ToleranceBinding(
         toleranceId="f4.adapter.jerk-gap",
         target="jerk",
-        tolerance={"absolute": 1e-12, "unit": "axis-unit/s^3"},
+        tolerance=NumericTolerance(absolute=1e-12, unit="axis-unit/s^3"),
     ),
 )
 
@@ -188,7 +201,11 @@ def build_adapter_invocation(
     invocation_id: str | None = None,
 ) -> AdapterInvocation:
     descriptor = _resolve_descriptor(adapter)
-    resolved_policy = policy if isinstance(policy, ReconstructionPolicy) else ReconstructionPolicy(policyId=policy)
+    resolved_policy = (
+        policy
+        if isinstance(policy, ReconstructionPolicy)
+        else ReconstructionPolicy.model_validate({"policyId": policy})
+    )
     source_m4_id = _m4_identity(m4)
     return AdapterInvocation(
         invocationId=invocation_id or f"{descriptor.adapter_id}.{source_m4_id}.invoke",
@@ -333,6 +350,7 @@ def cross_validate_discrete_commands(
         return _cross_validation_result(reference, sut, tolerances=tolerances, status="Inconclusive")
     reference_verification = verify_interval_reconstruction(reference)
     sut_verification = verify_interval_reconstruction(sut)
+    status: _CrossValidationStatus
     if reference_verification.status == "Refuted" or sut_verification.status == "Refuted":
         status = "Refuted"
     elif reference_verification.status != "Supported" or sut_verification.status != "Supported":
@@ -370,7 +388,7 @@ def _cross_validation_result(
     sut: M5DiscreteCommand,
     *,
     tolerances: tuple[ToleranceBinding, ...],
-    status: str,
+    status: _CrossValidationStatus,
 ) -> CrossValidationResult:
     return CrossValidationResult(
         referenceContentHash=reference.content_id,
@@ -434,12 +452,12 @@ def _build_sut_command(invocation: AdapterInvocation, m4: M4ContinuousTrajectory
                 qjerk=state["qjerk"],
                 taskPose=state["task_pose"],
                 provenance=(
-                    {
-                        "sourceStage": "M4",
-                        "sourceId": source_m4_id,
-                        "sourceContentId": source_m4_content_id,
-                        "method": "sut-evaluate-continuous-state",
-                    },
+                    M5ProvenanceRef(
+                        sourceStage="M4",
+                        sourceId=source_m4_id,
+                        sourceContentId=source_m4_content_id,
+                        method="sut-evaluate-continuous-state",
+                    ),
                 ),
             )
         )
@@ -475,7 +493,7 @@ def _build_sut_command(invocation: AdapterInvocation, m4: M4ContinuousTrajectory
         else remainder,
         terminal_sample_included=True,
         final_hold=invocation.final_hold,
-        reconstruction_policy=ReconstructionPolicy(policyId=POLYNOMIAL_POLICY_ID),
+        reconstruction_policy=ReconstructionPolicy.model_validate({"policyId": POLYNOMIAL_POLICY_ID}),
         limits=M5KinematicLimits.model_validate(_limits_from_profile(m4)),
         samples=tuple(samples),
         intervals=tuple(intervals),
@@ -504,13 +522,13 @@ def _commands_are_shape_compatible(reference: M5DiscreteCommand, sut: M5Discrete
         return False
     if not math.isclose(reference.sample_period, sut.sample_period, rel_tol=0.0, abs_tol=_EPSILON):
         return False
-    for left, right in zip(reference.samples, sut.samples, strict=True):
-        if not math.isclose(left.t, right.t, rel_tol=0.0, abs_tol=_EPSILON):
+    for reference_sample, sut_sample in zip(reference.samples, sut.samples, strict=True):
+        if not math.isclose(reference_sample.t, sut_sample.t, rel_tol=0.0, abs_tol=_EPSILON):
             return False
-    for left, right in zip(reference.intervals, sut.intervals, strict=True):
-        if not math.isclose(left.t_start, right.t_start, rel_tol=0.0, abs_tol=_EPSILON):
+    for reference_interval, sut_interval in zip(reference.intervals, sut.intervals, strict=True):
+        if not math.isclose(reference_interval.t_start, sut_interval.t_start, rel_tol=0.0, abs_tol=_EPSILON):
             return False
-        if not math.isclose(left.t_end, right.t_end, rel_tol=0.0, abs_tol=_EPSILON):
+        if not math.isclose(reference_interval.t_end, sut_interval.t_end, rel_tol=0.0, abs_tol=_EPSILON):
             return False
     return True
 
@@ -524,15 +542,15 @@ def _max_state_gaps(reference: M5DiscreteCommand, sut: M5DiscreteCommand) -> tup
     velocity_gap = 0.0
     acceleration_gap = 0.0
     jerk_gap = 0.0
-    for left, right in zip(reference.samples, sut.samples, strict=True):
-        position_gap = max(position_gap, _vector_gap(left.q, right.q))
-        velocity_gap = max(velocity_gap, _vector_gap(left.qdot, right.qdot))
-        acceleration_gap = max(acceleration_gap, _vector_gap(left.qddot, right.qddot))
-        jerk_gap = max(jerk_gap, _vector_gap(left.qjerk, right.qjerk))
-    for left, right in zip(reference.intervals, sut.intervals, strict=True):
+    for reference_sample, sut_sample in zip(reference.samples, sut.samples, strict=True):
+        position_gap = max(position_gap, _vector_gap(reference_sample.q, sut_sample.q))
+        velocity_gap = max(velocity_gap, _vector_gap(reference_sample.qdot, sut_sample.qdot))
+        acceleration_gap = max(acceleration_gap, _vector_gap(reference_sample.qddot, sut_sample.qddot))
+        jerk_gap = max(jerk_gap, _vector_gap(reference_sample.qjerk, sut_sample.qjerk))
+    for reference_interval, sut_interval in zip(reference.intervals, sut.intervals, strict=True):
         for u in (0.25, 0.5, 0.75):
-            left_state = _evaluate_interval_state(reference, left, u)
-            right_state = _evaluate_interval_state(sut, right, u)
+            left_state = _evaluate_interval_state(reference, reference_interval, u)
+            right_state = _evaluate_interval_state(sut, sut_interval, u)
             position_gap = max(position_gap, _vector_gap(left_state["q"], right_state["q"]))
             velocity_gap = max(velocity_gap, _vector_gap(left_state["qdot"], right_state["qdot"]))
             acceleration_gap = max(acceleration_gap, _vector_gap(left_state["qddot"], right_state["qddot"]))
@@ -573,7 +591,7 @@ def _joint_value_mapping(m4: M4ContinuousTrajectory, q: tuple[float, float, floa
 
 def _evaluate_public_m4_state(m4: M4ContinuousTrajectory, t: float) -> dict[str, Any]:
     state = evaluate_continuous_state(m4, t)
-    q = tuple(float(value) for value in state.joint_position)
+    q = cast(_JointVector, tuple(float(value) for value in state.joint_position))
     pose = forward_kinematics(m4.source_axis_path.machine_profile, _joint_value_mapping(m4, q))
     return {
         "sigma": float(state.sigma),
@@ -627,7 +645,11 @@ def _boundary_matrix(dt: float) -> np.ndarray:
     )
 
 
-def _solve_septic_coefficients(start_state: dict[str, Any], end_state: dict[str, Any], dt: float) -> tuple[tuple[float, ...], ...]:
+def _solve_septic_coefficients(
+    start_state: dict[str, Any],
+    end_state: dict[str, Any],
+    dt: float,
+) -> _CertificateCoefficients:
     system = _boundary_matrix(dt)
     solved: list[tuple[float, ...]] = []
     for axis in range(5):
@@ -645,7 +667,8 @@ def _solve_septic_coefficients(start_state: dict[str, Any], end_state: dict[str,
             dtype=np.float64,
         )
         solved.append(tuple(float(value) for value in np.linalg.solve(system, rhs)))
-    return tuple(tuple(axis_coefficients[power] for axis_coefficients in solved) for power in range(8))
+    rows = tuple(tuple(axis_coefficients[power] for axis_coefficients in solved) for power in range(8))
+    return cast(_CertificateCoefficients, rows)
 
 
 def _evaluate_interval_state(artifact: M5DiscreteCommand, interval: M5IntervalRecord, u: float) -> dict[str, tuple[float, ...]]:

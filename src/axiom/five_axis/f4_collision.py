@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
 from .f2_collision import (
     ConfigurationCollisionModel,
@@ -28,9 +29,8 @@ def _normalized_coefficients(
 def _interval_result(
     evaluation: PolynomialCollisionIntervalEvaluation,
 ) -> M5CollisionIntervalResult:
-    status = evaluation.status
-    if status == "not-applicable":
-        status = "unsupported"
+    status: Literal["safe", "collision", "unsupported", "unresolved"]
+    status = "unsupported" if evaluation.status == "not-applicable" else evaluation.status
     witnesses = tuple(
         pair.witness_parameter
         for pair in evaluation.pair_results
@@ -87,6 +87,8 @@ def verify_m5_configuration_collision(
             )
             interval_results.append(_interval_result(evaluation))
     statuses = {item.status for item in interval_results}
+    status: Literal["safe", "collision", "unsupported", "unresolved"]
+    evidence_level: Literal["Certified", "Validated", "Observed"]
     if "collision" in statuses:
         status = "collision"
         evidence_level = "Observed"

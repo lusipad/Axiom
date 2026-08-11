@@ -20,6 +20,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0008](ADR-0008-领域包多Artifact声明与单主Artifact运行.md) | 同一 DomainPack 可声明多个有类型 Artifact，但一次 Run 保持单一主 Artifact | Accepted |
 | [ADR-0009](ADR-0009-F1规范化前端与连续证据边界.md) | F1 采用严格 CL 子集、连续区间证据和分层碰撞能力边界 | Accepted |
 | [ADR-0010](ADR-0010-F2参考机床与运动学证据边界.md) | F2 冻结三类参考机床、通用运动链、集合值 IK 与运动学证据边界 | Accepted |
+| [ADR-0011](ADR-0011-F3时间参数化与区间重建证据边界.md) | F3 冻结二阶/Jerk 时间参数化子集、重建能力矩阵与区间证据边界 | Accepted |
 
 ## 生命周期规则
 

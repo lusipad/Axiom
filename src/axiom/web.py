@@ -15,14 +15,19 @@ from .five_axis import (
     F1MathStageManifest,
     F2ExamplePayload,
     F2MathStageManifest,
+    F3ExamplePayload,
+    F3MathStageManifest,
     MathStageManifest,
     build_f1_manifest,
     build_f2_manifest,
+    build_f3_manifest,
     f0_example_run_spec,
     f1_example_payload,
     f2_example_payload,
+    f3_example_payload,
     list_f1_scenarios,
     list_f2_scenarios,
+    list_f3_scenarios,
     load_f0_manifest,
 )
 from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
@@ -159,6 +164,39 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     def five_axis_f2_example(scenarioId: str = "canonical-table-table") -> dict[str, Any]:
         try:
             return f2_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/five-axis/f3/manifest",
+        response_model=F3MathStageManifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def five_axis_f3_manifest(
+        scenarioId: str = "canonical-table-table-jerk",
+    ) -> F3MathStageManifest:
+        try:
+            return build_f3_manifest(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/five-axis/f3/scenarios")
+    def five_axis_f3_scenarios() -> Any:
+        return [scenario.to_dict() for scenario in list_f3_scenarios()]
+
+    @app.get(
+        "/api/v1/examples/five-axis-f3",
+        response_model=F3ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def five_axis_f3_example(
+        scenarioId: str = "canonical-table-table-jerk",
+    ) -> dict[str, Any]:
+        try:
+            return f3_example_payload(scenarioId)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

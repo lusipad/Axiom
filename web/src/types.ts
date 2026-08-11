@@ -93,6 +93,7 @@ export interface MetricResult {
   reasonCode?: string;
   requires?: string[];
   evidence?: EvidenceDescriptor;
+  details?: Record<string, unknown>;
 }
 
 export interface Claim {

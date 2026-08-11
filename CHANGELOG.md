@@ -2,6 +2,31 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.7.0 - 2026-08-12
+
+### 新增
+
+- 增加 Five-Axis Math F3 时间与离散参考栈：独立 `MotionConstraintProfile`、M4 连续时间轨迹、M5 采样轨迹/离散命令，以及内容身份和 provenance 绑定。
+- 增加线性固定路径、零边界状态下的解析二阶三角/梯形时间律；只有该闭合子集标记为 `ProvenOptimal`。
+- 增加七次停到停 smoothstep Jerk 可行时间律、逐轴 V/A/J 约束重放和向外舍入的保守界；最优性保持 `FeasibleOnly`。
+- 增加结点停启与 dwell 语义、固定周期与 remainder/终点/final-hold 契约，以及 `reference-m4`、多项式、FOH、ZOH 四种版本化重建策略。
+- 增加覆盖三类 canonical 五轴拓扑、二阶最优、dwell/mandatory-stop、移动 ZOH 不支持和多项式区间内部违反的确定性 F3 场景与 fixture。
+- 将 `five-axis.domain-pack@4` 接入公共 `RunSpec → RunBundle` 路径，只发布 `ContinuouslyFeasible` 与 `IntervalCertified` 两项标准 Claim，并提供 manifest、场景目录和示例 envelope API。
+- 增加 Five-Axis F3 Time & Sampling Lab，展示 σ(t)、逐轴 V/A/J、结点时间线、固定周期样本、重建策略、分量化误差账本、Claim 与 sealed M4/M5 身份。
+
+### 契约变化
+
+- F3 runtime 在发布正向 Claim 前重算 M3/Profile 内容身份、时间律、边界状态、逐轴连续极值、结点契约、采样计划和重建能力，不信任 Artifact 内嵌证书的自报结论。
+- M5 明确区分对 M4 的 `SampledTrajectory` 与具有保持语义的 `DiscreteCommand`；所有区间按 `[t_k,t_{k+1})` 解释，终点之后是否保持由 `finalHold` 单独声明。
+- FOH/ZOH 不继承完整高阶连续证书；移动 ZOH 和未闭合高阶导数的 FOH 返回结构化 `Unsupported`，不会制造 `IntervalCertified` 正向 Claim。
+- 误差账本按 quantity/unit/source/bound/method 分项记录，位置、姿态、时间与浮点误差不再合并为无量纲依据的单一总误差。
+
+### 当前边界
+
+- F3 的二阶 `ProvenOptimal` 仅适用于冻结的线性 stop-to-stop 子集；Jerk 路径只证明可行，不宣称一般三阶固定路径全局最优。
+- F3 不生成 `ModelCollisionFree`、`DeviceSafe`、`ProcessSafe` 或控制器兼容声明；网页永久显示 `MATH ONLY / NOT DEVICE SAFE`。
+- R2 仍需 Math F4 的 Reference Solver/SUT Adapter、独立集成验收和完整 Claim gate；设备、学习与参数闭环属于后续 R3–R7。
+
 ## 0.6.0 - 2026-08-12
 
 ### 新增

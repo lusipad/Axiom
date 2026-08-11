@@ -2,7 +2,7 @@
 
 > 文档类型：领域包规范  
 > 领域包：`FiveAxisTrajectoryPack`  
-> 状态：Draft v0.6 / F2 已实现
+> 状态：Draft v0.7 / F3 已实现
 > 依赖：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)  
 > 上位路线：[Axiom 项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 相邻领域包：[有序离散点领域包规范](有序离散点领域包规范.md)
@@ -891,6 +891,10 @@ v0.6 的 F2 实现以 `five-axis.domain-pack@3` 接入既有领域中立运行�
 
 完成二阶 TOPP、Jerk 可行规划、结点事件处理、连续约束验证、固定周期采样、标准命令重建和类型化数值误差账本。
 
+v0.7 的 F3 实现以 `five-axis.domain-pack@4` 接入既有领域中立运行时。动态约束不写回已发布的 `MachineProfile`，而由 `five-axis.motion-constraint-profile@1` 绑定 M3 内容身份、逐轴 V/A/J 上限、零边界状态和结点/dwell 语义。首个二阶 `ProvenOptimal` 子集限定为全局线性 (q(\sigma))、零端点速度/加速度、无移动中间结点的 stop-to-stop block，采用可独立重放的解析三角/梯形时间律；Jerk 子集采用七次 smoothstep、保守导数常数与向外舍入，只标记 `FeasibleOnly`。
+
+M5 将 `SampledTrajectory` 与 `DiscreteCommand` 分开，固定周期、非整周期 remainder、终点样本、`[t_k,t_{k+1})` 和 final-hold 均进入机器契约。`reference-m4` 只有在 M4 内容身份、连续证书与样本重放全部复核后才能继承正向区间结论；多项式策略冻结系数并检查区间内部解析极值与保守界；移动 FOH/ZOH 不生成完整高阶正向证书。内建七个场景覆盖三类 canonical 拓扑、二阶最优、dwell/mandatory-stop、移动 ZOH `Unsupported` 与采样端点不可见的多项式内部超限 `Refuted`。F3 只发布 `ContinuouslyFeasible` 和 `IntervalCertified`，不生成 `ModelCollisionFree`、`DeviceSafe` 或 `ProcessSafe`。
+
 ### Math F4：参考系统验收
 
 成熟模块必须满足：
@@ -983,6 +987,16 @@ Math F2 按 [ADR-0010](架构决策记录/ADR-0010-F2参考机床与运动学证
 - 解析 IK 必须枚举姿态分支和限位内全部周期 wrap，并用同一通用 FK 回代；一般 Profile 使用固定 seed、残差尺度、边界、终止条件、去重和 tie-break 的 `scipy.optimize.least_squares` 路径，未找到解不得解释为严格无解；
 - `KinematicallyFeasible` 需要整条路径的连续提升、分支/限位/正则性和回代证据。`ConfigurationCollisionFree` 另需覆盖完整区间的 `Q_free` 证书；任一单姿态、有限无界采样、F1 任务碰撞或 UI 可视化均不能替代这些 Claim；
 - 一般数值 IK 候选首版最高为 `Validated`。只有解析恒等或可独立复核的保守区间方法才能产生 `Exact` / `Certified` 证据；任何 F2 结果仍不构成设备安全或执行许可。
+
+### 18.3 Math F3 已冻结实现选择
+
+Math F3 按 [ADR-0011](架构决策记录/ADR-0011-F3时间参数化与区间重建证据边界.md) 冻结以下选择：
+
+- `MotionConstraintProfile` 与 M3 的 `MachineProfile` 内容身份绑定，逐轴动态单位沿用 `mm` / `rad` 并显式派生每秒阶次；缺失 Jerk 上限时只进入二阶子集，不能伪造 Jerk 约束。
+- 二阶解析时间律只对线性 stop-to-stop block 发布 `ProvenOptimal`；七次 smoothstep 以 (35/16)、(26.25)、(210) 和 `nextafter` 保守界构造 Jerk 可行证书，固定为 `FeasibleOnly`。
+- `mandatory-stop`、dwell、分支/wrap/奇异边界必须停启；dwell 期间 (\sigma) 保持不变。`collision-violation` 直接反驳连续可行性，不能靠延长时间消除。
+- `reference-m4` 重建重新调用独立 M4 verifier，不用区间 Hermite 多项式替代权威源轨迹；多项式策略分别报告解析见证和保守证书界，Refuted 优先级高于 Unsupported。
+- F3 网页与 API 始终分开展示 Core 运行状态、M4/M5 Claim 和设备安全边界，并永久标注 `MATH ONLY / NOT DEVICE SAFE`。
 
 ---
 

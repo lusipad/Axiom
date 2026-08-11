@@ -111,6 +111,26 @@ jobs:
             http://127.0.0.1:8765/api/v1/runs/evaluate \
             > release-smoke/f2-run-bundle.json
           release-smoke/bin/python -c "import json; bundle=json.load(open('release-smoke/f2-run-bundle.json')); claims={claim['claimDefinitionId']: claim['status'] for claim in bundle['claims']}; assert bundle['run']['executionStatus'] == 'Succeeded'; assert bundle['run']['caseOutcome'] == 'Passed'; assert bundle['report']['caseOutcome'] == 'Passed'; assert claims['five-axis.kinematically-feasible-claim@1'] == 'Supported'; assert claims['five-axis.configuration-collision-free-claim@1'] == 'Refuted'; assert bundle['bundleHash']"
+          curl --fail --silent \
+            'http://127.0.0.1:8765/api/v1/examples/five-axis-f3?scenarioId=canonical-table-table-jerk' \
+            > release-smoke/f3-example.json
+          release-smoke/bin/python -c "import json; payload=json.load(open('release-smoke/f3-example.json')); json.dump(payload['runSpec'], open('release-smoke/f3-run-spec.json', 'w'))"
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data-binary @release-smoke/f3-run-spec.json \
+            http://127.0.0.1:8765/api/v1/runs/evaluate \
+            > release-smoke/f3-run-bundle.json
+          release-smoke/bin/python -c "import json; bundle=json.load(open('release-smoke/f3-run-bundle.json')); claims={claim['claimDefinitionId']: claim['status'] for claim in bundle['claims']}; assert bundle['run']['executionStatus'] == 'Succeeded'; assert bundle['run']['caseOutcome'] == 'Passed'; assert claims['five-axis.continuously-feasible-claim@1'] == 'Supported'; assert claims['five-axis.interval-certified-claim@1'] == 'Supported'; assert not {'five-axis.model-collision-free-claim@1', 'five-axis.device-safe-claim@1', 'five-axis.process-safe-claim@1'} & claims.keys(); assert bundle['bundleHash']"
+          curl --fail --silent \
+            'http://127.0.0.1:8765/api/v1/examples/five-axis-f3?scenarioId=second-order-proven-optimal' \
+            > release-smoke/f3-discrete-example.json
+          release-smoke/bin/python -c "import json; payload=json.load(open('release-smoke/f3-discrete-example.json')); descriptor=next(item for item in payload['manifest']['artifactDescriptors'] if item['stage'] == 'M5'); assert 'sampledTrajectory' not in payload['artifacts']; assert payload['artifacts']['discreteCommand']['artifactType'] == 'five-axis.m5-discrete-command'; assert descriptor == {'stage': 'M5', 'artifactType': 'five-axis.m5-discrete-command', 'schemaId': 'five-axis.m5-discrete-command@1'}; json.dump(payload['runSpec'], open('release-smoke/f3-discrete-run-spec.json', 'w'))"
+          curl --fail --silent \
+            --header 'Content-Type: application/json' \
+            --data-binary @release-smoke/f3-discrete-run-spec.json \
+            http://127.0.0.1:8765/api/v1/runs/evaluate \
+            > release-smoke/f3-discrete-run-bundle.json
+          release-smoke/bin/python -c "import json; bundle=json.load(open('release-smoke/f3-discrete-run-bundle.json')); claims={claim['claimDefinitionId']: claim['status'] for claim in bundle['claims']}; assert bundle['run']['executionStatus'] == 'Succeeded'; assert bundle['run']['caseOutcome'] == 'Unsupported'; assert bundle['report']['caseOutcome'] == 'Unsupported'; assert claims['five-axis.continuously-feasible-claim@1'] == 'Supported'; assert claims['five-axis.interval-certified-claim@1'] == 'Inconclusive'; assert not {'five-axis.model-collision-free-claim@1', 'five-axis.device-safe-claim@1', 'five-axis.process-safe-claim@1'} & claims.keys(); assert bundle['bundleHash']"
 
       - name: Publish GitHub Release
         env:

@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "stage": "F3",
+  "programFile": "programs/continuous-five-axis-line.cl",
+  "sourceSyntaxId": "axiom-cl-subset@1",
+  "cases": [
+    {
+      "id": "canonical-head-head-jerk",
+      "machineProfileId": "five-axis.machine-profile.canonical-head-head-cb@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.canonical-head-head-jerk@1",
+      "expectedAxisPathContentId": "c917865c87788cfe71110621f06016519c6f3c026ff397b967ad39714b3a024c",
+      "expectedMotionConstraintProfileContentId": "a48e179661a293ad23c788da753c80ac9c686d214cf3a2fc1a2113699be2ea93",
+      "expectedContinuousTrajectoryContentId": "3928d8a839e3cade870b59c91ced4c20fcfb773fccce0be1a835f0374ddffbc8",
+      "expectedM5ArtifactType": "five-axis.m5-sampled-trajectory",
+      "expectedM5ContentId": "83e9e5289a094e66742c90ab921d57ca53fad7fafb2d2a99c4d90322eb94a8a0",
+      "expectedTimingMode": "smoothstep7-feasible",
+      "expectedOptimality": "FeasibleOnly",
+      "expectedDurationSeconds": 0.7047298732064895,
+      "reconstructionPolicyId": "five-axis.reconstruction.reference-m4@1",
+      "expectedIntervalVerificationStatus": "Supported",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "canonical-head-table-jerk",
+      "machineProfileId": "five-axis.machine-profile.canonical-head-table-workpiece-c-tool-b@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.canonical-head-table-jerk@1",
+      "expectedAxisPathContentId": "e9a0ae058802ee80076ca398dfce30a115ec0545abe2b95c38ed35e05799f3d5",
+      "expectedMotionConstraintProfileContentId": "e9c37e0c62391adb217988ba2e9f165ee22b394ce48c4802b3ab705aaf43c0b7",
+      "expectedContinuousTrajectoryContentId": "2548ea966139eb10a75a0bbacef3fd089f04508291723ba969dd74b11a475017",
+      "expectedM5ArtifactType": "five-axis.m5-sampled-trajectory",
+      "expectedM5ContentId": "b18fde48f1b4561e892f29b62b81a7fe605631be58b4694f4997d9dead07976a",
+      "expectedTimingMode": "smoothstep7-feasible",
+      "expectedOptimality": "FeasibleOnly",
+      "expectedDurationSeconds": 0.6790019360840179,
+      "reconstructionPolicyId": "five-axis.reconstruction.reference-m4@1",
+      "expectedIntervalVerificationStatus": "Supported",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "canonical-table-table-jerk",
+      "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.canonical-table-table-jerk@1",
+      "expectedAxisPathContentId": "f5a581afcdb215733d3ff072b03eb8bcb32119318fd52d6bf460b08b4d78775d",
+      "expectedMotionConstraintProfileContentId": "19da7866bd1bc8b4f9064878657f85ba59164513f111cb335bcb00ec3c87ba55",
+      "expectedContinuousTrajectoryContentId": "c7a2fb84057c918e0171d7c6ec3463ce366bcb50ff899752d348cbe5438dc2c0",
+      "expectedM5ArtifactType": "five-axis.m5-sampled-trajectory",
+      "expectedM5ContentId": "ef758b6f98e9f31f2099dc89921f1a7e8955a08dfa84f0c59fae82b2ce4331ac",
+      "expectedTimingMode": "smoothstep7-feasible",
+      "expectedOptimality": "FeasibleOnly",
+      "expectedDurationSeconds": 0.6732219697124449,
+      "reconstructionPolicyId": "five-axis.reconstruction.reference-m4@1",
+      "expectedIntervalVerificationStatus": "Supported",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "dwell-mandatory-stop",
+      "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.dwell-mandatory-stop@1",
+      "expectedAxisPathContentId": "f329e2560e043ff8e119aedd8e68e4b7260a2bd6f2f0fd5a95a01c86e57eb589",
+      "expectedMotionConstraintProfileContentId": "19be071540cc7cddc7bea1a8bd99108713cb1ba4749f12803a7c5a41937b230a",
+      "expectedContinuousTrajectoryContentId": "4a2b182f6a5a89861744dd87bdf253b718ffcfc8bb842613d758d84fd06b18c0",
+      "expectedM5ArtifactType": "five-axis.m5-sampled-trajectory",
+      "expectedM5ContentId": "c0c08e271294e4a2dc40f9d6d6b0f53a6d4e99313ce591617b57e35b237af303",
+      "expectedTimingMode": "smoothstep7-feasible",
+      "expectedOptimality": "FeasibleOnly",
+      "expectedDurationSeconds": 1.4686732629296384,
+      "reconstructionPolicyId": "five-axis.reconstruction.reference-m4@1",
+      "expectedIntervalVerificationStatus": "Supported",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "polynomial-interior-violation",
+      "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.polynomial-interior-violation@1",
+      "expectedAxisPathContentId": "f5a581afcdb215733d3ff072b03eb8bcb32119318fd52d6bf460b08b4d78775d",
+      "expectedMotionConstraintProfileContentId": "39d584d0fd36731d385b9eab07c9a28f32195b28170785663c1f13f82d8e3c61",
+      "expectedContinuousTrajectoryContentId": "77e2f822c0e7f9617c0185b2411a756a8b3102416434997b04b15b6d84c98faf",
+      "expectedM5ArtifactType": "five-axis.m5-sampled-trajectory",
+      "expectedM5ContentId": "a2d27b8938cfaec6abc2b7f6446d0fab94f916451cfb627fa028f58a637c21d0",
+      "expectedTimingMode": "smoothstep7-feasible",
+      "expectedOptimality": "FeasibleOnly",
+      "expectedDurationSeconds": 0.6732219697124449,
+      "reconstructionPolicyId": "five-axis.reconstruction.polynomial@1",
+      "expectedIntervalVerificationStatus": "Refuted",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Refuted",
+          "evidenceLevel": "Validated"
+        }
+      }
+    },
+    {
+      "id": "second-order-proven-optimal",
+      "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.second-order-proven-optimal@1",
+      "expectedAxisPathContentId": "f5a581afcdb215733d3ff072b03eb8bcb32119318fd52d6bf460b08b4d78775d",
+      "expectedMotionConstraintProfileContentId": "ae77369c5395b0cbc793ffffd0fdb0047fc0ce973fdaaee6e61cd21a2a5ca6d9",
+      "expectedContinuousTrajectoryContentId": "62ba0dd413c33e022736723de77e5399c7b1f3b03d3cd088e4808323e9594353",
+      "expectedM5ArtifactType": "five-axis.m5-discrete-command",
+      "expectedM5ContentId": "fac1cb0dbab3ea0aa08f4a321f2daac740b39a729784394926ffe1453ffc1927",
+      "expectedTimingMode": "second-order-optimal",
+      "expectedOptimality": "ProvenOptimal",
+      "expectedDurationSeconds": 0.1524711809891198,
+      "reconstructionPolicyId": "five-axis.reconstruction.foh@1",
+      "expectedIntervalVerificationStatus": "Unsupported",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Unsupported",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Inconclusive",
+          "evidenceLevel": null
+        }
+      }
+    },
+    {
+      "id": "zoh-moving-unsupported",
+      "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
+      "motionConstraintProfileId": "five-axis.motion-constraint-profile.zoh-moving-unsupported@1",
+      "expectedAxisPathContentId": "f5a581afcdb215733d3ff072b03eb8bcb32119318fd52d6bf460b08b4d78775d",
+      "expectedMotionConstraintProfileContentId": "54c45fc23645a25771934467486f0d78ae2e7d1df2045986242d08d99458f888",
+      "expectedContinuousTrajectoryContentId": "f0240b40c1588304c7a00315ea82745e83a218d9a59ca9558bb210391edd2bdd",
+      "expectedM5ArtifactType": "five-axis.m5-discrete-command",
+      "expectedM5ContentId": "f47a5ebcf4b83c636462dd52c34d44a98b75464e377c6aab7ed4dbd1810ae307",
+      "expectedTimingMode": "smoothstep7-feasible",
+      "expectedOptimality": "FeasibleOnly",
+      "expectedDurationSeconds": 0.6732219697124449,
+      "reconstructionPolicyId": "five-axis.reconstruction.zoh@1",
+      "expectedIntervalVerificationStatus": "Unsupported",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Unsupported",
+      "expectedClaims": {
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Inconclusive",
+          "evidenceLevel": null
+        }
+      }
+    }
+  ],
+  "environmentBoundIdentities": [
+    {
+      "numericEnvironment": {
+        "python": "3.14.3",
+        "numpy": "2.4.3",
+        "scipy": "1.18.0",
+        "pydantic": "2.12.5"
+      },
+      "bundleHashes": {
+        "canonical-head-head-jerk": "ceeeb94d8f0f08ae7ded9684535f287d152ed6ac4c4d9628c978331f6914508e",
+        "canonical-head-table-jerk": "1458c58774ad3fa6df75c3ead0fbceed316d13ad3ff33461551bad9cee1a1d8f",
+        "canonical-table-table-jerk": "305ba95e67b7714addd59f383c54ca2ea1336ecea404ec29fb479d58968bdd2c",
+        "dwell-mandatory-stop": "580ebb2fe688a75a1ac60e053771f8ff3a8aa7939544f82883c48f892ba6f6d1",
+        "polynomial-interior-violation": "4ae6d2862acf02d69cef3ef4dc5e5396da03fe55b1352231891a013a96652d32",
+        "second-order-proven-optimal": "42815d3ae48f8275c2aaff442d61c61cc315ba7cfc9471d2077aeaaac9dcc118",
+        "zoh-moving-unsupported": "545cd125d413e723d17a4b13df3819d0c54399306e153b115b28a3a057308b70"
+      }
+    }
+  ]
+}

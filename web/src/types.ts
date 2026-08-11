@@ -21,13 +21,23 @@ export interface SubjectDefinition {
   parameterSchemaId: string;
 }
 
+export interface CatalogDomainPack {
+  domainPackId: string;
+  comparisonPolicyIds: string[];
+  runnerIds: string[];
+  runtimeBound: boolean;
+}
+
+export interface ArtifactAdapterDescriptor {
+  adapterId: string;
+  sourceArtifactType: string;
+  targetArtifactType: string;
+}
+
 export interface Catalog {
   subjects: SubjectDefinition[];
-  domainPacks: Array<{
-    domainPackId: string;
-    comparisonPolicyIds: string[];
-    runnerIds: string[];
-  }>;
+  domainPacks: CatalogDomainPack[];
+  artifactAdapters: ArtifactAdapterDescriptor[];
 }
 
 export interface MetricRequirement {
@@ -68,16 +78,21 @@ export interface ExperimentSpec {
   comparisonPolicyId?: string;
 }
 
+export interface EvidenceDescriptor {
+  level: string;
+  method: string;
+}
+
 export interface MetricResult {
   metricId: string;
+  metricDefinitionId?: string;
   status: string;
-  value?: number;
+  value?: unknown;
   unit?: string;
   thresholdPassed?: boolean;
-  evidence?: {
-    level: string;
-    method: string;
-  };
+  reasonCode?: string;
+  requires?: string[];
+  evidence?: EvidenceDescriptor;
 }
 
 export interface Claim {
@@ -85,32 +100,137 @@ export interface Claim {
   status: string;
   predicate: string;
   metricId?: string;
-  evidence?: {
-    level: string;
-    method: string;
-  };
+  evidence?: EvidenceDescriptor;
+}
+
+export interface DomainFailure {
+  code: string;
+  message: string;
+  path?: string;
+  severity?: string;
+}
+
+export interface CapabilityResolution {
+  capabilityId: string;
+  source: string;
+}
+
+export interface CoordinateSpec {
+  coordinateSystem: string;
+  axes: string[];
+  unit: string;
+  coordinateFrame: string;
+}
+
+export interface StageEnvelope {
+  envelopeId: string;
+  stage: string;
+  envelopeType: string;
+  schemaId: string;
+  contentId: string;
+  coordinateSpec?: CoordinateSpec | null;
+  capabilityIds: string[];
+}
+
+export interface MathStageManifest {
+  manifestId: string;
+  schemaVersion: number;
+  stage: string;
+  capabilityIds: string[];
+  fixtureContentIds: string[];
+  policyVersions: Record<string, string>;
+  numericEnvironment: Record<string, string>;
+  expectedStatus: string;
+  expectedClaim: Record<string, unknown> | null;
+  tolerances: Array<{
+    metricId: string;
+    unit: string;
+    value: number;
+  }>;
+  envelopes: StageEnvelope[];
+}
+
+export interface FiveAxisSample {
+  sampleIndex: number;
+  position: number[];
+}
+
+export interface FiveAxisPathProgress {
+  progressKind: string;
+  unit: string;
+  values: number[];
+}
+
+export interface FiveAxisNodeEvent {
+  nodeIndex: number;
+  eventType: string;
+  regularityClass: string;
+  progressValue: number;
+}
+
+export interface FiveAxisRegularity {
+  continuityClass: string;
+  nodeEvents: FiveAxisNodeEvent[];
+}
+
+export interface FiveAxisSampledCartesianView {
+  artifactType: "five-axis.sampled-cartesian-position-view";
+  schemaVersion: number;
+  derivedViewKind: string;
+  sourceArtifactType: string;
+  sourceCoordinateMode: string;
+  coordinateSpec: CoordinateSpec;
+  samples: FiveAxisSample[];
+  pathProgress?: FiveAxisPathProgress;
+  regularity?: FiveAxisRegularity;
+  envelopes: StageEnvelope[];
+  capabilityIds: string[];
+}
+
+export interface RunSpec {
+  subjectId: string;
+  domainPackId: string;
+  runnerId: string;
+  evaluatorVersion?: string;
+  request: Record<string, unknown>;
 }
 
 export interface RunBundle {
+  run: {
+    runId: string;
+    subjectId: string;
+    domainPackId: string;
+    runnerId: string;
+    runSpecHash: string;
+    reportContentHash: string;
+    executionStatus: string;
+    caseOutcome: string;
+    evaluatorVersion?: string;
+    contentHash: string;
+    numericEnvironment?: Record<string, unknown>;
+    provenance?: Record<string, unknown>;
+  };
   observation?: {
-    artifact: OrderedPointSequence;
+    observationId?: string;
+    subjectId?: string;
+    artifact: OrderedPointSequence | FiveAxisSampledCartesianView | Record<string, unknown>;
     artifactHash: string;
+    observationHash?: string;
     source: string;
   };
   report: {
+    executionStatus: string;
+    caseOutcome: string;
     metricResults: MetricResult[];
+    capabilities?: CapabilityResolution[];
+    domainFailures?: DomainFailure[];
+    provenance?: Record<string, unknown>;
     score?: {
       status: string;
       value?: number;
     };
-    provenance?: Record<string, string>;
-  };
-  run: {
-    runId: string;
-    runnerId: string;
-    caseOutcome: string;
-    executionStatus: string;
-    contentHash: string;
+    contentHash?: string;
+    evaluatorVersion?: string;
   };
   claims: Claim[];
   bundleHash: string;

@@ -2,32 +2,21 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   executeExperiment,
-  executeRun,
   loadCatalog,
   loadContourExample,
-  loadFiveAxisExample,
-  loadFiveAxisManifest,
 } from "./api";
+import { F1Workbench } from "./features/five-axis-f1/F1Workbench";
 import type {
-  ArtifactAdapterDescriptor,
   Catalog,
-  Claim,
-  DomainFailure,
   ExperimentArmResult,
   ExperimentReport,
   ExperimentSpec,
-  FiveAxisSampledCartesianView,
-  MathStageManifest,
   MetricComparison,
   Point,
-  RunBundle,
-  RunSpec,
-  StageEnvelope,
 } from "./types";
 
 type Lab = "point" | "five-axis";
 type PointView = "geometry" | "metrics";
-type FiveAxisView = "manifest" | "report";
 
 const futureLabs = ["Machine", "Intelligence", "Optimization"];
 
@@ -125,15 +114,6 @@ function isOrderedPointArtifact(value: unknown): value is { points: Point[] } {
   );
 }
 
-function isFiveAxisArtifact(value: unknown): value is FiveAxisSampledCartesianView {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    "artifactType" in value &&
-    (value as { artifactType?: string }).artifactType === "five-axis.sampled-cartesian-position-view",
-  );
-}
-
 function projectPaths(spec: ExperimentSpec, report: ExperimentReport | null): ProjectedPath[] {
   const sources = [
     { key: "reference", label: "共享输入", tone: "reference" as const, points: spec.sharedInput.points },
@@ -186,86 +166,19 @@ function comparisonWinner(metric: MetricComparison, report: ExperimentReport): s
   return arm?.armId ?? "—";
 }
 
-function detailRows(entries: Array<[string, string]>) {
-  return (
-    <dl className="data-list">
-      {entries.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function envelopeTitle(envelope: StageEnvelope): string {
-  return `${envelope.stage} · ${envelope.envelopeType}`;
-}
-
-function renderFindings(items: DomainFailure[] | undefined) {
-  if (!items?.length) {
-    return <div className="empty-state">当前没有 domain failure / finding。</div>;
-  }
-  return (
-    <div className="findings-list">
-      {items.map((item) => (
-        <article key={`${item.code}:${item.path ?? "root"}`}>
-          <header>
-            <strong>{item.code}</strong>
-            <span className={resultClass(item.severity === "error" ? "Failed" : "Skipped")}>{item.severity ?? "finding"}</span>
-          </header>
-          <p>{item.message}</p>
-          <footer>{item.path ?? "—"}</footer>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function renderClaims(items: Claim[]) {
-  if (!items.length) {
-    return <div className="empty-state">没有可展示的 claim。</div>;
-  }
-  return (
-    <div className="claims-list">
-      {items.map((claim) => (
-        <article key={claim.claimId}>
-          <div>
-            <strong>{claim.metricId ?? "case-outcome"}</strong>
-            <em className={resultClass(claim.status)}>{claim.status}</em>
-          </div>
-          <p>{claim.predicate}</p>
-          <footer>
-            <code>{shortHash(claim.claimId)}</code>
-            <span>{claim.evidence?.method ?? "—"}</span>
-          </footer>
-        </article>
-      ))}
-    </div>
-  );
-}
-
 export function App() {
   const [activeLab, setActiveLab] = useState<Lab>("point");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [spec, setSpec] = useState<ExperimentSpec | null>(null);
   const [report, setReport] = useState<ExperimentReport | null>(null);
-  const [manifest, setManifest] = useState<MathStageManifest | null>(null);
-  const [fiveAxisSpec, setFiveAxisSpec] = useState<RunSpec | null>(null);
-  const [fiveAxisRun, setFiveAxisRun] = useState<RunBundle | null>(null);
   const [pointsText, setPointsText] = useState("[]");
   const [errorVector, setErrorVector] = useState("0, 0.08");
   const [gain, setGain] = useState("0.75");
   const [threshold, setThreshold] = useState("0.03");
   const [pointView, setPointView] = useState<PointView>("geometry");
-  const [fiveAxisView, setFiveAxisView] = useState<FiveAxisView>("manifest");
   const [loading, setLoading] = useState(true);
-  const [fiveAxisLoading, setFiveAxisLoading] = useState(true);
   const [pointBusy, setPointBusy] = useState(false);
-  const [fiveAxisBusy, setFiveAxisBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fiveAxisLoadError, setFiveAxisLoadError] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
 
   const hydratePointSpec = (next: ExperimentSpec) => {
@@ -296,25 +209,6 @@ export function App() {
         if (active) setLoading(false);
       }
     })();
-    (async () => {
-      try {
-        const [nextManifest, nextFiveAxisSpec] = await Promise.all([
-          loadFiveAxisManifest(),
-          loadFiveAxisExample(),
-        ]);
-        if (!active) return;
-        setManifest(nextManifest);
-        setFiveAxisSpec(nextFiveAxisSpec);
-      } catch (reason) {
-        if (active) {
-          setFiveAxisLoadError(
-            reason instanceof Error ? reason.message : "Five-Axis F0 入口初始化失败。",
-          );
-        }
-      } finally {
-        if (active) setFiveAxisLoading(false);
-      }
-    })();
     return () => {
       active = false;
     };
@@ -327,21 +221,8 @@ export function App() {
   const pointUnit = spec?.sharedInput.semantics?.unit ?? "coordinate-unit";
   const pointDimension = spec?.sharedInput.points[0]?.length ?? 0;
   const pointRunnerLabel = [...new Set(spec?.arms.map((arm) => arm.runnerId ?? "unknown-runner") ?? [])].join(", ");
-  const exampleArtifact = fiveAxisSpec?.request["artifact"];
-  const fiveAxisArtifact = isFiveAxisArtifact(fiveAxisRun?.observation?.artifact)
-    ? fiveAxisRun.observation.artifact
-    : isFiveAxisArtifact(exampleArtifact)
-      ? exampleArtifact
-      : null;
-  const fiveAxisAdapters = (catalog?.artifactAdapters ?? []).filter(
-    (adapter) =>
-      adapter.sourceArtifactType === "five-axis.sampled-cartesian-position-view" ||
-      adapter.targetArtifactType === "five-axis.sampled-cartesian-position-view",
-  );
-  const fiveAxisDomainPack = catalog?.domainPacks.find((item) => item.domainPackId === fiveAxisSpec?.domainPackId);
-  const fiveAxisBusyState = fiveAxisLoading || fiveAxisBusy;
   const pointBusyState = loading || pointBusy;
-  const visibleError = error ?? (activeLab === "five-axis" ? fiveAxisLoadError : null);
+  const visibleError = error;
 
   const buildPointSpec = (): ExperimentSpec => {
     if (!spec) throw new Error("实验模板尚未加载。");
@@ -380,23 +261,6 @@ export function App() {
     }
   };
 
-  const runFiveAxisContract = async () => {
-    if (!fiveAxisSpec) {
-      setError("Five-Axis F0 示例尚未加载。");
-      return;
-    }
-    setFiveAxisBusy(true);
-    setError(null);
-    try {
-      setFiveAxisRun(await executeRun(fiveAxisSpec));
-      setFiveAxisView("report");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "F0 契约执行失败。");
-    } finally {
-      setFiveAxisBusy(false);
-    }
-  };
-
   const selectSubject = (armIndex: number, catalogIndex: number) => {
     if (!spec || !catalog) return;
     const subject = catalog.subjects[catalogIndex];
@@ -432,17 +296,6 @@ export function App() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadFiveAxisEvidence = () => {
-    if (!fiveAxisRun) return;
-    const blob = new Blob([JSON.stringify(fiveAxisRun, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${fiveAxisRun.run.runId}-bundle.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="workbench">
       <header className="topbar">
@@ -450,13 +303,13 @@ export function App() {
           <div className="brand-mark" aria-hidden="true">A</div>
           <div>
             <strong>AXIOM</strong>
-            <span>{activeLab === "point" ? "Experiment Workbench" : "Five-Axis Contract Workbench"}</span>
+            <span>{activeLab === "point" ? "Experiment Workbench" : "Five-Axis Geometry Reference Workbench"}</span>
           </div>
         </div>
         <div className="topbar-context">
           <span className={`connection-dot ${visibleError ? "offline" : ""}`} />
           <span className="context-label">{visibleError ? "需要检查" : "本地 API 可用"}</span>
-          <code>{activeLab === "point" ? spec?.experimentId ?? "loading" : manifest?.manifestId ?? "loading"}</code>
+          <code>{activeLab === "point" ? spec?.experimentId ?? "loading" : "five-axis.f1-math-stage-manifest@1"}</code>
         </div>
         <div className="topbar-actions">
           {activeLab === "point" ? (
@@ -471,10 +324,7 @@ export function App() {
               </button>
             </>
           ) : (
-            <button className="button button-primary" type="button" onClick={runFiveAxisContract} disabled={fiveAxisBusyState || !fiveAxisSpec}>
-              {fiveAxisBusyState ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">▶</span>}
-              {fiveAxisBusyState ? "验证中" : "验证 F0 契约"}
-            </button>
+            <span className="f1-top-boundary">MATH ONLY · NOT DEVICE SAFE</span>
           )}
         </div>
       </header>
@@ -484,7 +334,7 @@ export function App() {
           <strong>未完成</strong><span>{visibleError}</span>
           <button
             type="button"
-            onClick={() => (error ? setError(null) : setFiveAxisLoadError(null))}
+            onClick={() => setError(null)}
             aria-label="关闭错误"
           >×</button>
         </div>
@@ -495,7 +345,7 @@ export function App() {
           <span>01</span>Point Lab
         </button>
         <button className={`lab ${activeLab === "five-axis" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis")}>
-          <span>02</span>Five-Axis<small>F0</small>
+          <span>02</span>Five-Axis<small>F1</small>
         </button>
         {futureLabs.map((lab, index) => (
           <button className="lab" type="button" disabled key={lab} title="领域包尚未接入">
@@ -688,215 +538,19 @@ export function App() {
           </aside>
         </main>
       ) : (
-        <main className="workspace">
-          <aside className="config-panel">
-            <div className="panel-heading">
-              <div><span className="eyebrow">F0 CONTRACT</span><h1>Five-Axis 机器契约</h1></div>
-              <span className="schema-badge">@1</span>
-            </div>
-
-            <section className="config-section">
-              <div className="section-title"><span>01</span><h2>Manifest</h2><em>{manifest?.stage ?? "F0"}</em></div>
-              {detailRows([
-                ["Manifest ID", manifest?.manifestId ?? "loading"],
-                ["Expected Status", manifest?.expectedStatus ?? "—"],
-                ["Fixture Hash", shortHash(manifest?.fixtureContentIds[0])],
-                ["Runtime Bound", fiveAxisDomainPack?.runtimeBound ? "true" : "false"],
-              ])}
-              <div className="chip-row">
-                {(manifest?.capabilityIds ?? []).map((item) => <span className="chip" key={item}>{item}</span>)}
-              </div>
-            </section>
-
-            <section className="config-section">
-              <div className="section-title"><span>02</span><h2>Derived View</h2><em>{fiveAxisArtifact?.samples.length ?? "—"}</em></div>
-              {detailRows([
-                ["Domain Pack", fiveAxisSpec?.domainPackId ?? "—"],
-                ["Runner", fiveAxisSpec?.runnerId ?? "—"],
-                ["Artifact", fiveAxisArtifact?.artifactType ?? "—"],
-                ["Source Mode", fiveAxisArtifact?.sourceCoordinateMode ?? "—"],
-                ["Coordinate Frame", fiveAxisArtifact?.coordinateSpec.coordinateFrame ?? "—"],
-                ["Unit", fiveAxisArtifact?.coordinateSpec.unit ?? "—"],
-              ])}
-            </section>
-
-            <section className="config-section">
-              <div className="section-title"><span>03</span><h2>Adapter Route</h2><em>{fiveAxisAdapters.length}</em></div>
-              {fiveAxisAdapters.length ? (
-                <div className="adapter-list">
-                  {fiveAxisAdapters.map((adapter: ArtifactAdapterDescriptor) => (
-                    <article key={adapter.adapterId}>
-                      <strong>{adapter.adapterId}</strong>
-                      <code>{adapter.sourceArtifactType} → {adapter.targetArtifactType}</code>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">catalog 尚未公开 artifact adapter。</div>
-              )}
-            </section>
-          </aside>
-
-          <section className="analysis-panel">
-            <div className="analysis-heading">
-              <div className="view-tabs" role="tablist" aria-label="Five-Axis 视图">
-                <button role="tab" aria-selected={fiveAxisView === "manifest"} onClick={() => setFiveAxisView("manifest")}>M0–M5 Contract</button>
-                <button role="tab" aria-selected={fiveAxisView === "report"} onClick={() => setFiveAxisView("report")}>Evaluation Report</button>
-              </div>
-              <div className="run-state">
-                <span className={resultClass(fiveAxisRun?.run.executionStatus)}>{fiveAxisRun?.run.executionStatus ?? "Not run"}</span>
-                <span className={resultClass(fiveAxisRun?.run.caseOutcome)}>{fiveAxisRun?.run.caseOutcome ?? "No claim"}</span>
-              </div>
-            </div>
-
-            {fiveAxisView === "manifest" ? (
-              <div className="manifest-view">
-                <section className="notice-card">
-                  <strong>F0 边界</strong>
-                  <p>当前页面只验证机器契约、派生视图和适配器暴露，不发布几何、运动学、碰撞、设备可执行声明。</p>
-                </section>
-
-                <section className="stage-grid" aria-label="M0 到 M5 envelope map">
-                  {(manifest?.envelopes ?? []).map((envelope) => (
-                    <article className="stage-card" key={envelope.envelopeId}>
-                      <header>
-                        <span>{envelope.stage}</span>
-                        <strong>{envelopeTitle(envelope)}</strong>
-                      </header>
-                      <code>{envelope.envelopeId}</code>
-                      <p>{envelope.schemaId}</p>
-                      <dl>
-                        <div><dt>contentId</dt><dd title={envelope.contentId}>{shortHash(envelope.contentId)}</dd></div>
-                        <div><dt>capabilities</dt><dd>{envelope.capabilityIds.length}</dd></div>
-                        <div><dt>frame</dt><dd>{envelope.coordinateSpec?.coordinateFrame ?? "—"}</dd></div>
-                      </dl>
-                    </article>
-                  ))}
-                </section>
-
-                <section className="manifest-meta">
-                  <div>
-                    <h3>Policy Versions</h3>
-                    {detailRows(Object.entries(manifest?.policyVersions ?? {}).map(([key, value]) => [key, value]))}
-                  </div>
-                  <div>
-                    <h3>Numeric Environment</h3>
-                    {detailRows(Object.entries(manifest?.numericEnvironment ?? {}).map(([key, value]) => [key, value]))}
-                  </div>
-                  <div>
-                    <h3>Tolerances</h3>
-                    {(manifest?.tolerances.length ?? 0) > 0 ? (
-                      <div className="adapter-list">
-                        {manifest?.tolerances.map((item) => (
-                          <article key={item.metricId}>
-                            <strong>{item.metricId}</strong>
-                            <code>{formatValue(item.value)} {item.unit}</code>
-                          </article>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-state">manifest 没有公开 tolerance。</div>
-                    )}
-                  </div>
-                </section>
-              </div>
-            ) : (
-              <div className="report-view">
-                <section className="notice-card">
-                  <strong>通过范围：仅 F0 契约</strong>
-                  <p>Passed 只表示 manifest、schema 与运行绑定验证完成；碰撞上下文和区间重建仍是 finding，不代表几何、运动学、碰撞或设备可执行。</p>
-                </section>
-                {!fiveAxisRun ? (
-                  <div className="empty-overlay static-empty">尚未执行 F0 契约。点击“验证 F0 契约”后展示真实返回。</div>
-                ) : (
-                  <>
-                    <section className="metric-strip single-row">
-                      <div><span>RUN ID</span><strong>{shortHash(fiveAxisRun.run.runId)}</strong><small>{fiveAxisRun.run.runnerId}</small></div>
-                      <div><span>REPORT HASH</span><strong>{shortHash(fiveAxisRun.run.reportContentHash)}</strong><small>{fiveAxisRun.report.evaluatorVersion ?? "—"}</small></div>
-                      <div><span>BUNDLE HASH</span><strong>{shortHash(fiveAxisRun.bundleHash)}</strong><small>{fiveAxisRun.observation?.source ?? "—"}</small></div>
-                    </section>
-
-                    <div className="report-columns">
-                      <section className="report-card">
-                        <h3>Metric Results</h3>
-                        <table className="compact-table">
-                          <thead><tr><th>Metric</th><th>Status</th><th>Reason</th><th>Requires</th></tr></thead>
-                          <tbody>
-                            {fiveAxisRun.report.metricResults.map((metric) => (
-                              <tr key={metric.metricId}>
-                                <td><code>{metric.metricId}</code></td>
-                                <td className={resultClass(metric.status)}>{metric.status}</td>
-                                <td>{metric.reasonCode ?? "—"}</td>
-                                <td>{metric.requires?.join(", ") ?? "—"}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </section>
-
-                      <section className="report-card">
-                        <h3>Domain Failures / Findings</h3>
-                        {renderFindings(fiveAxisRun.report.domainFailures)}
-                      </section>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
-
-          <aside className="evidence-panel">
-            <div className="panel-heading evidence-heading">
-              <div><span className="eyebrow">RUNTIME EVIDENCE</span><h2>F0 状态与边界</h2></div>
-              <button type="button" className="icon-button" onClick={downloadFiveAxisEvidence} disabled={!fiveAxisRun} title="下载 RunBundle JSON">⇩</button>
-            </div>
-
-            <section className="verdict-card">
-              <span className="eyebrow">F0 VERDICT</span>
-              <div className="verdict-row"><strong className={resultClass(fiveAxisRun?.run.caseOutcome)}>{fiveAxisRun?.run.caseOutcome ?? "Pending"}</strong><span>{fiveAxisRun ? "真实 RunBundle 已封存" : "等待执行"}</span></div>
-              <div className="verdict-rule"><i /><span>Execution</span><b className={resultClass(fiveAxisRun?.run.executionStatus)}>{fiveAxisRun?.run.executionStatus ?? "—"}</b></div>
-              <div className="verdict-rule"><i /><span>Contract Metric</span><b className={resultClass(fiveAxisRun?.report.metricResults[0]?.status)}>{fiveAxisRun?.report.metricResults[0]?.status ?? "—"}</b></div>
-            </section>
-
-            <section className="evidence-section">
-              <div className="section-title compact"><span>01</span><h2>内容哈希</h2></div>
-              <dl className="identity-list">
-                    <div><dt>Sample Fixture</dt><dd title={manifest?.fixtureContentIds[0]}>{shortHash(manifest?.fixtureContentIds[0])}</dd></div>
-                <div><dt>Run Spec</dt><dd title={fiveAxisRun?.run.runSpecHash}>{shortHash(fiveAxisRun?.run.runSpecHash)}</dd></div>
-                <div><dt>Report</dt><dd title={fiveAxisRun?.run.reportContentHash}>{shortHash(fiveAxisRun?.run.reportContentHash)}</dd></div>
-                <div><dt>Bundle</dt><dd title={fiveAxisRun?.bundleHash}>{shortHash(fiveAxisRun?.bundleHash)}</dd></div>
-              </dl>
-            </section>
-
-            <section className="evidence-section">
-              <div className="section-title compact"><span>02</span><h2>Claim / Capabilities</h2></div>
-              {fiveAxisRun ? renderClaims(fiveAxisRun.claims) : <div className="placeholder-lines"><i /><i /><i /></div>}
-              <div className="chip-row top-gap">
-                {(fiveAxisRun?.report.capabilities ?? manifest?.capabilityIds.map((capabilityId) => ({ capabilityId, source: "Manifest" })) ?? []).map((item) => (
-                  <span className="chip" key={`${item.capabilityId}:${item.source}`}>{item.capabilityId} · {item.source}</span>
-                ))}
-              </div>
-            </section>
-
-            <section className="evidence-section">
-              <div className="section-title compact"><span>03</span><h2>执行链</h2></div>
-              <ol className="execution-chain">
-                <li className={Boolean(manifest) ? "done" : ""}><span>Manifest loaded</span><code>{manifest?.manifestId ?? "pending"}</code></li>
-                <li className={Boolean(fiveAxisSpec) ? "done" : ""}><span>Derived view prepared</span><code>{fiveAxisSpec?.domainPackId ?? "pending"}</code></li>
-                <li className={Boolean(fiveAxisRun) ? "done" : ""}><span>Contract evaluated</span><code>{fiveAxisRun?.run.runnerId ?? "pending"}</code></li>
-                <li className={Boolean(fiveAxisRun?.claims.length) ? "done" : ""}><span>Core case claim only</span><code>{fiveAxisRun?.claims[0]?.claimId ? shortHash(fiveAxisRun.claims[0].claimId) : "pending"}</code></li>
-              </ol>
-            </section>
-          </aside>
-        </main>
+        <>
+          <F1Workbench catalog={catalog} />
+        </>
       )}
 
-      <footer className="statusbar">
-        <span><i className={error ? "status-error" : ""} /> {error ? "1 error" : "0 errors"}</span>
-        <span>domain: <code>{activeLab === "point" ? "ordered-point.domain-pack@1" : fiveAxisSpec?.domainPackId ?? "five-axis.domain-pack@1"}</code></span>
-        <span>runner: <code>{activeLab === "point" ? pointRunnerLabel || "pending" : fiveAxisSpec?.runnerId ?? "pending"}</code></span>
-        <span className="statusbar-right">{activeLab === "point" ? `${report?.armResults.length ?? 0}/2 arms` : `${fiveAxisAdapters.length} adapter route`} · local static registry</span>
-      </footer>
+      {activeLab === "point" && (
+        <footer className="statusbar">
+          <span><i className={error ? "status-error" : ""} /> {error ? "1 error" : "0 errors"}</span>
+          <span>domain: <code>ordered-point.domain-pack@1</code></span>
+          <span>runner: <code>{pointRunnerLabel || "pending"}</code></span>
+          <span className="statusbar-right">{report?.armResults.length ?? 0}/2 arms · local static registry</span>
+        </footer>
+      )}
     </div>
   );
 }

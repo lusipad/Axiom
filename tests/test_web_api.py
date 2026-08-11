@@ -33,6 +33,12 @@ async def _exercise_experiment_api() -> None:
             if item["domainPackId"] == "five-axis.domain-pack@1"
         )
         assert five_axis_pack["runtimeBound"] is True
+        five_axis_f1_pack = next(
+            item
+            for item in catalog.json()["domainPacks"]
+            if item["domainPackId"] == "five-axis.domain-pack@2"
+        )
+        assert five_axis_f1_pack["runtimeBound"] is True
         assert any(
             item["adapterId"] == "five-axis.sampled-cartesian-to-ordered-point@1"
             and item["sourceArtifactType"] == "five-axis.sampled-cartesian-position-view"

@@ -229,7 +229,7 @@ def test_registered_domain_pack_without_an_evaluator_binding_is_not_executed():
     assert bundle["report"]["domainFailures"] == [
         {
             "code": "DomainPackEvaluatorUnavailable",
-            "message": "The registered DomainPack has no evaluator binding in v0.2.",
+            "message": "The registered DomainPack has no executable runtime binding.",
             "path": "domainPackId",
             "severity": "error",
         }

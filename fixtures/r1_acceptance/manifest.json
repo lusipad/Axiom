@@ -1,0 +1,13 @@
+{
+  "suiteId": "axiom.r1-acceptance@1",
+  "cases": [
+    {
+      "id": "r1-case-a-self-described@1",
+      "file": "case-a-self-described.json"
+    },
+    {
+      "id": "r1-case-c-timed-sequence@1",
+      "file": "case-c-timed-sequence.json"
+    }
+  ]
+}

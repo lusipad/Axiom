@@ -62,6 +62,12 @@ class SequenceParameter(AxiomModel):
     kind: Literal["time"]
     unit: str | None = None
     values: list[float] = Field(max_length=MAX_SEQUENCE_POINTS)
+    difference_policy: "DifferencePolicy" = Field(
+        default_factory=lambda: DifferencePolicy(), alias="differencePolicy"
+    )
+    endpoint_policy: "EndpointPolicy" = Field(
+        default_factory=lambda: EndpointPolicy(), alias="endpointPolicy"
+    )
 
     @field_validator("values", mode="before")
     @classmethod
@@ -70,6 +76,29 @@ class SequenceParameter(AxiomModel):
             for item in value:
                 _require_json_number(item)
         return value
+
+
+class DifferencePolicy(AxiomModel):
+    policy_id: Literal["ordered-point.parameter-difference.forward-adjacent@1"] = Field(
+        default="ordered-point.parameter-difference.forward-adjacent@1",
+        alias="policyId",
+        min_length=1,
+    )
+    absolute_tolerance: float = Field(default=0.0, alias="absoluteTolerance", ge=0, allow_inf_nan=False)
+    unit: str | None = None
+
+    @field_validator("absolute_tolerance", mode="before")
+    @classmethod
+    def reject_coerced_tolerance(cls, value: Any) -> Any:
+        return _require_json_number(value)
+
+
+class EndpointPolicy(AxiomModel):
+    policy_id: Literal["ordered-point.parameter-endpoint.interval-only@1"] = Field(
+        default="ordered-point.parameter-endpoint.interval-only@1",
+        alias="policyId",
+        min_length=1,
+    )
 
 
 class OrderedPointSequence(AxiomModel):
@@ -88,6 +117,13 @@ class OrderedPointSequence(AxiomModel):
                     for coordinate in point:
                         _require_json_number(coordinate)
         return value
+
+
+class ArtifactEnvelope(AxiomModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    artifact_type: str = Field(alias="artifactType", min_length=1)
+    schema_version: int = Field(alias="schemaVersion", ge=1)
 
 
 class Threshold(AxiomModel):
@@ -179,6 +215,14 @@ class EvaluationRequest(AxiomModel):
     reference_binding: ReferenceBinding | None = Field(default=None, alias="referenceBinding")
 
 
+class CoreEvaluationRequest(AxiomModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    artifact: ArtifactEnvelope
+    case: EvaluationCase
+    reference_binding: dict[str, Any] | None = Field(default=None, alias="referenceBinding")
+
+
 class ParameterSet(AxiomModel):
     parameter_set_id: str = Field(alias="parameterSetId", pattern=r"^.+@[0-9]+$")
     parameter_schema_id: str = Field(alias="parameterSchemaId", pattern=r"^.+@[0-9]+$")
@@ -257,7 +301,7 @@ class DomainFailure(AxiomModel):
 
 class CapabilityResolution(AxiomModel):
     capability_id: str = Field(alias="capabilityId")
-    source: Literal["Artifact", "ReferenceBinding", "Evaluator"]
+    source: Literal["Artifact", "ReferenceBinding", "Evaluator", "Profile", "Adapter"]
 
 
 class Evidence(AxiomModel):
@@ -300,10 +344,7 @@ class Provenance(AxiomModel):
     reference_binding_hash: str | None = Field(default=None, alias="referenceBindingHash")
     score_profile_hash: str | None = Field(default=None, alias="scoreProfileHash")
     runner_id: str = Field(default="artifact-import@1", alias="runnerId")
-    evaluator_version: Literal["ordered-point-evaluator@1"] = Field(
-        default="ordered-point-evaluator@1",
-        alias="evaluatorVersion",
-    )
+    evaluator_version: str = Field(default="ordered-point-evaluator@1", alias="evaluatorVersion")
     execution_outcome_policy: str = Field(alias="executionOutcomePolicy")
     numeric_type: Literal["float64"] = Field(default="float64", alias="numericType")
     numeric_environment: dict[str, str] = Field(alias="numericEnvironment")
@@ -332,8 +373,10 @@ class EvaluationReport(AxiomModel):
 
 
 class RunSpec(AxiomModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
     subject_id: str = Field(alias="subjectId", min_length=1)
-    request: EvaluationRequest
+    request: CoreEvaluationRequest
     domain_pack_id: str = Field(default="ordered-point.domain-pack@1", alias="domainPackId", min_length=1)
     runner_id: str = Field(default="artifact-import@1", alias="runnerId", min_length=1)
     evaluator_version: str = Field(default="ordered-point-evaluator@1", alias="evaluatorVersion")
@@ -342,11 +385,18 @@ class RunSpec(AxiomModel):
     parameter_set_hash: str | None = Field(default=None, alias="parameterSetHash")
     experiment_spec_hash: str | None = Field(default=None, alias="experimentSpecHash")
 
+    @field_validator("request", mode="before")
+    @classmethod
+    def coerce_request_to_core(cls, value: Any) -> Any:
+        if isinstance(value, EvaluationRequest):
+            return value.model_dump(mode="json", by_alias=True, exclude_unset=True)
+        return value
+
 
 class Observation(AxiomModel):
     observation_id: str = Field(alias="observationId")
     subject_id: str | None = Field(default=None, alias="subjectId")
-    artifact: OrderedPointSequence
+    artifact: OrderedPointSequence | ArtifactEnvelope
     artifact_hash: str = Field(alias="artifactHash")
     observation_hash: str = Field(alias="observationHash")
     source: Literal["ImportedArtifact", "ExecutedSubject"] = "ImportedArtifact"

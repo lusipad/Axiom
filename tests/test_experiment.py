@@ -265,6 +265,30 @@ def test_experiment_comparison_rejects_a_tampered_bundle_identity():
     )
 
 
+def test_experiment_comparison_rejects_a_tampered_report_content_hash():
+    report = run_experiment(_experiment_spec())
+    left = report.arm_results[0].run_bundle
+    right = report.arm_results[1].run_bundle
+    assert left is not None and right is not None
+
+    changed_right = right.model_copy(
+        update={"report": right.report.model_copy(update={"content_hash": "tampered"})}
+    )
+    comparison = compare_runs(
+        left,
+        changed_right,
+        policy_id=EXPERIMENT_COMPARISON_POLICY_ID,
+        experiment_spec=report.experiment_spec,
+    )
+
+    assert comparison.compatibility.compatible is False
+    assert comparison.metric_comparisons == []
+    assert any(
+        issue.code == "ReportContentHashMismatch" and issue.path == "right.report.contentHash"
+        for issue in comparison.compatibility.issues
+    )
+
+
 def test_experiment_comparison_requires_and_binds_the_frozen_spec():
     report = run_experiment(_experiment_spec())
     left = report.arm_results[0].run_bundle

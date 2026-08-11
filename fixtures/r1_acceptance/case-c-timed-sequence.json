@@ -1,0 +1,186 @@
+{
+  "fixtureId": "r1-case-c-timed-sequence@1",
+  "caseType": "C",
+  "description": "带时间戳的序列合同；当前先冻结时间间隔指标，并把后续运动学差分/端点策略显式钉死。",
+  "declaredPolicies": {
+    "differencePolicy": "ordered-point.parameter-difference.forward-adjacent@1",
+    "endpointPolicy": "ordered-point.parameter-endpoint.interval-only@1"
+  },
+  "request": {
+    "artifact": {
+      "artifactType": "ordered-point-sequence",
+      "schemaVersion": 1,
+      "points": [
+        [0.0, 0.0],
+        [3.0, 4.0],
+        [6.0, 4.0],
+        [6.0, 0.0]
+      ],
+      "parameter": {
+        "kind": "time",
+        "unit": "s",
+        "values": [0.0, 1.0, 3.0, 6.0]
+      }
+    },
+    "case": {
+      "caseId": "r1-case-c-timed-sequence@1",
+      "requiredMetrics": [
+        "point.count",
+        "path.length.open",
+        "parameter.interval.min",
+        "parameter.interval.max",
+        "parameter.interval.mean",
+        "parameter.interval.std",
+        "speed.point.mean",
+        "acceleration.point.max"
+      ],
+      "optionalMetrics": []
+    }
+  },
+  "expected": {
+    "runnerId": "artifact-import@1",
+    "evaluatorVersion": "ordered-point-evaluator@1",
+    "executionOutcomePolicy": "axiom.core.execution-outcome.default@1",
+    "executionStatus": "Succeeded",
+    "caseOutcome": "Passed",
+    "capabilityIds": [
+      "ordered-point.artifact.parsed@1",
+      "ordered-point.artifact.valid@1",
+      "ordered-point.coordinate.euclidean@1",
+      "ordered-point.parameter.time@1",
+      "ordered-point.parameter.values@1",
+      "ordered-point.sequence.ordered@1"
+    ],
+    "metricResults": {
+      "point.count": {
+        "metricDefinitionId": "ordered-point.point.count@1",
+        "status": "Computed",
+        "value": 4,
+        "numericTolerance": {
+          "absolute": 0.0,
+          "relative": 0.0
+        }
+      },
+      "path.length.open": {
+        "metricDefinitionId": "ordered-point.path.length.open@1",
+        "status": "Computed",
+        "value": 12.0,
+        "unit": "coordinate-unit",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "parameter.interval.min": {
+        "metricDefinitionId": "ordered-point.parameter.interval.min@1",
+        "status": "Computed",
+        "value": 1.0,
+        "unit": "s",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "parameter.interval.max": {
+        "metricDefinitionId": "ordered-point.parameter.interval.max@1",
+        "status": "Computed",
+        "value": 3.0,
+        "unit": "s",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "parameter.interval.mean": {
+        "metricDefinitionId": "ordered-point.parameter.interval.mean@1",
+        "status": "Computed",
+        "value": 2.0,
+        "unit": "s",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "parameter.interval.std": {
+        "metricDefinitionId": "ordered-point.parameter.interval.std@1",
+        "status": "Computed",
+        "value": 0.816496580927726,
+        "unit": "s",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "speed.point.mean": {
+        "metricDefinitionId": "ordered-point.speed.point.mean@1",
+        "status": "Computed",
+        "value": 2.611111111111111,
+        "unit": "coordinate-unit/s",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "acceleration.point.max": {
+        "metricDefinitionId": "ordered-point.acceleration.point.max@1",
+        "status": "Computed",
+        "value": 2.848001248439177,
+        "unit": "coordinate-unit/s^2",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      }
+    }
+  },
+  "metricDefinitionContracts": {
+    "parameter.interval.mean": {
+      "metricDefinitionId": "ordered-point.parameter.interval.mean@1",
+      "requires": [
+        "ordered-point.parameter.values@1"
+      ],
+      "direction": null,
+      "differencePolicy": "ordered-point.parameter-difference.forward-adjacent@1",
+      "endpointPolicy": "ordered-point.parameter-endpoint.interval-only@1",
+      "numericTolerance": {
+        "absolute": 1e-12,
+        "relative": 1e-12,
+        "unit": "result-unit"
+      }
+    },
+    "speed.point.mean": {
+      "metricDefinitionId": "ordered-point.speed.point.mean@1",
+      "requires": [
+        "ordered-point.artifact.valid@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.parameter.time@1"
+      ],
+      "direction": null,
+      "differencePolicy": "ordered-point.parameter-difference.forward-adjacent@1",
+      "endpointPolicy": "ordered-point.parameter-endpoint.interval-only@1",
+      "numericTolerance": {
+        "absolute": 1e-12,
+        "relative": 1e-12,
+        "unit": "result-unit"
+      }
+    },
+    "acceleration.point.max": {
+      "metricDefinitionId": "ordered-point.acceleration.point.max@1",
+      "requires": [
+        "ordered-point.artifact.valid@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.parameter.time@1"
+      ],
+      "direction": null,
+      "differencePolicy": "ordered-point.parameter-difference.forward-adjacent@1",
+      "endpointPolicy": "ordered-point.parameter-endpoint.interval-only@1",
+      "numericTolerance": {
+        "absolute": 1e-12,
+        "relative": 1e-12,
+        "unit": "result-unit"
+      }
+    }
+  }
+}

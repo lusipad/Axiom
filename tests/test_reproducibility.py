@@ -1,4 +1,5 @@
 from axiom import evaluate
+from axiom.evaluator import _content_hash
 
 
 def test_identical_request_replays_to_identical_report(make_request):
@@ -10,10 +11,14 @@ def test_identical_request_replays_to_identical_report(make_request):
 
     first = evaluate(request)
     second = evaluate(request)
+    report_payload = first.model_dump(mode="json", by_alias=True, exclude_none=True)
 
     assert first.model_dump(mode="json", by_alias=True) == second.model_dump(mode="json", by_alias=True)
     assert first.content_hash == second.content_hash
-    assert first.provenance.request_hash == first.content_hash
+    assert first.content_hash == _content_hash(
+        {key: value for key, value in report_payload.items() if key != "contentHash"}
+    )
+    assert first.provenance.request_hash != first.content_hash
     assert first.provenance.artifact_hash
     assert first.provenance.case_hash
     assert first.provenance.runner_id == "artifact-import@1"

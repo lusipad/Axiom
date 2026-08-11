@@ -5,6 +5,7 @@ import axiom.cli as cli_module
 import axiom.web as web_module
 from axiom.cli import main
 from axiom.experiment import contour_ab_example
+from axiom.five_axis import f0_example_run_spec
 import uvicorn
 
 
@@ -87,6 +88,62 @@ def test_cli_uses_exit_code_one_for_a_failed_hard_gate(tmp_path, capsys):
 
     assert main(["evaluate", str(request_path)]) == 1
     assert json.loads(capsys.readouterr().out)["caseOutcome"] == "Failed"
+
+
+def test_cli_runs_an_explicit_domain_pack_run_spec(tmp_path, capsys):
+    run_spec = {
+        "subjectId": "imported-artifact@1",
+        "domainPackId": "ordered-point.domain-pack@1",
+        "runnerId": "artifact-import@1",
+        "evaluatorVersion": "ordered-point-evaluator@1",
+        "request": {
+            "artifact": {
+                "artifactType": "ordered-point-sequence",
+                "schemaVersion": 1,
+                "points": [[0, 0], [3, 4]],
+            },
+            "case": {
+                "caseId": "cli-run-spec@1",
+                "requiredMetrics": ["path.length.open"],
+            },
+        },
+    }
+    request_path = tmp_path / "run-spec.json"
+    request_path.write_text(json.dumps(run_spec), encoding="utf-8")
+
+    assert main(["run", str(request_path)]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["run"]["domainPackId"] == "ordered-point.domain-pack@1"
+    assert output["report"]["caseOutcome"] == "Passed"
+    assert output["observation"]["artifact"]["points"] == [[0.0, 0.0], [3.0, 4.0]]
+
+
+def test_cli_returns_two_for_a_malformed_domain_run_spec(tmp_path, capsys):
+    request_path = tmp_path / "malformed-run-spec.json"
+    request_path.write_text(json.dumps({"subjectId": "broken", "request": {}}), encoding="utf-8")
+
+    assert main(["run", str(request_path)]) == 2
+    output = json.loads(capsys.readouterr().out)
+    assert output["report"]["caseOutcome"] == "Invalid"
+    assert output["report"]["domainFailures"][0]["code"] == "MalformedRunSpec"
+
+
+def test_cli_runs_the_five_axis_f0_contract_without_math_claims(tmp_path, capsys):
+    request_path = tmp_path / "five-axis-f0-run-spec.json"
+    request_path.write_text(json.dumps(f0_example_run_spec()), encoding="utf-8")
+
+    assert main(["run", str(request_path)]) == 0
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["run"]["domainPackId"] == "five-axis.domain-pack@1"
+    assert output["report"]["caseOutcome"] == "Passed"
+    metric = output["report"]["metricResults"][0]
+    assert metric["metricId"] == "five-axis.contract.readiness@1"
+    assert metric["status"] == "Computed"
+    assert metric["value"] is True
+    assert [claim["claimDefinitionId"] for claim in output["claims"]] == [
+        "axiom.core.case-outcome-claim@1"
+    ]
 
 
 def test_cli_returns_a_structured_invalid_report_with_exit_code_two(tmp_path, capsys):

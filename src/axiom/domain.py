@@ -21,7 +21,7 @@ from .evaluator import (
     _TIME_METRICS,
     _metric_requirements,
 )
-from .models import AxiomModel
+from .models import AxiomModel, CaseOutcome, ExecutionStatus, MetricStatus
 
 
 ORDERED_POINT_DOMAIN_PACK_ID = "ordered-point.domain-pack@1"
@@ -32,10 +32,19 @@ CASE_OUTCOME_CLAIM_DEFINITION_ID = "axiom.core.case-outcome-claim@1"
 METRIC_THRESHOLD_CLAIM_DEFINITION_ID = "axiom.core.metric-threshold-claim@1"
 STRICT_COMPARISON_POLICY_ID = "ordered-point.run-comparison.strict@1"
 EXPERIMENT_COMPARISON_POLICY_ID = "ordered-point.experiment-comparison.strict@1"
+FORWARD_DIFFERENCE_POLICY_ID = "ordered-point.parameter-difference.forward-adjacent@1"
+INTERVAL_ONLY_ENDPOINT_POLICY_ID = "ordered-point.parameter-endpoint.interval-only@1"
+FLOAT_TOLERANCE = 1e-12
 
 
 class FrozenDomainModel(AxiomModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
+
+
+class NumericTolerance(FrozenDomainModel):
+    absolute: float
+    relative: float
+    unit: str | None = None
 
 
 class MetricDefinition(FrozenDomainModel):
@@ -44,6 +53,16 @@ class MetricDefinition(FrozenDomainModel):
     requires: tuple[str, ...] = ()
     optional: tuple[str, ...] = ()
     direction: Literal["lower-is-better", "higher-is-better"] | None = None
+    difference_policy: str | None = Field(default=None, alias="differencePolicy")
+    endpoint_policy: str | None = Field(default=None, alias="endpointPolicy")
+    numeric_tolerance: NumericTolerance | None = Field(default=None, alias="numericTolerance")
+
+
+class FailureMapping(FrozenDomainModel):
+    code: str
+    execution_status: ExecutionStatus = Field(alias="executionStatus")
+    metric_status: MetricStatus = Field(alias="metricStatus")
+    case_outcome: CaseOutcome = Field(alias="caseOutcome")
 
 
 class DomainPack(FrozenDomainModel):
@@ -57,6 +76,7 @@ class DomainPack(FrozenDomainModel):
     metric_definitions: tuple[MetricDefinition, ...] = Field(default_factory=tuple, alias="metricDefinitions")
     claim_definition_ids: tuple[str, ...] = Field(default_factory=tuple, alias="claimDefinitionIds")
     comparison_policy_ids: tuple[str, ...] = Field(default_factory=tuple, alias="comparisonPolicyIds")
+    failure_mappings: tuple[FailureMapping, ...] = Field(default_factory=tuple, alias="failureMappings")
 
     def metric_definition(self, metric_id: str) -> MetricDefinition:
         for definition in self.metric_definitions:
@@ -66,6 +86,12 @@ class DomainPack(FrozenDomainModel):
 
     def supports_runner(self, runner_id: str) -> bool:
         return runner_id == self.runner_id or runner_id in self.runner_ids
+
+    def failure_mapping(self, code: str) -> FailureMapping | None:
+        for mapping in self.failure_mappings:
+            if mapping.code == code:
+                return mapping
+        return None
 
 
 _DOMAIN_PACKS: dict[str, DomainPack] = {}
@@ -106,9 +132,95 @@ def _ordered_point_metric_definitions() -> list[MetricDefinition]:
             metric_definition_id=f"ordered-point.{metric_id}@1",
             requires=_metric_requirements(metric_id),
             direction="lower-is-better" if metric_id in _REFERENCE_STRATEGIES else None,
+            difference_policy=FORWARD_DIFFERENCE_POLICY_ID if metric_id in _TIME_METRICS else None,
+            endpoint_policy=INTERVAL_ONLY_ENDPOINT_POLICY_ID if metric_id in _TIME_METRICS else None,
+            numeric_tolerance=_metric_numeric_tolerance(metric_id),
         )
         for metric_id in metric_ids
     ]
+
+
+def _metric_numeric_tolerance(metric_id: str) -> NumericTolerance:
+    result_unit = "result-unit" if _metric_uses_result_unit(metric_id) else None
+    if metric_id in {"point.count", "coordinate.dimension", "duplicate.consecutive.count", "segment.zero_length.count"}:
+        return NumericTolerance(absolute=0.0, relative=0.0, unit=result_unit)
+    if metric_id == "coordinate.finite":
+        return NumericTolerance(absolute=0.0, relative=0.0)
+    return NumericTolerance(absolute=FLOAT_TOLERANCE, relative=FLOAT_TOLERANCE, unit=result_unit)
+
+
+def _metric_uses_result_unit(metric_id: str) -> bool:
+    if metric_id in _REFERENCE_STRATEGIES or metric_id in _TIME_METRICS:
+        return True
+    return metric_id in {
+        "bounds.axis_aligned",
+        "path.length.open",
+        "closure.gap",
+        "path.length.closed",
+        "step.length.min",
+        "step.length.max",
+        "step.length.mean",
+        "step.length.rms",
+        "step.length.std",
+    }
+
+
+_DEFAULT_FAILURE_MAPPINGS = (
+    FailureMapping(
+        code="MalformedRunSpec",
+        executionStatus="Skipped",
+        metricStatus="InvalidObservation",
+        caseOutcome="Invalid",
+    ),
+    FailureMapping(
+        code="MalformedEvaluationRequest",
+        executionStatus="Skipped",
+        metricStatus="InvalidObservation",
+        caseOutcome="Invalid",
+    ),
+    FailureMapping(
+        code="UnknownDomainPack",
+        executionStatus="Skipped",
+        metricStatus="UnsupportedCapability",
+        caseOutcome="Unsupported",
+    ),
+    FailureMapping(
+        code="DomainPackEvaluatorUnavailable",
+        executionStatus="Skipped",
+        metricStatus="UnsupportedCapability",
+        caseOutcome="Unsupported",
+    ),
+    FailureMapping(
+        code="ArtifactTypeMismatch",
+        executionStatus="Skipped",
+        metricStatus="InvalidObservation",
+        caseOutcome="Invalid",
+    ),
+    FailureMapping(
+        code="ArtifactSchemaVersionMismatch",
+        executionStatus="Skipped",
+        metricStatus="InvalidObservation",
+        caseOutcome="Invalid",
+    ),
+    FailureMapping(
+        code="RunnerMismatch",
+        executionStatus="Skipped",
+        metricStatus="UnsupportedCapability",
+        caseOutcome="Unsupported",
+    ),
+    FailureMapping(
+        code="EvaluatorVersionMismatch",
+        executionStatus="Skipped",
+        metricStatus="UnsupportedCapability",
+        caseOutcome="Unsupported",
+    ),
+    FailureMapping(
+        code="DomainEvaluatorFailed",
+        executionStatus="ExecutionFailed",
+        metricStatus="NumericalFailure",
+        caseOutcome="Inconclusive",
+    ),
+)
 
 
 ORDERED_POINT_DOMAIN_PACK = register_domain_pack(
@@ -140,5 +252,6 @@ ORDERED_POINT_DOMAIN_PACK = register_domain_pack(
             METRIC_THRESHOLD_CLAIM_DEFINITION_ID,
         ],
         comparison_policy_ids=[STRICT_COMPARISON_POLICY_ID, EXPERIMENT_COMPARISON_POLICY_ID],
+        failure_mappings=_DEFAULT_FAILURE_MAPPINGS,
     )
 )

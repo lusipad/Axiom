@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from axiom.cli import main
-from axiom.evaluator import evaluate
+from axiom.evaluator import _content_hash, evaluate
 
 
 SUITE_DIR = Path(__file__).parents[1] / "fixtures" / "cnc_scenarios"
@@ -68,7 +68,14 @@ def test_cnc_fixture_matches_its_acceptance_contract(case):
     assert {failure.code for failure in report.domain_failures} == set(case["expectedDomainFailureCodes"])
     assert {item.capability_id for item in report.capabilities} == set(case["expectedCapabilityIds"])
     assert report.provenance is not None
-    assert report.content_hash == report.provenance.request_hash
+    assert report.content_hash == _content_hash(
+        {
+            key: value
+            for key, value in report.model_dump(mode="json", by_alias=True, exclude_none=True).items()
+            if key != "contentHash"
+        }
+    )
+    assert report.content_hash != report.provenance.request_hash
 
     for metric_id, expected in case["expectedMetrics"].items():
         result = report.metric_result(metric_id)

@@ -22,6 +22,32 @@
       "expectedSharedInputHash": "7abd5f264506e4f8847eaadcba52a3c4b271ddcab567a217c2904b9b73a15b85",
       "expectedParameterSetHash": "6564f8de058d80ce23a2ae720785bb93d70174522f8024ec443ed63f8ca7a5ca",
       "expectedExperimentSpecHash": "e0cd9144d290a51a4c3023e443856305f07cadeb8aed64eab7ddbee9825b13b0",
+      "expectedEnvironmentBoundIdentities": [
+        {
+          "label": "github-actions-ubuntu-latest-python-3.12-acceptance-constraints-2026-08-11",
+          "numericEnvironment": {
+            "python": "3.12.13",
+            "numpy": "2.5.2",
+            "scipy": "1.18.0",
+            "pint": "0.25.3",
+            "pydantic": "2.13.4"
+          },
+          "directDependencies": {
+            "fastapi": "0.141.1",
+            "numpy": "2.5.2",
+            "pint": "0.25.3",
+            "pydantic": "2.13.4",
+            "scipy": "1.18.0",
+            "uvicorn": "0.52.1",
+            "httpx": "0.28.1",
+            "pytest": "9.1.1",
+            "hypothesis": "6.165.3"
+          },
+          "baselineBundleHash": "18cbacaa7a52f9ed5948cb92ef731bc289aadc5227290563b33e8c3316dc6f8f",
+          "candidateBundleHash": "ed89d725b22dd1ca3a04ac45c39b61757a9f0d68922858445e70c46a3111731c",
+          "comparisonContentHash": "04a6eefead2825ed8172ab305680b38d52b249c6806855639ec1e5c14a42c3f4"
+        }
+      ],
       "expectedCompatible": true,
       "expectedMetric": {
         "metricId": "paired.euclidean.max",

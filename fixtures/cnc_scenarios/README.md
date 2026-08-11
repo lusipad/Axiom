@@ -5,6 +5,8 @@
 
 本目录把常见 CNC 运动语义适配为 Axiom 当前可处理的 `ordered-point-sequence@1`。`requests/*.json` 可直接交给 `axiom evaluate`，`comparisons/*.json` 用于导入式比较，`experiments/*.json` 会在共同输入和参数下实际执行两个静态 Subject；`manifest.json` 保存场景来源语义与预期结果。
 
+Case D 相关的 `expectedSharedInputHash`、`expectedParameterSetHash` 和 `expectedExperimentSpecHash` 是 environment-neutral portable identities，用来证明共同输入、参数和实验规范本体未变。`expectedEnvironmentBoundIdentities` 里的 `baselineBundleHash`、`candidateBundleHash` 与 `comparisonContentHash` 则绑定 `numericEnvironment` 和该环境下的直接依赖版本组合；跨环境验收时必须在目标环境重新执行并重验，不能拿另一环境导出的完整 ID 直接比较。
+
 ## 场景
 
 | ID | CNC 语义 | 当前模型中的诚实解释 |
@@ -34,6 +36,7 @@
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\test_cnc_scenario_files.py -v
 .\.venv\Scripts\python.exe -m pytest tests\test_cnc_experiment_fixture.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_r1_fixture_contract.py -v
 ```
 
 运行单个场景：

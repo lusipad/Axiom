@@ -1,4 +1,4 @@
-"""Axiom ordered-point evaluator public API."""
+"""Axiom evaluation framework public API."""
 
 from .comparison import compare, compare_runs
 from .domain import (
@@ -12,6 +12,7 @@ from .domain import (
 from .evaluator import evaluate
 from .experiment import contour_ab_example, run_experiment
 from .models import (
+    ArtifactEnvelope,
     CaseOutcome,
     Claim,
     ClaimStatus,
@@ -20,6 +21,7 @@ from .models import (
     ComparisonSpec,
     CompatibilityIssue,
     CompatibilityReport,
+    CoreEvaluationRequest,
     EvaluationReport,
     EvaluationRequest,
     ExperimentArm,
@@ -37,20 +39,47 @@ from .models import (
     SubjectDefinition,
 )
 from .run import evaluate_run
+from .runtime import (
+    DomainRuntimeBinding,
+    find_domain_runtime_binding,
+    get_domain_runtime_binding,
+    register_domain_runtime_binding,
+)
+from .five_axis import (
+    FIVE_AXIS_DOMAIN_PACK,
+    FIVE_AXIS_DOMAIN_PACK_ID,
+    FIVE_AXIS_RUNTIME_BINDING,
+    f0_example_run_spec,
+    load_f0_manifest,
+    load_f0_sample_view,
+)
+from .adapters import (
+    ArtifactAdapter,
+    ArtifactAdapterProvenance,
+    ArtifactTransformationResult,
+    FIVE_AXIS_SAMPLED_CARTESIAN_TO_ORDERED_POINT_ADAPTER,
+    get_artifact_adapter,
+    list_artifact_adapters,
+    register_artifact_adapter,
+)
 from .subjects import list_subjects, register_subject
 
 __all__ = [
+    "ArtifactAdapter",
+    "ArtifactAdapterProvenance",
+    "ArtifactEnvelope",
+    "ArtifactTransformationResult",
+    "CaseOutcome",
     "Claim",
     "ClaimStatus",
-    "CaseOutcome",
     "ComparisonOperand",
     "ComparisonReport",
     "ComparisonSpec",
     "CompatibilityIssue",
     "CompatibilityReport",
-    "compare",
-    "compare_runs",
+    "CoreEvaluationRequest",
     "DomainPack",
+    "DomainRuntimeBinding",
     "EvaluationReport",
     "EvaluationRequest",
     "ExperimentArm",
@@ -58,23 +87,38 @@ __all__ = [
     "ExperimentReport",
     "ExperimentSpec",
     "ExecutionStatus",
-    "evaluate_run",
-    "MetricStatus",
+    "FIVE_AXIS_DOMAIN_PACK",
+    "FIVE_AXIS_DOMAIN_PACK_ID",
+    "FIVE_AXIS_RUNTIME_BINDING",
+    "FIVE_AXIS_SAMPLED_CARTESIAN_TO_ORDERED_POINT_ADAPTER",
     "MetricComparison",
     "MetricDefinition",
+    "MetricStatus",
     "Observation",
-    "ParameterSet",
     "ORDERED_POINT_DOMAIN_PACK",
-    "get_domain_pack",
-    "list_domain_packs",
-    "register_domain_pack",
+    "ParameterSet",
     "Run",
     "RunBundle",
     "RunSpec",
     "SubjectDefinition",
+    "compare",
+    "compare_runs",
     "contour_ab_example",
     "evaluate",
+    "evaluate_run",
+    "f0_example_run_spec",
+    "find_domain_runtime_binding",
+    "get_artifact_adapter",
+    "get_domain_pack",
+    "get_domain_runtime_binding",
+    "list_artifact_adapters",
+    "list_domain_packs",
     "list_subjects",
+    "load_f0_manifest",
+    "load_f0_sample_view",
+    "register_artifact_adapter",
+    "register_domain_pack",
+    "register_domain_runtime_binding",
     "register_subject",
     "run_experiment",
 ]

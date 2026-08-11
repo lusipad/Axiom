@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 from dataclasses import dataclass
@@ -36,6 +35,7 @@ from .f3_sampling import (
     ZOH_POLICY_ID,
     M5DiscreteCommand,
     M5SampledTrajectory,
+    _canonical_content_id as _canonical_m5_content_id,
     sample_continuous_trajectory,
 )
 
@@ -746,16 +746,7 @@ def _sample_artifact(
         update={"content_id": "0" * 64, "limits": limits},
         deep=True,
     )
-    content_payload = draft.model_dump(mode="json", by_alias=True, exclude_none=True)
-    content_payload.pop("contentId", None)
-    canonical = json.dumps(
-        content_payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-    content_id = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    content_id = _canonical_m5_content_id(draft)
     return M5SampledTrajectory.model_validate(
         draft.model_copy(update={"content_id": content_id}).model_dump(
             mode="json", by_alias=True, exclude_none=True

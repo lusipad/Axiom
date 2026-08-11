@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from fastapi.testclient import TestClient
 
 from axiom.five_axis.f3_runtime import FIVE_AXIS_F3_DOMAIN_PACK_ID
@@ -8,6 +10,26 @@ from axiom.web import create_app
 
 def _client() -> TestClient:
     return TestClient(create_app(serve_frontend=False))
+
+
+def _javascript_json_roundtrip(value):
+    if isinstance(value, float) and value == 0.0:
+        return 0.0
+    if isinstance(value, list):
+        return [_javascript_json_roundtrip(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _javascript_json_roundtrip(item) for key, item in value.items()}
+    return value
+
+
+def _contains_negative_zero(value) -> bool:
+    if isinstance(value, float):
+        return value == 0.0 and math.copysign(1.0, value) < 0.0
+    if isinstance(value, list):
+        return any(_contains_negative_zero(item) for item in value)
+    if isinstance(value, dict):
+        return any(_contains_negative_zero(item) for item in value.values())
+    return False
 
 
 def test_f3_manifest_scenarios_and_example_are_exposed() -> None:
@@ -56,6 +78,17 @@ def test_f3_manifest_scenarios_and_example_are_exposed() -> None:
         "schemaId": "five-axis.m5-sampled-trajectory@1",
     }
     assert payload["runSpec"]["domainPackId"] == FIVE_AXIS_F3_DOMAIN_PACK_ID
+    assert _contains_negative_zero(payload["runSpec"])
+
+    # Regression: ISSUE-001 — JSON.stringify normalizes signed zero and invalidated M5 identity.
+    # Found by /qa on 2026-08-12.
+    # Report: .gstack/qa-reports/qa-report-localhost-2026-08-12.md
+    bundle = client.post(
+        "/api/v1/runs/evaluate",
+        json=_javascript_json_roundtrip(payload["runSpec"]),
+    ).json()
+    assert bundle["run"]["executionStatus"] == "Succeeded"
+    assert bundle["run"]["caseOutcome"] == "Passed"
 
 
 def test_f3_discrete_example_manifest_and_evaluation_match_runtime_contract() -> None:
@@ -78,7 +111,10 @@ def test_f3_discrete_example_manifest_and_evaluation_match_runtime_contract() ->
         "schemaId": "five-axis.m5-discrete-command@1",
     }
 
-    bundle = client.post("/api/v1/runs/evaluate", json=payload["runSpec"])
+    bundle = client.post(
+        "/api/v1/runs/evaluate",
+        json=_javascript_json_roundtrip(payload["runSpec"]),
+    )
 
     assert bundle.status_code == 200
     run_bundle = bundle.json()

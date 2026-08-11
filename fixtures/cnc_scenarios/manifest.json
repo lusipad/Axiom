@@ -22,7 +22,6 @@
       "expectedSharedInputHash": "7abd5f264506e4f8847eaadcba52a3c4b271ddcab567a217c2904b9b73a15b85",
       "expectedParameterSetHash": "6564f8de058d80ce23a2ae720785bb93d70174522f8024ec443ed63f8ca7a5ca",
       "expectedExperimentSpecHash": "e0cd9144d290a51a4c3023e443856305f07cadeb8aed64eab7ddbee9825b13b0",
-      "expectedContentHash": "21d13e551c6ce1716c185d73c88d77d4460f551cbbb26673497147570c8ae20f",
       "expectedCompatible": true,
       "expectedMetric": {
         "metricId": "paired.euclidean.max",

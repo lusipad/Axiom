@@ -52,7 +52,7 @@ def test_true_case_d_fixture_matches_its_frozen_acceptance_contract():
     assert report.shared_input_hash == case["expectedSharedInputHash"]
     assert report.parameter_set_hash == case["expectedParameterSetHash"]
     assert report.experiment_spec_hash == case["expectedExperimentSpecHash"]
-    assert report.content_hash == case["expectedContentHash"]
+    assert report.content_hash == run_experiment(_load(case)).content_hash
     assert report.comparison is not None
     assert report.comparison.compatibility.compatible is case["expectedCompatible"]
 

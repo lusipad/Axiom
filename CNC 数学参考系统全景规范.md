@@ -2,7 +2,7 @@
 
 > 文档类型：领域包规范  
 > 领域包：`FiveAxisTrajectoryPack`  
-> 状态：Draft v0.3 / 契约闭合版  
+> 状态：Draft v0.4 / F0 已实现
 > 依赖：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)  
 > 上位路线：[Axiom 项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 相邻领域包：[有序离散点领域包规范](有序离散点领域包规范.md)
@@ -176,7 +176,7 @@ flowchart TB
 | `ContinuouslyFeasible` | `regularity.certified`、`time-law.bound`；请求 Jerk 时每个移动段还必须达到 C3 |
 | `IntervalCertified` | `time-law.bound`、`reconstruction.policy-bound`，以及 Case 请求的全部区间验证能力 |
 
-表中的短名只为排版；机器可读 manifest 必须写完整 `five-axis.*@1` ID，并使用通用规范 §6.1 的状态决议规则。
+表中的短名只为排版；机器可读 manifest 必须写完整 `five-axis.*@1` ID，并使用通用规范 §6.2 的状态决议规则。
 
 ---
 
@@ -861,6 +861,12 @@ R2 的标准正向 Claim 为：
 ### Math F0：数学宪法
 
 完成 M0–M5 定义、坐标/单位、`PathProgress`、正则性/结点事件、对应、重建、碰撞上下文、类型化误差账本、标准 Claim、证据等级、最优性状态、失败分类和测试格式。
+
+F0 不是仅供阅读的类型清单。退出本阶段还必须同时具备：可由 Core 注册和路由的 `FiveAxisTrajectoryPack` 描述符/运行绑定；对 M0～M5 Artifact、Profile、Policy、Certificate 的严格机器 schema；至少一个内容标识已冻结的 F0 fixture；以及通过显式 Adapter 将 Cartesian 采样位置视图转换为有序离散点的正反例。Core 不得为此增加五轴 ID 或字段分支。
+
+F0 readiness 只有在请求 Artifact 的内容标识属于 Manifest 冻结的 fixture 集合、Artifact 与 Manifest 的 M0～M5 envelope 内容身份逐阶段一致、必需能力完整且声明的有序点导出 Adapter 路由真实注册时，才允许进入 `Computed`。任一身份、阶段覆盖或能力闭合失败都必须产生结构化失败并阻止 `Passed`；不能仅凭 schema 可解析或 Manifest 自报的期望状态放行。
+
+通过 F0 只证明契约可执行。F0 Evaluator 可以验证 schema、Manifest、能力依赖和失败映射，但不得生成本规范 §14 的任一正向数学 Claim；缺少碰撞上下文或重建策略时必须分别保持 `CollisionUnchecked` / `InsufficientContext` / `UnsupportedCapability` 与 `ClaimStatus = Inconclusive`，不能用“schema 已通过”替代连续区间证明。
 
 ### Math F1：几何参考栈
 

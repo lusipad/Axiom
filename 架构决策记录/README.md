@@ -16,6 +16,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0004](ADR-0004-五轴碰撞与安全声明边界.md) | 在 R2 纳入模型碰撞验证，并禁止把它升级为真实设备安全声明 | Accepted |
 | [ADR-0005](ADR-0005-首版Run严格比较策略.md) | 首版只比较严格兼容 Run，不通过隐式转换制造排名 | Accepted |
 | [ADR-0006](ADR-0006-首个可执行Experiment与本地Runner边界.md) | 首个可执行双臂 Experiment 使用静态本地 Runner 和严格参数契约 | Accepted |
+| [ADR-0007](ADR-0007-领域包运行时绑定与显式Artifact-Adapter.md) | DomainPack 描述符与运行时绑定分离，跨领域转换必须使用显式 Artifact Adapter | Accepted |
 
 ## 生命周期规则
 

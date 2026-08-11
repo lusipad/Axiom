@@ -1,8 +1,8 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.3
-> 当前阶段：R0 通用框架 + R1 有序离散点  
+> 状态：Draft / 方向重整与契约闭合版 v0.4
+> 当前阶段：R0/R1 已闭合 + R2 Math F0
 > 更新日期：2026-08-11
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)
@@ -261,6 +261,8 @@ FiveAxisTrajectoryPack 是通用框架的第一个复杂领域验证。它承担
 | Evidence | Exact / Certified / Validated / Observed |
 
 领域内部阶段门仍由数学规范定义；本蓝图只决定它在平台 Roadmap 中何时进入。
+
+实现上，DomainPack 的可哈希描述符与进程内运行绑定分离；Core 只按 `domainPackId` 解析绑定并保存领域中立 Artifact envelope。任何五轴采样视图与有序点之间的转换都必须经过版本化 Artifact Adapter，产生新的内容标识并记录保留/丢弃语义。FiveAxis F0 可以先进入网页作为“契约与能力面板”，但在 Math F1～F4 完成前不得把它呈现为几何、运动学、碰撞或可执行性求解器。
 
 ## 7. 设备与物理世界
 

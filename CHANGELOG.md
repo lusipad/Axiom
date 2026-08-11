@@ -15,12 +15,14 @@
 
 - R2 数学领域 gate 现在以 Math F4 为完成门，Roadmap 下一阶段切到 R3 设备只读接入。
 - 文档与示例都把 F4 的数学边界固定为 Windows AMD64 + CPython 3.12.10 + Haswell / 单线程 baseline，不把 Ubuntu 或设备写入声明当成本阶段支持范围。
+- Windows 验收约束固定 `pip==26.1.2`，源码安装与 wheel 烟测都会先按 `constraints/acceptance.txt` 升级安装器，避免发布环境落入已知漏洞版本。
 - F4 只通过 reference / SUT cross-validation 与 M5 重建碰撞证据发布数学 claims，不引入 `DeviceSafe`、`ProcessSafe` 或上机许可。
 
 ### Verification
 
 - F4 的 example payload 可经 `POST /api/v1/runs/evaluate` 回放为 `Passed`，并保留七个数学 gate claims。
 - API 层已暴露 F4 manifest / scenarios / example payload 端点，供网页工作台消费同一份数据契约。
+- Windows AMD64 + CPython 3.12.10 精确环境下，Python 全量 503 项、前端 14 项、TypeScript 检查、生产构建、wheel 安装后 CLI/API/网页烟测均通过；依赖审计未发现已知漏洞。
 - 当前文档同步保留了 0.7.0 的旧条目，不回写历史版本内容。
 
 ### Boundary

@@ -99,7 +99,8 @@ F4 的公开 API 很薄，数据面只暴露三类查询和一个回放入口：
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[test]"
+.\.venv\Scripts\python.exe -m pip install --upgrade -c constraints\acceptance.txt pip
+.\.venv\Scripts\python.exe -m pip install -c constraints\acceptance.txt -e ".[test]"
 .\.venv\Scripts\python.exe -m axiom evaluate examples\basic-evaluation.json
 # 准备符合 run-spec@1 的 JSON 后：
 .\.venv\Scripts\python.exe -m axiom run .\path\to\run-spec.json

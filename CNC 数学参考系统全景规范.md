@@ -910,6 +910,8 @@ M5 将 `SampledTrajectory` 与 `DiscreteCommand` 分开，固定周期、非整�
 
 v0.8.0 的 F4 实现已经完成上述验收闭环，`FiveAxisTrajectoryPack` 现在关闭 Axiom Roadmap 的 R2 数学领域 gate，并进入正式 Five-Axis Algorithm Lab。F4 公开的七个数学 claims 如下：
 
+版本化 `F4StageAcceptanceReport` 只聚合 F4 新增的三类拓扑正例、Adapter 输入哈希失败反例、M5 区间内部碰撞反例及七个 gate 状态。上述验收条目中属于 F1～F3 的 `CorrespondencePolicy`、`ReconstructionPolicy`、M2/M3 碰撞与可复现性契约，继续由各阶段的版本化 fixture、manifest 和 Windows 全量发布测试守门；它们不会为了形成 F4 报告而重复伪装成新的 F4 场景。
+
 | Claim | 典型证据闭环 | 仍然不允许 |
 |---|---|---|
 | `GeometryValid` | M1→M2 连续几何、`PathProgress`、对应策略、连续误差证书 | 设备安全、过程安全 |

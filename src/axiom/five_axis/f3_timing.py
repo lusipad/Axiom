@@ -369,6 +369,11 @@ def _plan_spans(
     requirements = _collect_node_requirements(path, profile)
     if any(item.refutes_trajectory for item in requirements):
         raise ValueError("collision-violation nodeEvents refute positive F3 timing claims")
+    if timing_mode == "second-order-optimal" and any(
+        item.boundary_mode == "allow-continuous" and _EPSILON < item.sigma < 1.0 - _EPSILON
+        for item in requirements
+    ):
+        raise ValueError("the Certified second-order subset does not allow moving internal nodes")
     require_c3 = timing_mode == "smoothstep7-feasible"
     if not _regularity_is_sufficient(path, requirements, require_c3=require_c3):
         raise ValueError("allow-continuous nodes do not certify the continuity required by the requested timing mode")

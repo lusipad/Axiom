@@ -4,7 +4,7 @@
 
 `programs/continuous-five-axis-line.cl` 使用真实 CL 风格的 `UNITS / FROM / FEDRAT / GOTO / END` 指令语义；机床、碰撞体和结果均为确定性工程参考模型，不是厂商控制器输出或真实设备观测，不能建立 `DeviceSafe`、`ProcessSafe` 或上机许可。
 
-`manifest.json` 冻结可移植的 M0/M1/M2/M3 内容身份、MachineProfile、碰撞模型、标准 Claim 状态和证据等级。`RunBundle.bundleHash` 绑定数值环境，只在 manifest 所列环境完全匹配时作为金值断言；其他环境仍执行完整性重验和同环境确定性重放。
+`manifest.json` 冻结可移植的 M0/M1/M2/M3 内容身份、MachineProfile、碰撞模型、标准 Claim 状态和证据等级。SVD 派生的奇异性证据按版本化的 12 位有效数字策略规范化；具体 Python/NumPy 版本不进入 M3 内容身份。`RunBundle.bundleHash` 仍绑定数值环境，只在 manifest 所列环境完全匹配时作为金值断言；其他环境继续执行完整性重验和同环境确定性重放。
 
 Python 使用：
 

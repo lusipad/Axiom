@@ -547,3 +547,93 @@ def test_verifier_refutes_tampered_time_law() -> None:
 
     assert verification.overall_status == "Refuted"
     assert any(entry.code == "TimeLawMismatch" for entry in verification.error_ledger)
+
+
+def test_plan_jerk_feasible_rejects_allow_continuous_nodes_without_c3_regularity() -> None:
+    axis_path = _build_axis_path(
+        event_specs=[
+            {"nodeId": "m3.node.0", "sigma": 0.0, "eventType": "ordinary-junction", "rightSegmentId": "m3.seg.1"},
+            {"nodeId": "m3.node.1", "sigma": 0.5, "eventType": "ordinary-junction", "leftSegmentId": "m3.seg.1", "rightSegmentId": "m3.seg.1"},
+        ],
+        node_continuities={"m3.node.0": "C3", "m3.node.1": "C1"},
+    )
+    profile = _build_profile(
+        axis_path,
+        x_velocity=43.75,
+        x_acceleration=525.0,
+        x_jerk=4200.0,
+        node_constraints=[
+            {"nodeId": "m3.node.0", "sigma": 0.0, "boundaryMode": "allow-continuous"},
+            {"nodeId": "m3.node.1", "sigma": 0.5, "boundaryMode": "allow-continuous"},
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="allow-continuous nodes do not certify the continuity required by the requested timing mode",
+    ):
+        plan_jerk_feasible_time_law(axis_path, profile)
+
+
+def test_plan_second_order_rejects_profile_constraints_for_unknown_nodes() -> None:
+    axis_path = _build_axis_path()
+    profile = _build_profile(
+        axis_path,
+        x_velocity=200.0,
+        x_acceleration=80.0,
+        node_constraints=[{"nodeId": "missing.node", "sigma": 0.5, "boundaryMode": "allow-continuous"}],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="motionConstraintProfile nodeConstraints must target sourceAxisPath nodeEvents",
+    ):
+        plan_second_order_time_law(axis_path, profile)
+
+
+def test_plan_second_order_requires_dwell_seconds_for_dwell_events() -> None:
+    axis_path = _build_axis_path(
+        event_specs=[
+            {"nodeId": "m3.node.0", "sigma": 0.0, "eventType": "ordinary-junction", "rightSegmentId": "m3.seg.1"},
+            {"nodeId": "m3.node.1", "sigma": 0.5, "eventType": "dwell", "leftSegmentId": "m3.seg.1", "rightSegmentId": "m3.seg.1"},
+        ]
+    )
+    profile = _build_profile(axis_path, x_velocity=200.0, x_acceleration=80.0)
+
+    with pytest.raises(
+        ValueError,
+        match="dwell nodeEvents require MotionConstraintProfile dwellSeconds",
+    ):
+        plan_second_order_time_law(axis_path, profile)
+
+
+def test_plan_jerk_feasible_requires_maximum_jerk_on_moving_axes() -> None:
+    axis_path = _build_axis_path()
+    profile = _build_profile(axis_path, x_velocity=43.75, x_acceleration=525.0)
+
+    with pytest.raises(
+        ValueError,
+        match="smoothstep7-feasible planning requires maximumJerk on every moving axis",
+    ):
+        plan_jerk_feasible_time_law(axis_path, profile)
+
+
+def test_plan_second_order_does_not_mark_internal_ordinary_junction_as_proven_optimal() -> None:
+    axis_path = _build_axis_path(
+        event_specs=[
+            {"nodeId": "m3.node.0", "sigma": 0.0, "eventType": "ordinary-junction", "rightSegmentId": "m3.seg.1"},
+            {"nodeId": "m3.node.1", "sigma": 0.5, "eventType": "ordinary-junction", "leftSegmentId": "m3.seg.1", "rightSegmentId": "m3.seg.1"},
+        ]
+    )
+    profile = _build_profile(
+        axis_path,
+        x_velocity=200.0,
+        x_acceleration=80.0,
+        node_constraints=[
+            {"nodeId": "m3.node.0", "sigma": 0.0, "boundaryMode": "allow-continuous"},
+            {"nodeId": "m3.node.1", "sigma": 0.5, "boundaryMode": "allow-continuous"},
+        ],
+    )
+
+    with pytest.raises(ValueError, match="does not allow moving internal nodes"):
+        plan_second_order_time_law(axis_path, profile)

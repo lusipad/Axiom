@@ -32,7 +32,7 @@ from ..models import (
     Provenance,
 )
 from ..runtime import DomainRuntimeBinding, register_domain_runtime_binding
-from .f3_models import M4ContinuousTrajectory
+from .f3_models import ContinuousTrajectoryVerification, M4ContinuousTrajectory
 from .f3_sampling import (
     M5DiscreteCommand,
     M5SampledTrajectory,
@@ -287,8 +287,13 @@ def _m5_verification(artifact: F3Artifact) -> M5VerificationResult | None:
     return verify_interval_reconstruction(artifact)
 
 
-def _continuous_metric(artifact: F3Artifact) -> MetricResult:
-    verification = verify_continuous_trajectory(_m4_from_artifact(artifact))
+def _evaluation_verifications(
+    artifact: F3Artifact,
+) -> tuple[ContinuousTrajectoryVerification, M5VerificationResult | None]:
+    return verify_continuous_trajectory(_m4_from_artifact(artifact)), _m5_verification(artifact)
+
+
+def _continuous_metric(verification: ContinuousTrajectoryVerification) -> MetricResult:
     details = {"verification": verification.model_dump(mode="json", by_alias=True, exclude_none=True)}
     if verification.overall_status == "Supported":
         return _computed(
@@ -315,8 +320,7 @@ def _continuous_metric(artifact: F3Artifact) -> MetricResult:
     )
 
 
-def _duration_metric(artifact: F3Artifact) -> MetricResult:
-    verification = verify_continuous_trajectory(_m4_from_artifact(artifact))
+def _duration_metric(verification: ContinuousTrajectoryVerification) -> MetricResult:
     return _computed(
         TRAJECTORY_DURATION_METRIC_ID,
         verification.total_duration_seconds,
@@ -327,8 +331,10 @@ def _duration_metric(artifact: F3Artifact) -> MetricResult:
     )
 
 
-def _utilization_metric(artifact: F3Artifact, metric_id: str) -> MetricResult:
-    verification = verify_continuous_trajectory(_m4_from_artifact(artifact))
+def _utilization_metric(
+    verification: ContinuousTrajectoryVerification,
+    metric_id: str,
+) -> MetricResult:
     usage = verification.axis_constraint_usage
     if metric_id == AXIS_VELOCITY_UTILIZATION_MAX_METRIC_ID:
         ratios = [item.maximum_velocity / item.velocity_limit for item in usage]
@@ -375,15 +381,16 @@ def _interval_reason(verification: M5VerificationResult) -> str:
     return result.reason_code if result and result.reason_code else "IntervalReconstructionVerificationUnsupported"
 
 
-def _interval_metric(artifact: F3Artifact) -> MetricResult:
-    verification = _m5_verification(artifact)
+def _interval_metric(
+    verification: M5VerificationResult | None,
+    continuous: ContinuousTrajectoryVerification,
+) -> MetricResult:
     if verification is None:
         return _unavailable(
             INTERVAL_CERTIFIED_METRIC_ID,
             MetricStatus.NOT_APPLICABLE,
             "MetricOutsideArtifactDomain",
         )
-    continuous = verify_continuous_trajectory(_m4_from_artifact(artifact))
     details = {
         "continuousVerification": continuous.model_dump(mode="json", by_alias=True, exclude_none=True),
         "reconstructionVerification": verification.model_dump(mode="json", by_alias=True, exclude_none=True),
@@ -445,8 +452,10 @@ def _sample_metric(artifact: F3Artifact, metric_id: str) -> MetricResult:
     )
 
 
-def _reconstruction_error_metric(artifact: F3Artifact, metric_id: str) -> MetricResult:
-    verification = _m5_verification(artifact)
+def _reconstruction_error_metric(
+    verification: M5VerificationResult | None,
+    metric_id: str,
+) -> MetricResult:
     if verification is None:
         return _unavailable(metric_id, MetricStatus.NOT_APPLICABLE, "MetricOutsideArtifactDomain")
     quantity = "position" if metric_id == RECONSTRUCTION_POSITION_ERROR_MAX_METRIC_ID else "orientation"
@@ -466,39 +475,48 @@ def _reconstruction_error_metric(artifact: F3Artifact, metric_id: str) -> Metric
     )
 
 
-def _metric_result(request: FiveAxisF3EvaluationBindingRequest, metric_id: str) -> MetricResult:
+def _metric_result(
+    request: FiveAxisF3EvaluationBindingRequest,
+    metric_id: str,
+    *,
+    continuous_verification: ContinuousTrajectoryVerification,
+    reconstruction_verification: M5VerificationResult | None,
+) -> MetricResult:
     artifact = request.artifact
     if metric_id == CONTINUOUSLY_FEASIBLE_METRIC_ID:
-        return _continuous_metric(artifact)
+        return _continuous_metric(continuous_verification)
     if metric_id == TRAJECTORY_DURATION_METRIC_ID:
-        return _duration_metric(artifact)
+        return _duration_metric(continuous_verification)
     if metric_id in {
         AXIS_VELOCITY_UTILIZATION_MAX_METRIC_ID,
         AXIS_ACCELERATION_UTILIZATION_MAX_METRIC_ID,
         AXIS_JERK_UTILIZATION_MAX_METRIC_ID,
     }:
-        return _utilization_metric(artifact, metric_id)
+        return _utilization_metric(continuous_verification, metric_id)
     if metric_id == INTERVAL_CERTIFIED_METRIC_ID:
-        return _interval_metric(artifact)
+        return _interval_metric(reconstruction_verification, continuous_verification)
     if metric_id in {SAMPLE_COUNT_METRIC_ID, SAMPLE_PERIOD_METRIC_ID}:
         return _sample_metric(artifact, metric_id)
     if metric_id in {
         RECONSTRUCTION_POSITION_ERROR_MAX_METRIC_ID,
         RECONSTRUCTION_ORIENTATION_ERROR_MAX_METRIC_ID,
     }:
-        return _reconstruction_error_metric(artifact, metric_id)
+        return _reconstruction_error_metric(reconstruction_verification, metric_id)
     return _unavailable(metric_id, MetricStatus.UNSUPPORTED_CAPABILITY, "MetricNotImplementedInF3")
 
 
-def _capabilities(request: FiveAxisF3EvaluationBindingRequest) -> list[CapabilityResolution]:
+def _capabilities(
+    request: FiveAxisF3EvaluationBindingRequest,
+    *,
+    continuous_verification: ContinuousTrajectoryVerification,
+) -> list[CapabilityResolution]:
     artifact = request.artifact
-    continuous = verify_continuous_trajectory(_m4_from_artifact(artifact))
     resolved = [
         CapabilityResolution(capabilityId=CAP_PATH_PROGRESS, source="Artifact"),
         CapabilityResolution(capabilityId=CAP_REGULARITY, source="Artifact"),
         CapabilityResolution(capabilityId=CAP_MOTION_CONSTRAINT_PROFILE, source="Profile"),
     ]
-    if continuous.overall_status == "Supported":
+    if continuous_verification.overall_status == "Supported":
         resolved.append(CapabilityResolution(capabilityId=CAP_TIME_LAW, source="Evaluator"))
     if not isinstance(artifact, M4ContinuousTrajectory):
         resolved.append(CapabilityResolution(capabilityId=CAP_RECONSTRUCTION, source="Evaluator"))
@@ -513,8 +531,17 @@ def evaluate_five_axis_f3(
         if isinstance(request, FiveAxisF3EvaluationBindingRequest)
         else FiveAxisF3EvaluationBindingRequest.model_validate(request)
     )
+    continuous_verification, reconstruction_verification = _evaluation_verifications(resolved.artifact)
     metric_ids = [item.metric_id for item in resolved.case.required_metrics + resolved.case.optional_metrics]
-    raw_results = [_metric_result(resolved, metric_id) for metric_id in metric_ids]
+    raw_results = [
+        _metric_result(
+            resolved,
+            metric_id,
+            continuous_verification=continuous_verification,
+            reconstruction_verification=reconstruction_verification,
+        )
+        for metric_id in metric_ids
+    ]
     thresholds = {
         item.metric_id: item.threshold
         for item in resolved.case.required_metrics + resolved.case.optional_metrics
@@ -548,7 +575,10 @@ def evaluate_five_axis_f3(
         executionStatus=ExecutionStatus.SUCCEEDED,
         caseOutcome=case_outcome,
         metricResults=results,
-        capabilities=_capabilities(resolved),
+        capabilities=_capabilities(
+            resolved,
+            continuous_verification=continuous_verification,
+        ),
         domainFailures=failures,
         evaluatorVersion=F3_EVALUATOR_ID,
         provenance=provenance,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 
+import axiom.five_axis.f3_runtime as f3_runtime_module
 from axiom.five_axis.f3_runtime import (
     CONTINUOUSLY_FEASIBLE_CLAIM_ID,
     CONTINUOUSLY_FEASIBLE_METRIC_ID,
@@ -107,3 +108,26 @@ def test_f3_run_bundle_is_deterministic() -> None:
         mode="json", by_alias=True, exclude_none=True
     )
     assert first.bundle_hash
+
+
+def test_f3_runtime_replays_each_verifier_at_most_once_per_evaluation(monkeypatch) -> None:
+    counts = {"continuous": 0, "reconstruction": 0}
+    original_continuous = f3_runtime_module.verify_continuous_trajectory
+    original_reconstruction = f3_runtime_module.verify_interval_reconstruction
+
+    def counted_continuous(*args, **kwargs):
+        counts["continuous"] += 1
+        return original_continuous(*args, **kwargs)
+
+    def counted_reconstruction(*args, **kwargs):
+        counts["reconstruction"] += 1
+        return original_reconstruction(*args, **kwargs)
+
+    monkeypatch.setattr(f3_runtime_module, "verify_continuous_trajectory", counted_continuous)
+    monkeypatch.setattr(f3_runtime_module, "verify_interval_reconstruction", counted_reconstruction)
+
+    bundle = evaluate_run(validate_f3_example_run_spec("canonical-table-table-jerk"))
+
+    assert bundle.run.execution_status.value == "Succeeded"
+    assert bundle.run.case_outcome.value == "Passed"
+    assert counts == {"continuous": 1, "reconstruction": 1}

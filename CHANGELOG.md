@@ -25,6 +25,10 @@
 
 - 统一 M5 内容身份中的 signed zero，使示例 RunSpec 经浏览器 `JSON.stringify` 往返后仍能通过冻结哈希校验。
 - 统一网页运行态 Claim 与 API 的 `claimDefinitionId` 字段，确保 Supported、Inconclusive 与 Refuted 结论按真实证据展示。
+- 将区间验证的 `Unsupported` 明确投影为标准 `IntervalCertified = Inconclusive`，并让场景摘要、MathStageManifest、RunBundle 与 fixture 使用同一状态和证据语义。
+- 二阶解析 `ProvenOptimal` 严格拒绝内部连续通过的移动结点，保持在 ADR 冻结的线性 stop-to-stop 闭包内。
+- 规范化 SVD 派生的奇异性证据并把具体运行时版本移到 Manifest/Run 层，使 M3/M4/M5 内容身份在 Python 3.12/3.14 与 NumPy 2.4/2.5 验收环境间一致。
+- 单次 F3 评估只重放一次连续轨迹与区间重建 verifier，避免指标数量放大相同证明成本。
 
 ### 当前边界
 

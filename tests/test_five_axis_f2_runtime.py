@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import math
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from axiom.evaluator import _content_hash
 from axiom.five_axis.f2_collision import ConfigurationCollisionModel, hash_configuration_collision_model
@@ -554,7 +556,7 @@ def test_m3_runs_through_generic_core_binding_and_freezes_continuous_metrics() -
     assert bundle.metric_result(ORIENTATION_RESIDUAL_MAX_METRIC_ID).value == 0.0
     assert bundle.metric_result(AXIS_LIMIT_MARGIN_MIN_METRIC_ID).unit == "dimensionless"
     assert bundle.metric_result(AXIS_LIMIT_MARGIN_MIN_METRIC_ID).value == 0.48
-    assert bundle.metric_result(SINGULARITY_MINIMUM_SINGULAR_VALUE_METRIC_ID).value == 0.025932131196837585
+    assert bundle.metric_result(SINGULARITY_MINIMUM_SINGULAR_VALUE_METRIC_ID).value == 0.0259321311968
     assert [capability.capability_id for capability in bundle.report.capabilities] == [
         "five-axis.path-progress.bound@1",
         "five-axis.regularity.certified@1",
@@ -572,6 +574,27 @@ def test_kinematically_feasible_claim_is_supported_only_for_certified_selected_c
     assert result.status is MetricStatus.COMPUTED
     assert result.value is True
     assert result.evidence is not None and result.evidence.level == "Certified"
+    assert claim.status is ClaimStatus.SUPPORTED
+
+
+def test_replay_singularity_gate_uses_raw_decision_instead_of_canonical_evidence() -> None:
+    artifact = _axis_path()
+    canonical_evidence_above_raw_threshold = SimpleNamespace(
+        minimum_singular_value=1e-8,
+        singular=False,
+    )
+
+    with patch(
+        "axiom.five_axis.f2_runtime.jacobian_evidence",
+        return_value=canonical_evidence_above_raw_threshold,
+    ):
+        bundle = evaluate_run(_run_spec(artifact, KINEMATICALLY_FEASIBLE_METRIC_ID))
+
+    result = bundle.metric_result(KINEMATICALLY_FEASIBLE_METRIC_ID)
+    claim = _claim(bundle, KINEMATICALLY_FEASIBLE_CLAIM_ID)
+    assert result.status is MetricStatus.COMPUTED
+    assert result.value is True
+    assert result.details["minimumSingularValueMin"] == 1e-8
     assert claim.status is ClaimStatus.SUPPORTED
 
 

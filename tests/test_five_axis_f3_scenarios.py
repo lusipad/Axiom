@@ -362,7 +362,8 @@ def test_second_order_scenario_omits_jerk_request_and_uses_discrete_command(patc
     assert descriptor.artifact_type == scenario.discreteCommand.artifact_type
     assert descriptor.schema_id == scenario.discreteCommand.schema_id
     assert scenario.continuousTrajectory.verification.optimality.classification == "ProvenOptimal"
-    assert scenario.manifest.expected_claims[1].expected_status == "Unsupported"
+    assert scenario.manifest.expected_claims[1].expected_status == "Inconclusive"
+    assert scenario.manifest.expected_claims[1].evidence_level is None
 
 
 def test_dwell_scenario_splits_single_segment_and_inserts_real_constraints(patched_builders) -> None:
@@ -387,7 +388,8 @@ def test_zoh_and_polynomial_scenarios_preserve_expected_interval_statuses(patche
     assert zoh.discreteCommand is not None
     assert zoh_descriptor.artifact_type == zoh.discreteCommand.artifact_type
     assert zoh_descriptor.schema_id == zoh.discreteCommand.schema_id
-    assert zoh.manifest.expected_claims[1].expected_status == "Unsupported"
+    assert zoh.manifest.expected_claims[1].expected_status == "Inconclusive"
+    assert zoh.manifest.expected_claims[1].evidence_level is None
     assert polynomial.sampledTrajectory is not None
     assert polynomial_descriptor.artifact_type == polynomial.sampledTrajectory.artifact_type
     assert polynomial_descriptor.schema_id == polynomial.sampledTrajectory.schema_id

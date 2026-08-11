@@ -883,7 +883,7 @@ F1 允许正向发布 `GeometryValid` 与 `TaskGeometryCollisionFree`，前者�
 
 完成通用运动链、三类闭式基准、一般数值 IK、分支图、wrap、限位、\(Q_{free}\)、连续碰撞/间隙和奇异性证书。
 
-v0.6 的 F2 实现以 `five-axis.domain-pack@3` 接入既有领域中立运行时，并冻结三个 canonical `MachineProfile`、通用 FK、三类闭式 IK 和确定性一般数值 IK。首个可发布的连续正向子集限定为 M2 直线位置 + 常量刀轴 + 固定解析分支/wrap；M3 以 `local-power@1` 轴段、分支图、结点事件、归一化无量纲轴限位裕量、奇异性下界和内容身份绑定构成可独立复算证书。运行时不会信任 Artifact 自报结论，而会重算内容哈希、策略白名单、FK 回放、节点连续、整段限位和奇异性条件。
+v0.6 的 F2 实现以 `five-axis.domain-pack@3` 接入既有领域中立运行时，并冻结三个 canonical `MachineProfile`、通用 FK、三类闭式 IK 和确定性一般数值 IK。首个可发布的连续正向子集限定为 M2 直线位置 + 常量刀轴 + 固定解析分支/wrap；M3 以 `local-power@1` 轴段、分支图、结点事件、归一化无量纲轴限位裕量、奇异性下界和内容身份绑定构成可独立复算证书。参与内容身份的 SVD 派生最小奇异值与条件数按十进制 12 位有效数字、round-to-nearest/ties-to-even 规范化，但奇异阈值判断必须使用量化前的原始 binary64 值；具体 Python/NumPy 版本只进入 Manifest/Run 数值环境，不进入可移植 M3 内容。运行时不会信任 Artifact 自报结论，而会重算内容哈希、策略白名单、FK 回放、节点连续、整段限位和奇异性条件。
 
 `ConfigurationCollisionFree` 另由显式机床组件/环境实体、碰撞对、覆盖状态和连续区间聚合证书闭合。内建场景覆盖三类 canonical 拓扑，以及一个端点均分离但区间内部在 \(\sigma=0.5\) 碰撞的反例。F2 不生成 `ContinuouslyFeasible`、`IntervalCertified`、`DeviceSafe` 或 `ProcessSafe`；一般数值 IK、非直线/变姿态路径和未闭合碰撞覆盖不得借用解析子集的正向 Claim。
 

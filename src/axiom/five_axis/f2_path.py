@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import platform
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -25,7 +24,7 @@ from .f1_models import (
     SegmentRegularityEvidence,
     ToleranceBinding,
 )
-from .f2_kinematics import inverse_kinematics
+from .f2_kinematics import canonical_numeric_evidence, inverse_kinematics
 from .f2_models import (
     BranchGraph,
     BranchNode,
@@ -264,7 +263,7 @@ def _contract_solution(
 ) -> IKSolution:
     maximum = max(candidate.singularity.singular_values, default=0.0)
     minimum = candidate.singularity.minimum_singular_value
-    conditioning = maximum / minimum if minimum > _EPSILON else None
+    conditioning = canonical_numeric_evidence(maximum / minimum) if minimum > _EPSILON else None
     return IKSolution(
         solutionId=f"{branch_id}.k{knot_index}.s{solution_index}",
         sigma=sigma,
@@ -501,9 +500,8 @@ def _kinematics_certificate(
             _BRANCH_SELECTION_POLICY_ID,
         ),
         numericEnvironment={
-            "python": platform.python_version(),
-            "runtime": platform.python_implementation(),
-            "solver": _SOLVER_VERSION,
+            "arithmetic": "ieee-754-binary64",
+            "numericEvidencePolicy": "twelve-significant-digits@1",
         },
         positionTolerance=position_tolerance,
         orientationTolerance=orientation_tolerance,

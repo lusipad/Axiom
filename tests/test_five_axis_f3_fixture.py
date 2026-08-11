@@ -67,11 +67,17 @@ def test_f3_reference_fixture_freezes_artifacts_policies_and_claims() -> None:
         assert bundle.run.execution_status.value == case["expectedExecutionStatus"]
         assert bundle.run.case_outcome.value == case["expectedCaseOutcome"]
         claims = {claim.claim_definition_id: claim for claim in bundle.claims}
+        manifest_claims = {claim.claim_id: claim for claim in scenario.manifest.expected_claims}
+        summary_claims = payload["scenario"]["expectedClaimStatusById"]
         for claim_id, expected in case["expectedClaims"].items():
             claim = claims[claim_id]
+            manifest_claim = manifest_claims[claim_id]
             assert claim.status.value == expected["status"]
             actual_level = claim.evidence.level if claim.evidence is not None else None
             assert actual_level == expected["evidenceLevel"]
+            assert manifest_claim.expected_status == expected["status"]
+            assert manifest_claim.evidence_level == expected["evidenceLevel"]
+            assert summary_claims[claim_id] == expected["status"]
 
 
 def test_f3_reference_fixture_replays_environment_bound_bundle_hashes_when_applicable() -> None:

@@ -170,10 +170,15 @@ class _ScenarioDefinition:
     dwell_seconds: float = 0.0
     topology: str = "dual-table"
 
+    def expected_interval_claim_status(self) -> Literal["Supported", "Inconclusive", "Refuted"]:
+        if self.supported_interval_claim == "Unsupported":
+            return "Inconclusive"
+        return self.supported_interval_claim
+
     def expected_claim_status_by_id(self) -> dict[str, str]:
         return {
             CONTINUOUSLY_FEASIBLE_CLAIM_ID: "Supported",
-            INTERVAL_CERTIFIED_CLAIM_ID: self.supported_interval_claim,
+            INTERVAL_CERTIFIED_CLAIM_ID: self.expected_interval_claim_status(),
         }
 
 
@@ -220,7 +225,7 @@ _SCENARIO_DEFINITIONS: dict[str, _ScenarioDefinition] = {
     "second-order-proven-optimal": _ScenarioDefinition(
         scenario_id="second-order-proven-optimal",
         title="二阶已证最优时间律",
-        description="不请求 jerk 上限，只要求二阶固定路径最优时间参数化；采样使用 FOH，区间可明确 Unsupported。",
+        description="不请求 jerk 上限，只要求二阶固定路径最优时间参数化；采样使用 FOH，区间验证为 Unsupported，标准 Claim 为 Inconclusive。",
         base_f2_scenario_id="canonical-table-table",
         timing_mode="second-order-optimal",
         reconstruction_policy_id=FOH_POLICY_ID,
@@ -248,7 +253,7 @@ _SCENARIO_DEFINITIONS: dict[str, _ScenarioDefinition] = {
     "zoh-moving-unsupported": _ScenarioDefinition(
         scenario_id="zoh-moving-unsupported",
         title="移动 ZOH 区间不支持",
-        description="连续源轨迹仍然 Supported，但移动段使用 ZOH 只能保持 position 能力，IntervalCertified 必须 Unsupported。",
+        description="连续源轨迹仍然 Supported，但移动段使用 ZOH 只能保持 position 能力；区间验证为 Unsupported，标准 Claim 为 Inconclusive。",
         base_f2_scenario_id="canonical-table-table",
         timing_mode="smoothstep7-feasible",
         reconstruction_policy_id=ZOH_POLICY_ID,
@@ -690,8 +695,14 @@ def _build_manifest(
             ExpectedClaim(
                 claimId=INTERVAL_CERTIFIED_CLAIM_ID,
                 claimClass="M5",
-                expectedStatus=definition.supported_interval_claim,
-                evidenceLevel="Certified" if definition.supported_interval_claim == "Supported" else "Validated",
+                expectedStatus=definition.expected_interval_claim_status(),
+                evidenceLevel=(
+                    "Certified"
+                    if definition.supported_interval_claim == "Supported"
+                    else "Validated"
+                    if definition.supported_interval_claim == "Refuted"
+                    else None
+                ),
             ),
         ),
         expectedEvidence=(

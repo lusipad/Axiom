@@ -480,4 +480,82 @@ describe("Five-Axis F3 workbench", () => {
     expect(screen.queryByText("暂无区间证书")).not.toBeInTheDocument();
     expect(screen.getAllByTitle(hashC).length).toBeGreaterThan(0);
   });
+
+  it("初始化时在场景目录为空时展示错误而不伪造结果", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/five-axis/f3/manifest")) return Promise.resolve(jsonResponse(manifest));
+      if (url.endsWith("/five-axis/f3/scenarios")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<F3Workbench catalog={catalog} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("F3 场景目录为空。");
+    expect(screen.getByText("execution: Not run")).toBeInTheDocument();
+    expect(screen.queryByText("IntervalCertified is true")).not.toBeInTheDocument();
+  });
+
+  it("重新评估失败时清空旧 bundle 并展示 API 错误", async () => {
+    let runCount = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/five-axis/f3/manifest")) return Promise.resolve(jsonResponse(manifest));
+      if (url.endsWith("/five-axis/f3/scenarios")) return Promise.resolve(jsonResponse(scenarios));
+      if (url.includes("/examples/five-axis-f3")) return Promise.resolve(jsonResponse(f3Example("smoothstep-certified")));
+      if (url.endsWith("/runs/evaluate")) {
+        runCount += 1;
+        if (runCount === 1) return Promise.resolve(jsonResponse(f3RunBundle("smoothstep-certified")));
+        return Promise.resolve(jsonResponse({ detail: "runner unavailable" }, 503));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<F3Workbench catalog={catalog} />);
+
+    expect(await screen.findByText("execution: Succeeded")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新评估 F3" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
+    expect(screen.getByText("execution: Not run")).toBeInTheDocument();
+    expect(screen.queryByText("IntervalCertified is true")).not.toBeInTheDocument();
+  });
+
+  it("下载证据 JSON 时创建并释放 blob URL", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/five-axis/f3/manifest")) return Promise.resolve(jsonResponse(manifest));
+      if (url.endsWith("/five-axis/f3/scenarios")) return Promise.resolve(jsonResponse(scenarios));
+      if (url.includes("/examples/five-axis-f3")) {
+        const scenarioId = new URL(url, "http://test").searchParams.get("scenarioId") ?? "smoothstep-certified";
+        return Promise.resolve(jsonResponse(f3Example(scenarioId)));
+      }
+      if (url.endsWith("/runs/evaluate")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { request?: { scenarioId?: string } };
+        return Promise.resolve(jsonResponse(f3RunBundle(body.request?.scenarioId ?? "smoothstep-certified")));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    });
+    const createObjectURL = vi.fn(() => "blob:test");
+    const revokeObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: revokeObjectURL });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<F3Workbench catalog={catalog} />);
+
+    expect(await screen.findByText("execution: Succeeded")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("下载 F3 证据 JSON"));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:test");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: originalCreateObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: originalRevokeObjectURL });
+  });
 });

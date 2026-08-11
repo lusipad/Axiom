@@ -3,6 +3,8 @@ implementation-notes.md
 __pycache__/
 .pytest_cache/
 .hypothesis/
+.coverage
+htmlcov/
 *.egg-info/
 build/
 dist/

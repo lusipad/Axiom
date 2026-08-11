@@ -81,10 +81,26 @@
         "pydantic": "2.12.5"
       },
       "bundleHashes": {
-        "canonical-head-head": "ae650aa2046892e99363183f24dad7f1f5106be640c7da784f11a8be3e3a1c07",
-        "canonical-head-table": "83a3c860f1542cde5c3afa12f238fdf207c843995f3283450fe3046e707ef104",
-        "canonical-table-table": "b7e2b6d78131bd53eebfca507315bbb7af93807bb8d8fd45e7041ec71ef3d086",
-        "configuration-interior-collision": "fc11745cc84919a59b6b539844bf438394c8365b69e7845c27eaca78554f1718"
+        "canonical-head-head": "71363cdafee1ac288e4171001474f1c4afafbf67dc04fb737e55d850394ace4f",
+        "canonical-head-table": "7fdf28d50221b66ade72aba5c3cc273ed45224281d022073cd179ca37e56c1e0",
+        "canonical-table-table": "62df30744d669cdb0a3379982a7185299c67807f4f4dbfe6de80b484083120b9",
+        "configuration-interior-collision": "e5aeb8189f8f287be764a8248c858e05cc5dbc7d470f58d0003117d1556b588f"
+      }
+    },
+    {
+      "label": "acceptance-python-3.12-reference-2026-08-12",
+      "numericEnvironment": {
+        "python": "3.12.13",
+        "numpy": "2.5.2",
+        "scipy": "1.18.0",
+        "pint": "0.25.3",
+        "pydantic": "2.13.4"
+      },
+      "bundleHashes": {
+        "canonical-head-head": "2b97ef02085d730f9a318e976928e35e3146b67579215ef494e3ded4bd90a064",
+        "canonical-head-table": "2343d9700e29fc278d92cf6d6305ed1f82dd22c38c12faeea7720a9f1fcb82ca",
+        "canonical-table-table": "58a7207d71740b37c2fb4e060ed530720e7110669e396959039ec247da65039a",
+        "configuration-interior-collision": "1b2ea8f07856ebd61be1e8d367d6533d4aa588cdada747866881cd6150fc162e"
       }
     }
   ]

@@ -631,3 +631,20 @@ def test_verifier_refutes_interval_coefficient_tamper(monkeypatch: pytest.Monkey
 
     assert result.status == "Refuted"
     assert next(item for item in result.quantities if item.quantity == "interval-certified").reason_code == "CoefficientEndpointMismatch"
+
+
+def test_sampling_rejects_non_finite_sample_period(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_evaluator(monkeypatch, _smooth_state)
+    m4 = _build_m4(1.0, velocity_limit=100.0, acceleration_limit=100.0, jerk_limit=100.0)
+
+    with pytest.raises(ValueError, match="value must be a finite JSON number"):
+        sample_continuous_trajectory(m4, sample_period=float("nan"), policy=REFERENCE_M4_POLICY_ID, final_hold=False)
+
+
+def test_policy_state_rejects_times_past_duration_without_final_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_evaluator(monkeypatch, _smooth_state)
+    m4 = _build_m4(1.0, velocity_limit=100.0, acceleration_limit=100.0, jerk_limit=100.0)
+    artifact = sample_continuous_trajectory(m4, sample_period=0.5, policy=REFERENCE_M4_POLICY_ID, final_hold=False)
+
+    with pytest.raises(ValueError, match="t exceeds the sampled duration and finalHold is disabled"):
+        sampling_module._evaluate_policy_state(artifact, 1.01)

@@ -391,7 +391,7 @@ def test_compare_runs_records_environment_differences_without_marking_incompatib
     comparison = _comparison_case("cnc-contour-ab-pass-vs-fail@1")
     left_bundle = _evaluate_bundle(evaluate_run, comparison["left"]["subjectId"], comparison["left"]["request"])
     right_bundle = _evaluate_bundle(evaluate_run, comparison["right"]["subjectId"], comparison["right"]["request"])
-    _set_runtime_path(right_bundle, "run.numeric_environment.python", "3.12.10")
+    _set_runtime_path(right_bundle, "run.numeric_environment.python", "different-python-version")
     _set_runtime_path(right_bundle, "report.evaluator_version", "ordered-point-evaluator@2")
 
     result = _to_data(compare_runs(left_bundle, right_bundle))

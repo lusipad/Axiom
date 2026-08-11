@@ -220,7 +220,7 @@ def test_lift_supports_all_three_canonical_profiles(
     assert axis_path.kinematics_certificate.interval_count == len(axis_path.joint_segments)
     assert axis_path.kinematics_certificate.numeric_environment == {
         "arithmetic": "ieee-754-binary64",
-        "numericEvidencePolicy": "twelve-significant-digits@1",
+        "numericEvidencePolicy": "twelve-significant-digits-with-1e-14-residual-floor@1",
     }
     assert all(segment.branch_id == axis_path.kinematics_certificate.selected_branch_id for segment in axis_path.joint_segments)
 

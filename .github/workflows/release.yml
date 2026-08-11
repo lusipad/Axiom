@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12.13"
+          python-version: "3.12.10"
           cache: pip
 
       - name: Install Python dependencies

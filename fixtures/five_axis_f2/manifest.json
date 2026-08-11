@@ -107,10 +107,10 @@
         "pydantic": "2.12.5"
       },
       "bundleHashes": {
-        "canonical-head-head": "42d86f1383dc48b6a0d57b5d226a5ffba061ac5c354e8a7e2a9203e5d33254ec",
-        "canonical-head-table": "1489af3d8772738d3f772d6fe7b82bf2181744246fbf580b63a8ae97eb80429a",
-        "canonical-table-table": "d8ae38954b5cdbd50c51ea071e17297648c4843dcef7710f614057800a099431",
-        "configuration-interior-collision": "b70da7a65c03cf1b0af58c2b614b2abbd721f7064f629f273eced0ed1e85e4d2"
+        "canonical-head-head": "415c6a81ec9062f00c806458529b24e8d75995010e857185f90afffb2bb472ef",
+        "canonical-head-table": "029ad4d0f67c82a35a0a056540a05f6a9f7975d615411d41b26e9ecbb33393b5",
+        "canonical-table-table": "e0224f5a3f6cf2789e828506d86bc714adf3b2fbcdd48976205beae1ae9beee7",
+        "configuration-interior-collision": "82ef2f6a45ecc85fade9fe81783cbcab0894f9255886a182bcc144c6319d0455"
       }
     },
     {
@@ -125,10 +125,28 @@
         "pydantic": "2.13.4"
       },
       "bundleHashes": {
-        "canonical-head-head": "edba2efa5c79a467faccc3be588061fcfd999292ea3a946bb1ccda4ad7376b37",
-        "canonical-head-table": "f9ef6575c71ba9d9f5ea965aae3add7a31fe98ad37193053e49a4c796c75f14f",
-        "canonical-table-table": "dbc88f9b6fc10949b49f1e728975f43c12e8300f58fb25ffcc66562b9bde47eb",
-        "configuration-interior-collision": "e93c21741093a270d2949d550f6994c32039708cf6e91cc07fa35a3746e4da90"
+        "canonical-head-head": "2a5676202b9546d40353732989e52084dbe67571a03c87f4d0465ba24e1d9722",
+        "canonical-head-table": "c2b7c04df905e096a69fba8864270063024cab9661f561707aaa328f99049e50",
+        "canonical-table-table": "20fedc9ea4bdac4b42cfde11e6d59341122618beadea7d8291a2fe2a2a869514",
+        "configuration-interior-collision": "aad6ef484a4240ff30fe6650c1bdb512b82de5f4f93be15fc210faf3f0c473ee"
+      }
+    },
+    {
+      "label": "windows-ci-python-3.12-reference-2026-08-12",
+      "numericEnvironment": {
+        "system": "Windows",
+        "machine": "AMD64",
+        "python": "3.12.10",
+        "numpy": "2.5.2",
+        "scipy": "1.18.0",
+        "pint": "0.25.3",
+        "pydantic": "2.13.4"
+      },
+      "bundleHashes": {
+        "canonical-head-head": "a6ca261a92126b812b0fdc2921b850280505dba3ac0e907cba2a1ae26778a710",
+        "canonical-head-table": "e2badd2bd673828939191869d5eb7ff3cf7959e777254ebe6710817f8b1e02f2",
+        "canonical-table-table": "aac862bd76097e7d422fb5a924a7bd1cb9bdbe19522b2fe57bc56645f076e7db",
+        "configuration-interior-collision": "fa6a4f31c673599b98e28e17575d04bc0ec931f961dbd8e33a39f407a6528583"
       }
     }
   ]

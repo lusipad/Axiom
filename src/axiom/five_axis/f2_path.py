@@ -501,7 +501,7 @@ def _kinematics_certificate(
         ),
         numericEnvironment={
             "arithmetic": "ieee-754-binary64",
-            "numericEvidencePolicy": "twelve-significant-digits@1",
+            "numericEvidencePolicy": "twelve-significant-digits-with-1e-14-residual-floor@1",
         },
         positionTolerance=position_tolerance,
         orientationTolerance=orientation_tolerance,

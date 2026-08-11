@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pytest
 
+import axiom.five_axis.f2_kinematics as f2_kinematics
 from axiom.five_axis.f2_kinematics import (
     AxisLimitSpec,
     AxisSpec,
@@ -198,6 +199,41 @@ def test_numeric_identity_canonicalizes_signed_zero() -> None:
 
     assert normalized == 0.0
     assert math.copysign(1.0, normalized) == 1.0
+
+
+def test_ik_residual_evidence_uses_conservative_roundoff_floor() -> None:
+    haswell_like = f2_kinematics._residual_models(
+        {
+            "five-axis.position-residual.max@1": 3.44345433022e-15,
+            "five-axis.orientation-residual.max@1": 0.0,
+        }
+    )
+    skylake_like = f2_kinematics._residual_models(
+        {
+            "five-axis.position-residual.max@1": 3.4630857905e-15,
+            "five-axis.orientation-residual.max@1": 0.0,
+        }
+    )
+
+    assert haswell_like == skylake_like
+    assert {residual.value for residual in haswell_like} == {1e-14}
+
+
+def test_ik_residual_evidence_floor_does_not_change_raw_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = build_canonical_head_table_bc_profile()
+    pose = forward_kinematics(profile, {"X": 25.0, "Y": -8.0, "Z": 40.0, "C": -0.7, "B": 0.4})
+    monkeypatch.setattr(
+        f2_kinematics,
+        "_pose_residuals",
+        lambda *args: {
+            "five-axis.position-residual.max@1": 1.000001e-6,
+            "five-axis.orientation-residual.max@1": 0.0,
+        },
+    )
+
+    result = inverse_kinematics(profile, pose)
+
+    assert result.status == "NoSolutionProven"
 
 
 def test_general_profile_uses_numeric_fallback_and_round_trips() -> None:

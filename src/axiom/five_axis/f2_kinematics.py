@@ -32,6 +32,7 @@ _POSITION_RESIDUAL_SCALE_MM = 1.0
 _ORIENTATION_RESIDUAL_SCALE_RAD = 1.0
 _NUMERIC_EVIDENCE_SIGNIFICANT_DIGITS = 12
 _NUMERIC_IDENTITY_SIGNIFICANT_DIGITS = 8
+_RESIDUAL_EVIDENCE_FLOOR = 1e-14
 _DEFAULT_TOOL_OFFSET = (0.0, 0.0, -100.0)
 _LINEAR_LIMITS = (-500.0, 500.0)
 _TILT_LIMITS = (-2.0 * math.pi / 3.0, 2.0 * math.pi / 3.0)
@@ -50,6 +51,12 @@ class KinematicsError(ValueError):
 
 def canonical_numeric_evidence(value: float) -> float:
     return float(f"{value:.{_NUMERIC_EVIDENCE_SIGNIFICANT_DIGITS}g}")
+
+
+def _canonical_residual_evidence(value: float) -> float:
+    """Raise backend roundoff to a conservative evidence bound after raw gating."""
+
+    return max(value, _RESIDUAL_EVIDENCE_FLOOR)
 
 
 def normalize_numeric_identity(value: Any) -> Any:
@@ -923,12 +930,12 @@ def _residual_models(residuals: Mapping[str, float]) -> tuple[KinematicResidual,
     return (
         KinematicResidual(
             metricId="five-axis.position-residual.max@1",
-            value=residuals["five-axis.position-residual.max@1"],
+            value=_canonical_residual_evidence(residuals["five-axis.position-residual.max@1"]),
             unit="mm",
         ),
         KinematicResidual(
             metricId="five-axis.orientation-residual.max@1",
-            value=residuals["five-axis.orientation-residual.max@1"],
+            value=_canonical_residual_evidence(residuals["five-axis.orientation-residual.max@1"]),
             unit="rad",
         ),
     )

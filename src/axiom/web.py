@@ -4,13 +4,22 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
 from .domain import list_domain_packs
 from .experiment import contour_ab_example, run_experiment
-from .five_axis import MathStageManifest, f0_example_run_spec, load_f0_manifest
+from .five_axis import (
+    F1ExamplePayload,
+    F1MathStageManifest,
+    MathStageManifest,
+    build_f1_manifest,
+    f0_example_run_spec,
+    f1_example_payload,
+    list_f1_scenarios,
+    load_f0_manifest,
+)
 from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
 from .run import evaluate_run
 from .runtime import find_domain_runtime_binding
@@ -89,6 +98,35 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     )
     def five_axis_f0_example() -> RunSpec:
         return RunSpec.model_validate(f0_example_run_spec())
+
+    @app.get(
+        "/api/v1/five-axis/f1/manifest",
+        response_model=F1MathStageManifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def five_axis_f1_manifest(scenarioId: str = "nominal-certified") -> F1MathStageManifest:
+        try:
+            return build_f1_manifest(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/five-axis/f1/scenarios")
+    def five_axis_f1_scenarios() -> Any:
+        return [scenario.to_dict() for scenario in list_f1_scenarios()]
+
+    @app.get(
+        "/api/v1/examples/five-axis-f1",
+        response_model=F1ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def five_axis_f1_example(scenarioId: str = "nominal-certified") -> dict[str, Any]:
+        try:
+            return f1_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post(
         "/api/v1/experiments/run",

@@ -10,10 +10,16 @@ def test_builtin_domain_packs_runtime_bindings_and_adapter_are_publicly_register
     assert domain_pack_ids >= {
         "ordered-point.domain-pack@1",
         "five-axis.domain-pack@1",
+        "five-axis.domain-pack@2",
     }
     assert axiom.get_domain_runtime_binding("ordered-point.domain-pack@1")
     assert axiom.get_domain_runtime_binding("five-axis.domain-pack@1")
+    assert axiom.get_domain_runtime_binding("five-axis.domain-pack@2")
     assert "five-axis.sampled-cartesian-to-ordered-point@1" in adapter_ids
+    assert axiom.FIVE_AXIS_F1_DOMAIN_PACK.domain_pack_id == "five-axis.domain-pack@2"
+    assert hasattr(axiom, "F1ExamplePayload")
+    assert hasattr(axiom, "build_f1_manifest")
+    assert hasattr(axiom, "f1_example_run_spec")
 
 
 def test_five_axis_f0_public_example_runs_without_math_or_device_claims():

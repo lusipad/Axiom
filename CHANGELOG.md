@@ -2,6 +2,31 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.5.0 - 2026-08-11
+
+### 新增
+
+- 增加 Five-Axis Math F1 几何参考栈：严格 CL 子集规范化为 M0，生成带来源、无隙 `PathProgress` 和正则性证书的 M1，并以 M2 绑定候选连续几何、参考内容身份、坐标上下文、容差和标准对应证书。
+- 增加连续位置/姿态误差证书、`GeometryValid` 标准声明，以及明确区分严格连续界、解析恒等和采样观察的证据等级。
+- 增加任务几何碰撞与名义过切验证：显式刀具组件、工件/夹具 AABB、接触策略、允许去除区、过程状态时间线、库存快照内容哈希和确定性差集复杂度上限。
+- 增加三个可重复的工程化 F1 参考场景：名义通过、几何容差违反和夹具碰撞；场景都可通过公共 `RunSpec → RunBundle` 路径产生标准 Claim/Evidence。
+- 增加 F1 manifest、场景目录和完整示例 envelope API，并将 `five-axis.domain-pack@2` 注册为可执行领域包。
+- 将 Five-Axis 网页升级为 Geometry Reference Workbench，展示 CL 输入、M0/M1/M2 谱系、几何投影、对应证书、碰撞/过程状态、指标证据、标准声明和冻结身份；支持桌面与移动端。
+
+### 契约变化
+
+- Domain runtime 可声明领域自己的输入/请求 Artifact 描述符和 Metric 到标准 Claim 的投影；Core 继续只处理领域中立对象，不包含 Five-Axis ID 分支。
+- `M2CandidateTaskGeometry` 现在必须显式携带 `coordinateContext`，禁止通过场景全局值或隐式属性补齐单位与坐标系。
+- F1 示例接口返回 `manifest / scenario / source / artifacts / runSpec` envelope；调用通用执行接口时提交其中的 `runSpec`。
+- 网页将 Core 的 `executionStatus/caseOutcome` 与领域标准 Claim verdict 分开显示；指标成功计算不能被误读为碰撞声明成立。
+- 允许去除区内的正常切削接触只保留为 trace finding，不会把已经连续证明的无禁止碰撞结论从 `Certified` 降级；编程型异常也不会再伪装成能力不支持。
+
+### 当前边界
+
+- F1 只发布 `GeometryValid` 与 `TaskGeometryCollisionFree`；任务几何碰撞不包含 IK、分支、轴限位、奇异性、配置空间、机床部件、控制器或真实设备安全。
+- F1 内建场景用于确定性参考和回归，不是厂商控制器、材料去除或整机数字孪生。
+- 下一数学阶段是 F2 运动学参考栈；动态 Solver/SUT Adapter、设备接入、学习模型和参数闭环仍属于后续阶段。
+
 ## 0.4.0 - 2026-08-11
 
 ### 新增

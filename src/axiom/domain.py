@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from .evaluator import (
     _CAP_CLOSED,
@@ -56,6 +56,14 @@ class MetricDefinition(FrozenDomainModel):
     difference_policy: str | None = Field(default=None, alias="differencePolicy")
     endpoint_policy: str | None = Field(default=None, alias="endpointPolicy")
     numeric_tolerance: NumericTolerance | None = Field(default=None, alias="numericTolerance")
+    claim_definition_id: str | None = Field(default=None, alias="claimDefinitionId")
+    claim_predicate: str | None = Field(default=None, alias="claimPredicate")
+
+    @model_validator(mode="after")
+    def validate_claim_projection(self) -> "MetricDefinition":
+        if (self.claim_definition_id is None) != (self.claim_predicate is None):
+            raise ValueError("MetricDefinition claimDefinitionId and claimPredicate must be declared together")
+        return self
 
 
 class FailureMapping(FrozenDomainModel):
@@ -65,10 +73,19 @@ class FailureMapping(FrozenDomainModel):
     case_outcome: CaseOutcome = Field(alias="caseOutcome")
 
 
+class ArtifactTypeDescriptor(FrozenDomainModel):
+    artifact_type: str = Field(alias="artifactType", min_length=1)
+    schema_version: int = Field(alias="schemaVersion", ge=1)
+    role: Literal["run-input", "reference", "context"] = "run-input"
+
+
 class DomainPack(FrozenDomainModel):
     domain_pack_id: str = Field(alias="domainPackId")
     artifact_type: str = Field(alias="artifactType")
     artifact_schema_versions: tuple[int, ...] = Field(alias="artifactSchemaVersions", min_length=1)
+    artifact_type_descriptors: tuple[ArtifactTypeDescriptor, ...] = Field(
+        default_factory=tuple, alias="artifactTypeDescriptors"
+    )
     evaluator_version: str = Field(alias="evaluatorVersion")
     runner_id: str = Field(alias="runnerId")
     runner_ids: tuple[str, ...] = Field(default_factory=tuple, alias="runnerIds")
@@ -78,6 +95,96 @@ class DomainPack(FrozenDomainModel):
     comparison_policy_ids: tuple[str, ...] = Field(default_factory=tuple, alias="comparisonPolicyIds")
     failure_mappings: tuple[FailureMapping, ...] = Field(default_factory=tuple, alias="failureMappings")
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_artifact_descriptors(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        descriptors = data.get("artifactTypeDescriptors", data.get("artifact_type_descriptors"))
+        artifact_type = data.get("artifactType", data.get("artifact_type"))
+        schema_versions = data.get("artifactSchemaVersions", data.get("artifact_schema_versions"))
+        if descriptors in (None, ()):
+            if artifact_type is None or schema_versions is None:
+                return data
+            generated = [
+                {"artifactType": artifact_type, "schemaVersion": schema_version, "role": "run-input"}
+                for schema_version in schema_versions
+            ]
+            if "artifact_type_descriptors" in data:
+                data["artifact_type_descriptors"] = generated
+            else:
+                data["artifactTypeDescriptors"] = generated
+            return data
+
+        parsed_descriptors = tuple(
+            descriptor
+            if isinstance(descriptor, ArtifactTypeDescriptor)
+            else ArtifactTypeDescriptor.model_validate(descriptor)
+            for descriptor in descriptors
+        )
+        run_input_descriptors = tuple(
+            descriptor for descriptor in parsed_descriptors if descriptor.role == "run-input"
+        )
+        seed_descriptors = run_input_descriptors or parsed_descriptors
+        if artifact_type is None and seed_descriptors:
+            if "artifact_type" in data:
+                data["artifact_type"] = seed_descriptors[0].artifact_type
+            else:
+                data["artifactType"] = seed_descriptors[0].artifact_type
+        if schema_versions is None and seed_descriptors:
+            primary_type = data.get("artifactType", data.get("artifact_type", seed_descriptors[0].artifact_type))
+            generated_versions = [
+                descriptor.schema_version
+                for descriptor in seed_descriptors
+                if descriptor.artifact_type == primary_type
+            ]
+            if "artifact_schema_versions" in data:
+                data["artifact_schema_versions"] = generated_versions
+            else:
+                data["artifactSchemaVersions"] = generated_versions
+        normalized_descriptors = [
+            descriptor.model_dump(mode="json", by_alias=True) for descriptor in parsed_descriptors
+        ]
+        if "artifact_type_descriptors" in data:
+            data["artifact_type_descriptors"] = normalized_descriptors
+        else:
+            data["artifactTypeDescriptors"] = normalized_descriptors
+        return data
+
+    @model_validator(mode="after")
+    def validate_artifact_contract(self) -> "DomainPack":
+        if not self.artifact_type_descriptors:
+            raise ValueError("DomainPack must declare at least one artifactTypeDescriptor")
+        descriptor_keys = {
+            (descriptor.artifact_type, descriptor.schema_version, descriptor.role)
+            for descriptor in self.artifact_type_descriptors
+        }
+        if len(descriptor_keys) != len(self.artifact_type_descriptors):
+            raise ValueError("DomainPack artifactTypeDescriptors must be unique by artifactType/schemaVersion/role")
+        run_input_descriptors = self.artifact_descriptors(role="run-input")
+        if not run_input_descriptors:
+            raise ValueError("DomainPack must declare at least one run-input artifactTypeDescriptor")
+        legacy_versions = tuple(
+            descriptor.schema_version
+            for descriptor in run_input_descriptors
+            if descriptor.artifact_type == self.artifact_type
+        )
+        if not legacy_versions:
+            raise ValueError("DomainPack artifactType must match at least one run-input artifactTypeDescriptor")
+        if legacy_versions != self.artifact_schema_versions:
+            raise ValueError("DomainPack artifactSchemaVersions must match the run-input descriptors for artifactType")
+        undeclared_claim_definition_ids = {
+            definition.claim_definition_id
+            for definition in self.metric_definitions
+            if definition.claim_definition_id is not None
+            and definition.claim_definition_id not in self.claim_definition_ids
+        }
+        if undeclared_claim_definition_ids:
+            ids = ", ".join(sorted(undeclared_claim_definition_ids))
+            raise ValueError(f"DomainPack metricDefinitions reference undeclared claimDefinitionIds: {ids}")
+        return self
+
     def metric_definition(self, metric_id: str) -> MetricDefinition:
         for definition in self.metric_definitions:
             if definition.metric_id == metric_id:
@@ -86,6 +193,25 @@ class DomainPack(FrozenDomainModel):
 
     def supports_runner(self, runner_id: str) -> bool:
         return runner_id == self.runner_id or runner_id in self.runner_ids
+
+    def artifact_descriptors(self, *, role: str | None = None) -> tuple[ArtifactTypeDescriptor, ...]:
+        if role is None:
+            return self.artifact_type_descriptors
+        return tuple(descriptor for descriptor in self.artifact_type_descriptors if descriptor.role == role)
+
+    def supports_artifact_type(self, artifact_type: str, *, role: str | None = None) -> bool:
+        descriptors = self.artifact_descriptors(role=role)
+        return any(
+            descriptor.artifact_type == artifact_type
+            for descriptor in descriptors
+        )
+
+    def supports_artifact(self, artifact_type: str, schema_version: int, *, role: str | None = None) -> bool:
+        descriptors = self.artifact_descriptors(role=role)
+        return any(
+            descriptor.artifact_type == artifact_type and descriptor.schema_version == schema_version
+            for descriptor in descriptors
+        )
 
     def failure_mapping(self, code: str) -> FailureMapping | None:
         for mapping in self.failure_mappings:

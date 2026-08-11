@@ -118,7 +118,7 @@ def _preflight_report(spec: RunSpec) -> EvaluationReport | None:
                     path="domainPackId",
                 )
             )
-        if spec.request.artifact.artifact_type != pack.artifact_type:
+        if not pack.supports_artifact_type(spec.request.artifact.artifact_type, role="run-input"):
             failures.append(
                 DomainFailure(
                     code="ArtifactTypeMismatch",
@@ -128,7 +128,11 @@ def _preflight_report(spec: RunSpec) -> EvaluationReport | None:
             )
             case_outcome = CaseOutcome.INVALID
             metric_status = MetricStatus.INVALID_OBSERVATION
-        if spec.request.artifact.schema_version not in pack.artifact_schema_versions:
+        elif not pack.supports_artifact(
+            spec.request.artifact.artifact_type,
+            spec.request.artifact.schema_version,
+            role="run-input",
+        ):
             failures.append(
                 DomainFailure(
                     code="ArtifactSchemaVersionMismatch",
@@ -318,16 +322,26 @@ def _build_observation(spec: RunSpec) -> Observation:
 
 def _build_claims(spec: RunSpec, report: EvaluationReport) -> list[Claim]:
     claims = [_build_case_outcome_claim(spec.subject_id, report)]
+    pack = find_domain_pack(spec.domain_pack_id)
+    projected_claims: list[Claim] = []
     thresholds = {
         metric.metric_id: metric.threshold
         for metric in spec.request.case.required_metrics + spec.request.case.optional_metrics
         if metric.threshold is not None
     }
     for result in report.metric_results:
-        if result.threshold_passed is None:
+        if result.threshold_passed is not None:
+            claims.append(_build_threshold_claim(spec.subject_id, report, result, thresholds.get(result.metric_id)))
+        if pack is None:
             continue
-        claims.append(_build_threshold_claim(spec.subject_id, report, result, thresholds.get(result.metric_id)))
-    return claims
+        try:
+            definition = pack.metric_definition(result.metric_id)
+        except KeyError:
+            continue
+        if definition.claim_definition_id is None:
+            continue
+        projected_claims.append(_build_metric_projection_claim(spec.subject_id, report, result, definition))
+    return [*claims, *projected_claims]
 
 
 def _build_case_outcome_claim(subject_id: str, report: EvaluationReport) -> Claim:
@@ -410,6 +424,56 @@ def _build_threshold_claim(
         details=details,
         content_hash=content_hash,
     )
+
+
+def _build_metric_projection_claim(
+    subject_id: str,
+    report: EvaluationReport,
+    result: MetricResult,
+    definition: Any,
+) -> Claim:
+    status = _metric_projection_claim_status(result)
+    predicate = definition.claim_predicate or definition.metric_id
+    details = {
+        "metricId": result.metric_id,
+        "metricDefinitionId": result.metric_definition_id,
+        "metricStatus": result.status.value,
+        "metricValue": result.value,
+        "resultUnit": result.unit,
+    }
+    report_hash = _evaluation_report_hash(report)
+    content_hash = _content_hash(
+        _claim_identity_payload(
+            claim_definition_id=definition.claim_definition_id,
+            subject_id=subject_id,
+            metric_id=result.metric_id,
+            status=status,
+            predicate=predicate,
+            report_content_hash=report_hash,
+            reason_code=result.reason_code,
+            evidence=result.evidence,
+            details=details,
+        )
+    )
+    return Claim(
+        claim_id=f"claim:{content_hash}",
+        claim_definition_id=definition.claim_definition_id,
+        subject_id=subject_id,
+        status=status,
+        predicate=predicate,
+        metric_id=result.metric_id,
+        report_content_hash=report_hash,
+        reason_code=result.reason_code,
+        evidence=result.evidence,
+        details=details,
+        content_hash=content_hash,
+    )
+
+
+def _metric_projection_claim_status(result: MetricResult) -> ClaimStatus:
+    if result.status == MetricStatus.COMPUTED and isinstance(result.value, bool):
+        return ClaimStatus.SUPPORTED if result.value else ClaimStatus.REFUTED
+    return ClaimStatus.INCONCLUSIVE
 
 
 def _build_run(

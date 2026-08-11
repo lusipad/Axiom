@@ -1,7 +1,7 @@
 # Axiom 文档入口
 
-> 状态：v0.4 可发布；R0/R1 契约闭合，R2 Math F0 已接入
-> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F0`
+> 状态：v0.5 可发布；R0/R1 契约闭合，R2 Math F1 几何参考栈已接入
+> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F1`
 > 更新日期：2026-08-11
 
 Axiom 的目标不是做一个只理解 CNC 术语的“语义化评分器”，而是建立一套可逐级定义、可扩展到真实设备、可沉淀训练数据，并最终支持受约束参数优化的工业评估、实验与证据框架。
@@ -25,13 +25,13 @@ flowchart LR
 | 文档 | 唯一职责 | 当前状态 |
 |---|---|---|
 | [项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md) | 产品边界、总体架构、Roadmap、阶段门与非目标 | Draft |
-| [通用评估框架规范](Axiom%20通用评估框架规范.md) | 跨领域核心对象、角色、能力协商、三状态轴、证据与执行语义 | Draft v0.4 |
+| [通用评估框架规范](Axiom%20通用评估框架规范.md) | 跨领域核心对象、角色、能力协商、三状态轴、证据与执行语义 | Draft v0.5 |
 | [有序离散点领域包规范](有序离散点领域包规范.md) | 第一个最小领域包及其输入、指标和验收闭环 | Draft v0.4 |
-| [FiveAxisTrajectoryPack — CNC 五轴数学参考系统全景规范](CNC%20数学参考系统全景规范.md) | M0–M5 数学模型、进度/对应/重建契约、模型碰撞边界、证明义务和测试族 | Draft v0.4 / F0 implemented |
+| [FiveAxisTrajectoryPack — CNC 五轴数学参考系统全景规范](CNC%20数学参考系统全景规范.md) | M0–M5 数学模型、进度/对应/重建契约、模型碰撞边界、证明义务和测试族 | Draft v0.5 / F1 implemented |
 | [ADR 索引](架构决策记录/README.md) | 长期架构决策、替代方案与后果的审计历史 | Active |
 | 本文档 | 总入口、阅读路径与文档治理 | Active |
 
-除 ADR 行外的五项（含本文档）构成规范性主体；ADR 是决策记录，不复制规范正文。`implementation-notes.md` 是任务过程记录，不属于正式规范，也不能作为实现依据。
+除 ADR 行外的五项（含本文档）构成规范性主体；ADR 是决策记录，不复制规范正文。[implementation-notes](implementation-notes.md) 是任务过程记录，不属于正式规范，也不能作为实现依据。
 
 ## 推荐阅读路径
 
@@ -65,15 +65,15 @@ flowchart LR
 
 ## 当前最近目标
 
-R1 的离散点最小闭环已经成立。v0.4 进一步证明第二个领域包可以在不改写 Core 调度逻辑的前提下，通过严格 schema、运行绑定和显式 Adapter 接入：
+R1 的离散点最小闭环已经成立。v0.5 在不向 Core 写入五轴分支的前提下，把第二个领域包推进到可执行的 F1 几何参考栈：
 
-> Five-Axis Math F0 可以验证 manifest、M0–M5 envelope、能力依赖、fixture 身份和转换 provenance；它只发布 F0 契约验证结果，不把 schema 通过冒充为几何、运动学、碰撞或设备可执行结论。
+> 严格 CL 子集先规范化为 M0，再生成带 `PathProgress`、正则性和来源谱系的 M1；M2 将候选任务几何、标准对应、连续位置/姿态误差界、刀具—工件/夹具上下文和显式过程状态绑定在同一证据链中。
 
-下一个数学阶段是 F1：实现 M1 几何 Artifact 与位置/姿态误差，但仍不提前建设设备驱动、机器学习模型或参数回写。
+F1 只发布 `GeometryValid` 与 `TaskGeometryCollisionFree` 两类标准声明。后者是任务空间刀具几何结论，不包含 M3 配置空间碰撞、机床部件、IK 分支、轴限位、奇异性、控制器或设备执行许可。下一个数学阶段是 F2 运动学参考栈。
 
-## v0.4 快速开始
+## v0.5 快速开始
 
-v0.4 保留 Point Lab 的单次评估、双臂 `Experiment` 与严格比较，同时增加通用 DomainPack 运行入口和 Five-Axis Lab。两个领域共用 `RunSpec → Observation → Run → Claim/Evidence` 谱系；Five-Axis 页面只展示 F0 契约和边界，不显示尚未计算的求解结果。
+v0.5 保留 Point Lab 的单次评估、双臂 `Experiment` 与严格比较，并把 Five-Axis Lab 升级为 F1 Geometry Reference Workbench。三个版本化场景分别证明名义通过、几何超差和夹具碰撞；页面同时展示 CL 输入、M0/M1/M2 谱系、连续对应证书、任务几何碰撞/过程状态、标准声明和冻结身份，并永久标注 `NOT DEVICE SAFE`。
 
 ```powershell
 python -m venv .venv
@@ -86,7 +86,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-启动后访问 `http://127.0.0.1:8000`，可在 Point Lab 与 Five-Axis Lab 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)，Five-Axis F0 的 package fixture 与使用说明见 [`fixtures/five_axis_f0`](fixtures/five_axis_f0)。
+启动后访问 `http://127.0.0.1:8000`，可在 Point Lab 与 Five-Axis Lab 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)，Five-Axis F0 的 package fixture 与使用说明仍见 [`fixtures/five_axis_f0`](fixtures/five_axis_f0)。F1 示例由 `axiom.five_axis.f1_scenarios` 生成，网页 API 返回包含 `manifest / scenario / source / artifacts / runSpec` 的完整 envelope。
 
 Python 中可直接执行内建 F0 示例：
 
@@ -95,6 +95,17 @@ from axiom import evaluate_run, f0_example_run_spec
 
 bundle = evaluate_run(f0_example_run_spec())
 assert bundle.report.case_outcome.value == "Passed"
+```
+
+也可以执行三个 F1 场景，并直接读取标准声明而不是把 Core 的运行完成状态误当成几何结论：
+
+```python
+from axiom import evaluate_run, f1_example_run_spec
+
+bundle = evaluate_run(f1_example_run_spec("fixture-collision"))
+claims = {claim.claim_definition_id: claim.status.value for claim in bundle.claims}
+assert claims["five-axis.geometry-valid-claim@1"] == "Supported"
+assert claims["five-axis.task-geometry-collision-free-claim@1"] == "Refuted"
 ```
 
 CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Failed / Inconclusive / Unsupported`，`2` 表示读取失败或 `Invalid`；`compare` 的 `0` 表示两个导入式 Run 兼容且比较成功，`1` 表示语义不兼容，`2` 表示请求无效；`experiment` 只有在两个 Arm 执行、严格比较和实验硬门槛都通过时返回 `0`，结构化业务失败返回 `1`，请求无效返回 `2`。
@@ -133,8 +144,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.4 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。超过计算预算会返回 `UnsupportedCapability / ComplexityBudgetExceeded`，不会尝试分配矩阵。
+v0.5 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集也有确定性的 fragment 上限；超过预算会返回结构化 `Unsupported*` 结果，不会无界分配内存。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.4 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备；不会把采样点或 F0 envelope 冒充连续轨迹，不声明控制器、G-code、五轴运动学、碰撞安全或真实设备可执行性。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis Lab 只呈现 F0 contract readiness 与 findings。数据库、认证、远程队列、动态插件、持久化历史、机器学习训练和参数回写仍属于后续阶段。
+v0.5 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis Lab 的 F1 碰撞结论只覆盖显式任务几何上下文，不能替代配置空间、机床整机或设备验证。数据库、认证、远程队列、动态插件、持久化历史、机器学习训练和参数回写仍属于后续阶段。

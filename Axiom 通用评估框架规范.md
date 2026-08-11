@@ -2,7 +2,7 @@
 
 > 文档类型：平台核心规范  
 > 规范对象：`Axiom Core`  
-> 状态：Draft / 契约闭合版 v0.4
+> 状态：Draft / 契约闭合版 v0.5
 > 上位文档：[项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 首个实现域：[有序离散点领域包规范](有序离散点领域包规范.md)
 
@@ -179,6 +179,10 @@ v0.3 的有序离散点实现把 `Experiment` 落为恰好两个不同 Arm 的�
 2. `evaluate`：只消费已经校验的领域请求并返回公共 `EvaluationReport`；
 3. 与描述符一致的 DomainPack ID、Evaluator 版本和 Artifact 类型/schema 支持范围。
 
+一个 DomainPack 可以声明多个 `ArtifactTypeDescriptor`。每个描述符至少冻结 `artifactType`、允许的 `schemaVersion` 和领域内角色；同一 `(artifactType, schemaVersion, role)` 不得重复。兼容已有单类型描述符时，`artifactType` / `artifactSchemaVersions` 表示默认类型，但不得被解释为排斥同一包已声明的其他类型。
+
+一次 `RunSpec` 和 `Observation` 仍只携带一个主 Artifact。Core 对该主 Artifact 只执行 `(artifactType, schemaVersion)` 成员校验；它不解释领域角色，也不要求一个 DomainPack 的所有 Run 使用同一 Artifact 类型。领域层之间的派生必须通过不可变 Run、内容标识和 provenance 串联，不能把多个层压进无类型 payload 来绕过描述符。
+
 Binding 直接产出的 `EvaluationReport.contentHash` 也必须遵守 §5.3 的报告身份公式。Core 在补齐 Runner、Subject、Experiment 等 provenance 后必须重新封存报告身份，这是对跨绑定一致性的防御性校正；它不能被解释为允许领域 Evaluator 自定义另一套哈希语义。
 
 Core 的调度只能按注册 ID 解析绑定，不得按某个领域的 Artifact 字段或 ID 编写条件分支。只有描述符而没有 binding 时必须得到 `DomainPackEvaluatorUnavailable`；解析失败必须保留领域错误路径，不能回退到其他 Evaluator。
@@ -211,6 +215,8 @@ requires:
 ```
 
 `MetricDefinition` 还必须以机器可读字段声明数值比较容差；涉及差分、端点、滤波、插值、对应或重建的指标，还必须保存对应的版本化策略 ID。实现内部采用某个库函数不能替代这项声明。
+
+若一个指标直接支撑领域标准 Claim，`MetricDefinition` 必须机器可读绑定 `claimDefinitionId` 与 predicate。该 Claim ID 必须属于 DomainPack 已声明的 `claimDefinitionIds`；Core 只能按这个通用投影生成 `Supported` / `Refuted` / `Inconclusive`，不得按领域 metric ID 写分支。只有状态为 `Computed` 的布尔结果可以形成正向或反向 Claim，其余状态只能形成 `Inconclusive`。
 
 能力解析必须记录每项能力来自 Artifact、Profile、Adapter 还是 Evaluator 实现，并使用下列唯一规则：
 

@@ -2,7 +2,7 @@
 
 > 文档类型：领域包规范  
 > 领域包：`FiveAxisTrajectoryPack`  
-> 状态：Draft v0.4 / F0 已实现
+> 状态：Draft v0.5 / F1 已实现
 > 依赖：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)  
 > 上位路线：[Axiom 项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 相邻领域包：[有序离散点领域包规范](有序离散点领域包规范.md)
@@ -872,6 +872,12 @@ F0 readiness 只有在请求 Artifact 的内容标识属于 Manifest 冻结的 f
 ### Math F1：几何参考栈
 
 完成 M0 核心语义与碰撞上下文、M1 曲线/进度内核、M2 五轴几何与同步光顺、标准对应策略、名义扫掠体/过切验证，以及解析几何测试族。
+
+v0.5 的 F1 实现以 `five-axis.domain-pack@2` 接入通用运行时，并冻结以下可执行边界：严格 CL 子集生成类型化 M0，M0 生成带来源、无隙 `PathProgress` 和正则性证书的 M1，M2 显式绑定坐标上下文、参考内容身份、候选连续几何、对应证书、位置/姿态容差、任务几何碰撞上下文和过程状态时间线。内建 `MathStageManifest` 与三个版本化场景分别覆盖名义通过、几何容差违反和夹具碰撞；同一 `RunSpec → RunBundle` 路径必须给出可复算内容身份、Metric/Evidence 和标准 Claim。
+
+F1 允许正向发布 `GeometryValid` 与 `TaskGeometryCollisionFree`，前者要求连续严格上界或解析恒等证据，后者要求禁止接触与名义过切均已在显式任务几何和过程状态内以 `Certified` 证据排除。允许去除区内的正常刀具—工件接触只能作为 trace finding，不能降级整条无禁止碰撞证书。编程异常必须进入执行失败，不能伪装成 `UnsupportedCapability`；名义扫掠差集超过确定性 fragment 预算时则必须返回 `UnsupportedRegularizedDifference`。
+
+`TaskGeometryCollisionFree` 不是 M3 的 `ModelCollisionFree` 或设备安全声明。F1 不证明 IK 存在、分支连续、轴限位、奇异性、配置空间 (Q_{free})、机床部件碰撞、控制器重建或真实设备可执行；网页与 API 必须持续暴露该边界。
 
 ### Math F2：运动学参考栈
 

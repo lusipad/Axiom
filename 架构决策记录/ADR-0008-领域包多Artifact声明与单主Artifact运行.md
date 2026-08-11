@@ -1,7 +1,7 @@
 # ADR-0008：领域包多 Artifact 声明与单主 Artifact 运行
 
-> 状态：Accepted  
-> 日期：2026-08-11  
+> 状态：Accepted
+> 日期：2026-08-11
 > 影响范围：Axiom Core、DomainPack、Run、FiveAxisTrajectoryPack
 
 ## 背景

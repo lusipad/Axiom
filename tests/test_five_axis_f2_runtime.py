@@ -25,6 +25,7 @@ from axiom.five_axis.f2_runtime import (
     ORIENTATION_RESIDUAL_MAX_METRIC_ID,
     POSITION_RESIDUAL_MAX_METRIC_ID,
     SINGULARITY_MINIMUM_SINGULAR_VALUE_METRIC_ID,
+    current_f2_numeric_environment,
 )
 from axiom.models import ClaimStatus, MetricStatus
 from axiom.run import evaluate_run
@@ -33,6 +34,19 @@ from axiom.runtime import get_domain_runtime_binding
 
 _HASH_A = "a" * 64
 _TILT_RAD = 0.25
+
+
+def test_f2_numeric_environment_records_blas_execution_policy(monkeypatch) -> None:
+    monkeypatch.setenv("OPENBLAS_CORETYPE", "Haswell")
+    monkeypatch.setenv("OPENBLAS_NUM_THREADS", "1")
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+
+    environment = current_f2_numeric_environment()
+
+    assert environment["openblasCoreType"] == "Haswell"
+    assert environment["openblasNumThreads"] == "1"
+    assert environment["ompNumThreads"] == "1"
+    assert environment["pint"]
 
 
 def _portable_content_hash(value: dict) -> str:

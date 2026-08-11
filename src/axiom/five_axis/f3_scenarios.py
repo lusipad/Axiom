@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import platform
 from dataclasses import dataclass
 from importlib import import_module
-from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import Any, Literal
 
 from pydantic import Field, model_validator
@@ -29,6 +27,7 @@ from .f3_models import (
     ProvenanceRef,
     ToleranceBinding,
 )
+from .f3_runtime import current_f3_numeric_environment
 from .f3_sampling import (
     FOH_POLICY_ID,
     POLYNOMIAL_POLICY_ID,
@@ -72,24 +71,6 @@ def _canonical_content_id(model: Any) -> str:
     payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return _content_hash(json.loads(canonical))
-
-
-def _safe_package_version(distribution: str) -> str:
-    try:
-        return package_version(distribution)
-    except PackageNotFoundError:
-        return "unavailable"
-
-
-def current_f3_numeric_environment() -> dict[str, str]:
-    return {
-        "system": platform.system(),
-        "machine": platform.machine(),
-        "python": platform.python_version(),
-        "numpy": _safe_package_version("numpy"),
-        "scipy": _safe_package_version("scipy"),
-        "pydantic": _safe_package_version("pydantic"),
-    }
 
 
 @dataclass(frozen=True, slots=True)

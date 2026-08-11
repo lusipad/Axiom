@@ -12,8 +12,10 @@ from axiom.five_axis.f3_runtime import (
     FIVE_AXIS_F3_RUNTIME_BINDING,
     INTERVAL_CERTIFIED_CLAIM_ID,
     INTERVAL_CERTIFIED_METRIC_ID,
+    current_f3_numeric_environment as runtime_numeric_environment,
 )
 from axiom.five_axis.f3_scenarios import (
+    current_f3_numeric_environment as scenario_numeric_environment,
     load_f3_scenario,
     validate_f3_example_run_spec,
 )
@@ -24,6 +26,20 @@ from axiom.runtime import get_domain_runtime_binding
 
 def _claims(bundle) -> dict[str, ClaimStatus]:
     return {claim.claim_definition_id: claim.status for claim in bundle.claims}
+
+
+def test_f3_numeric_environment_matches_scenario_and_records_blas_policy(monkeypatch) -> None:
+    monkeypatch.setenv("OPENBLAS_CORETYPE", "Haswell")
+    monkeypatch.setenv("OPENBLAS_NUM_THREADS", "1")
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+
+    environment = runtime_numeric_environment()
+
+    assert scenario_numeric_environment() == environment
+    assert environment["openblasCoreType"] == "Haswell"
+    assert environment["openblasNumThreads"] == "1"
+    assert environment["ompNumThreads"] == "1"
+    assert environment["pint"]
 
 
 def test_f3_domain_pack_is_bound_without_core_special_case() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import platform
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -223,7 +224,11 @@ def current_f3_numeric_environment() -> dict[str, str]:
         "python": platform.python_version(),
         "numpy": package_version("numpy"),
         "scipy": package_version("scipy"),
+        "pint": package_version("pint"),
         "pydantic": package_version("pydantic"),
+        "openblasCoreType": os.environ.get("OPENBLAS_CORETYPE", "auto"),
+        "openblasNumThreads": os.environ.get("OPENBLAS_NUM_THREADS", "auto"),
+        "ompNumThreads": os.environ.get("OMP_NUM_THREADS", "auto"),
     }
 
 

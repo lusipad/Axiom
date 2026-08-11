@@ -196,87 +196,27 @@
   ],
   "environmentBoundIdentities": [
     {
-      "label": "windows-python-3.14-reference-2026-08-12",
-      "numericEnvironment": {
-        "system": "Windows",
-        "machine": "AMD64",
-        "python": "3.14.3",
-        "numpy": "2.4.3",
-        "scipy": "1.18.0",
-        "pydantic": "2.12.5",
-        "platformVersion": "10.0.26200"
-      },
-      "bundleHashes": {
-        "canonical-head-head-jerk": "7f202a52de5864e5648bb0d4798cff3ad52e6245099872c3dfe79bca077d20e9",
-        "canonical-head-table-jerk": "261aa439e7078170c817e82838feb509bcc77fc5a7e9491234bc015c8bd6f6e1",
-        "canonical-table-table-jerk": "138a806857976a91d017d39131cc3d3f7b3697e949ca37ae05a6196fd9e51cc9",
-        "dwell-mandatory-stop": "7582eeee5849cdf5277b7669d6aa36cc4d8df856a03115f90e9e9c8d6410b06f",
-        "polynomial-interior-violation": "c5af9ef10a87eed54e3b8538013b37ce8b678e3dac3df14943cd5d826439ffce",
-        "second-order-proven-optimal": "b9ae2e9bd54219eae94232b734e9b33a11807db85dd0acb33758d608e204aef3",
-        "zoh-moving-unsupported": "a1c6638e2070d38ff41fb249164e0f4633e37c16c158d71491bb753faa1c9afb"
-      }
-    },
-    {
-      "label": "windows-acceptance-python-3.12-reference-2026-08-12",
-      "numericEnvironment": {
-        "system": "Windows",
-        "machine": "AMD64",
-        "python": "3.12.13",
-        "numpy": "2.5.2",
-        "scipy": "1.18.0",
-        "pydantic": "2.13.4",
-        "platformVersion": "10.0.26200"
-      },
-      "bundleHashes": {
-        "canonical-head-head-jerk": "4238f3fded425cd5548ee660728e6e12f4c7f022305fd34663a3dc2a874d73f9",
-        "canonical-head-table-jerk": "1e8e55c0ad88141946bc96d84b554407ce1e5181ce42e3fe05a99a954042a5a2",
-        "canonical-table-table-jerk": "c30e223010a98877f1c2bdcd439e8d34c519e7a86f13b92503d5048dd90ef26e",
-        "dwell-mandatory-stop": "476c82f979f40cf2e222b69adf350f203a614dc426afdb50e5a908f9ee5ebfbd",
-        "polynomial-interior-violation": "f59385a3eff2771b97d6a3461aae3e63be0b920ff7236a4b3b425a65214d0736",
-        "second-order-proven-optimal": "14f68f65c0c1488bf8044efc532a509fdf88c4bd1b48fd562fa1fc94bb77aa26",
-        "zoh-moving-unsupported": "242c9614e021aaf7b5f5bf3bf8da40e19d873e5dc4835f8df9aa19eaf47af287"
-      }
-    },
-    {
-      "label": "windows-python-3.12-reference-2026-08-12",
+      "label": "windows-haswell-single-thread-python-3.12-reference-2026-08-12",
       "numericEnvironment": {
         "system": "Windows",
         "machine": "AMD64",
         "python": "3.12.10",
         "numpy": "2.5.2",
         "scipy": "1.18.0",
+        "pint": "0.25.3",
         "pydantic": "2.13.4",
-        "platformVersion": "10.0.26200"
+        "openblasCoreType": "Haswell",
+        "openblasNumThreads": "1",
+        "ompNumThreads": "1"
       },
       "bundleHashes": {
-        "canonical-head-head-jerk": "d64de2ef0fb989846a91f0698231d25f6dd1573adb371c707ec9e5afcf39a138",
-        "canonical-head-table-jerk": "11753035fb0169cbd35392e1468e8161982cdb00dfe4089161e46e4201965907",
-        "canonical-table-table-jerk": "ebe385dce840186acaece5d60853492c45c668342edb20fc12fdb07bd35a59ec",
-        "dwell-mandatory-stop": "4cbdbe465383022121b73abe8cc1e17bd49d319d3718dbafac7620f20be92f3c",
-        "polynomial-interior-violation": "2dd409f622a363f02a6d3fa810a1b86f6dd4374d7e6a7a2070f402e8626886ec",
-        "second-order-proven-optimal": "3a390f5be76f08303ad7bd25c9c9860e37dd805beb3ea860c8bc7187014c28c3",
-        "zoh-moving-unsupported": "26a75e7b939a40ffe0348ea638147354eb58e91a8a56faa20c80b300efdc4613"
-      }
-    },
-    {
-      "label": "windows-server-2025-python-3.12-reference-2026-08-11",
-      "numericEnvironment": {
-        "system": "Windows",
-        "machine": "AMD64",
-        "python": "3.12.10",
-        "numpy": "2.5.2",
-        "scipy": "1.18.0",
-        "pydantic": "2.13.4",
-        "platformVersion": "10.0.26100"
-      },
-      "bundleHashes": {
-        "canonical-head-head-jerk": "337c5981b8d4dc3505125993d5713193cc2099a849a8d022576f9fe2bbcc3235",
-        "canonical-head-table-jerk": "78bf5a45586bf41621ec7b01b296ec63d873397a9b5b01bd8c882d2176d44a1a",
-        "canonical-table-table-jerk": "7aceee62cfa08236b72d17f658fd5a4d68c7f7dc3576e4735d6c132961d878f7",
-        "dwell-mandatory-stop": "9c05ab75e1648556a9e841086593a7466882af915bd08628029c5a9b903d314b",
-        "polynomial-interior-violation": "db16c095f045430f76b89425c2ad2fa764d52ad5f9c31e655da3e791017d27f3",
-        "second-order-proven-optimal": "d2c1e7cb80cc40baa4de53ad8d573269d4a624bf5e3dd56cc195d70ee2b247be",
-        "zoh-moving-unsupported": "09ad4eb9680e3ad6b7efc55ca4906fcbccc2a74eede8e553ec0ff7eeaaf30165"
+        "canonical-head-head-jerk": "2439625431590c2478908913abfa672e420255670cbb59f3e9b95688d62b221b",
+        "canonical-head-table-jerk": "3ecbb585e72689ce458063d920b238af54a885704844f50c0bf608438f3e5c85",
+        "canonical-table-table-jerk": "2529839bf1a10326f0357af73c44b37926d5e277ab620941176576a02dc3c920",
+        "dwell-mandatory-stop": "84e9685a8395bc5f8f356e6040eba206e30d0a5e04f7c3217d303b97f0ec10b5",
+        "polynomial-interior-violation": "49fc4b6469b1cea5ab3e67460f85f7b24174839cbf26cfcc6a18afd958163e66",
+        "second-order-proven-optimal": "b8fee8b3d2bcfb4ef438cb3ffb1e46ff6b8c9ee3beac4115dc3dfabb7c9b9123",
+        "zoh-moving-unsupported": "b53b5cb8c98b32bda5497effac2ad0f707e0b17a3a8f1d9213eb2cf40aee8af6"
       }
     }
   ]

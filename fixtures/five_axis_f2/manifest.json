@@ -96,45 +96,7 @@
   ],
   "environmentBoundIdentities": [
     {
-      "label": "windows-python-3.14-reference-2026-08-12",
-      "numericEnvironment": {
-        "system": "Windows",
-        "machine": "AMD64",
-        "python": "3.14.3",
-        "numpy": "2.4.3",
-        "scipy": "1.18.0",
-        "pint": "0.25.3",
-        "pydantic": "2.12.5",
-        "platformVersion": "10.0.26200"
-      },
-      "bundleHashes": {
-        "canonical-head-head": "415c6a81ec9062f00c806458529b24e8d75995010e857185f90afffb2bb472ef",
-        "canonical-head-table": "029ad4d0f67c82a35a0a056540a05f6a9f7975d615411d41b26e9ecbb33393b5",
-        "canonical-table-table": "e0224f5a3f6cf2789e828506d86bc714adf3b2fbcdd48976205beae1ae9beee7",
-        "configuration-interior-collision": "82ef2f6a45ecc85fade9fe81783cbcab0894f9255886a182bcc144c6319d0455"
-      }
-    },
-    {
-      "label": "windows-acceptance-python-3.12-reference-2026-08-12",
-      "numericEnvironment": {
-        "system": "Windows",
-        "machine": "AMD64",
-        "python": "3.12.13",
-        "numpy": "2.5.2",
-        "scipy": "1.18.0",
-        "pint": "0.25.3",
-        "pydantic": "2.13.4",
-        "platformVersion": "10.0.26200"
-      },
-      "bundleHashes": {
-        "canonical-head-head": "2a5676202b9546d40353732989e52084dbe67571a03c87f4d0465ba24e1d9722",
-        "canonical-head-table": "c2b7c04df905e096a69fba8864270063024cab9661f561707aaa328f99049e50",
-        "canonical-table-table": "20fedc9ea4bdac4b42cfde11e6d59341122618beadea7d8291a2fe2a2a869514",
-        "configuration-interior-collision": "aad6ef484a4240ff30fe6650c1bdb512b82de5f4f93be15fc210faf3f0c473ee"
-      }
-    },
-    {
-      "label": "windows-python-3.12-reference-2026-08-12",
+      "label": "windows-haswell-single-thread-python-3.12-reference-2026-08-12",
       "numericEnvironment": {
         "system": "Windows",
         "machine": "AMD64",
@@ -143,32 +105,15 @@
         "scipy": "1.18.0",
         "pint": "0.25.3",
         "pydantic": "2.13.4",
-        "platformVersion": "10.0.26200"
+        "openblasCoreType": "Haswell",
+        "openblasNumThreads": "1",
+        "ompNumThreads": "1"
       },
       "bundleHashes": {
-        "canonical-head-head": "a6ca261a92126b812b0fdc2921b850280505dba3ac0e907cba2a1ae26778a710",
-        "canonical-head-table": "e2badd2bd673828939191869d5eb7ff3cf7959e777254ebe6710817f8b1e02f2",
-        "canonical-table-table": "aac862bd76097e7d422fb5a924a7bd1cb9bdbe19522b2fe57bc56645f076e7db",
-        "configuration-interior-collision": "fa6a4f31c673599b98e28e17575d04bc0ec931f961dbd8e33a39f407a6528583"
-      }
-    },
-    {
-      "label": "windows-server-2025-python-3.12-reference-2026-08-11",
-      "numericEnvironment": {
-        "system": "Windows",
-        "machine": "AMD64",
-        "python": "3.12.10",
-        "numpy": "2.5.2",
-        "scipy": "1.18.0",
-        "pint": "0.25.3",
-        "pydantic": "2.13.4",
-        "platformVersion": "10.0.26100"
-      },
-      "bundleHashes": {
-        "canonical-head-head": "a6ca261a92126b812b0fdc2921b850280505dba3ac0e907cba2a1ae26778a710",
-        "canonical-head-table": "e2badd2bd673828939191869d5eb7ff3cf7959e777254ebe6710817f8b1e02f2",
-        "canonical-table-table": "aac862bd76097e7d422fb5a924a7bd1cb9bdbe19522b2fe57bc56645f076e7db",
-        "configuration-interior-collision": "fa6a4f31c673599b98e28e17575d04bc0ec931f961dbd8e33a39f407a6528583"
+        "canonical-head-head": "f3f990636c8dd9e88da95f7a5cfd337654a3e773eb1a34fed1be9c9fa2999ed8",
+        "canonical-head-table": "9bfc30d7c59ad12d230b0af2c6a9b5811ab2f0b1e09f23556cd6c90b4319714c",
+        "canonical-table-table": "0ee49a9f9e35677a590dad1d84e9f09480285f2f0951233c00ebf6ac095a2c78",
+        "configuration-interior-collision": "3d738746240cc266c01e3055858c4700e6e16f73692df70224bc5b0b79b7716d"
       }
     }
   ]

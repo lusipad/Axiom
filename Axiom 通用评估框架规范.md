@@ -2,7 +2,7 @@
 
 > 文档类型：平台核心规范  
 > 规范对象：`Axiom Core`  
-> 状态：Draft / 契约闭合版 v0.2  
+> 状态：Draft / 契约闭合版 v0.3
 > 上位文档：[项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 首个实现域：[有序离散点领域包规范](有序离散点领域包规范.md)
 
@@ -60,6 +60,8 @@ flowchart LR
     RunSpec -->|"uses"| Runner
     RunSpec --> Run
     Run -->|"produces"| Observation
+    ComparisonSpec -->|"selects compatible"| Run
+    Run --> ComparisonReport
     Observation --> MetricResult
     MetricResult -->|"supports or refutes"| Claim
     Evidence -->|"justifies"| Claim
@@ -99,9 +101,11 @@ flowchart LR
 | `EvaluationCase` | 一次可复现评估所需的声明式条件 | 输入、所需能力、必选/可选指标集合、接受策略 |
 | `ScenarioSpec` | 多主体、时间事件或环境交互的可选组合对象 | 仅在 Case 无法清楚表达交互时使用 |
 | `Experiment` | 为回答一个问题而组织的一组 Case/Run 及比较协议 | 假设、变量、对照、重复策略、停止条件 |
-| `ParameterSet` | Subject 或 Model 的显式参数 | 模式、值、单位、合法域或来源 |
+| `ParameterSet` | Subject 或 Model 的显式参数 | 稳定 ID、`parameterSchemaId`、模式版本、值、单位、合法域或来源 |
 | `RunSpec` | 把 Case、Subject、Runner、参数和环境冻结为一次执行请求 | 所有引用对象的精确版本或内容标识 |
 | `Run` | 一次实际执行及其状态 | 唯一 ID、开始/结束、状态、RunSpec 指纹 |
+| `ComparisonSpec` | 冻结待比较 Run/Subject 与版本化比较策略 | 操作数、策略 ID、内容标识 |
+| `ComparisonReport` | 记录兼容性判定及允许产生的差异 | 原始 Run 引用、结构化冲突、逐指标差值、内容标识 |
 | `Observation` | 执行产生的原始或对齐后观测 | 来源、时间/索引语义、质量标记 |
 | `MetricDefinition` | 一个指标的数学含义和适用条件 | ID、版本、单位、方向、前置能力 |
 | `MetricResult` | 指标在一次评估中的值或不可计算原因 | 值/区间/分布、状态、定义版本 |
@@ -110,6 +114,12 @@ flowchart LR
 | `Provenance` | 从结果回溯输入、版本、环境和派生过程的链 | 不可变引用和变换记录 |
 | `Recommendation` | Optimizer 提出的候选参数及理由 | 目标、约束、预测、不确定性、风险 |
 | `AcceptanceRecord` | 人或策略对 Recommendation 的独立处置 | 接受/拒绝/试验、责任方、证据快照 |
+
+#### 5.1.1 首个可执行 Experiment 契约
+
+v0.3 的有序离散点实现把 `Experiment` 落为恰好两个不同 Arm 的本地确定性执行切片；这是首个领域实现边界，不限制 Core 将来表达重复试验、参数扫描或多臂实验。每个 Arm 必须引用带版本的 Subject 与 Runner，且共享输入 Artifact 和 `ParameterSet` 的内容身份。
+
+`ParameterSet.parameterSchemaId` 不得省略，Runner 必须在执行前确认它与 Subject 声明完全匹配。首个 `python-call@1` Runner 只解析静态注册的 Subject，不接受任意命令、模块名或用户代码。Subject 抛出异常或返回错误 Artifact 类型时，Arm 记录版本化结构化失败；v0.3 不为该失败补造 Observation、Run 或成功 RunBundle。
 
 ### 5.2 Case 是必需的，Scenario 不是
 
@@ -123,6 +133,18 @@ flowchart LR
 - 需要从功能描述逐步实例化为具体试验。
 
 这避免平台被某一种场景本体绑死，同时为更复杂真实世界保留组合空间。
+
+### 5.3 比较是独立派生，不改写 Run
+
+比较器必须是由 `ComparisonSpec` 和所引用 Run 决定的确定性派生过程。它先按版本化策略生成兼容性报告，再决定能否计算差值或偏好；不得为完成比较而改写原始 Run、补猜单位或转换 Artifact。
+
+`ComparisonReport` 必须保留双方 Run 或其不可变内容引用，并区分：
+
+- `error`：直接比较不成立；报告结构化冲突字段，且不得输出指标差值、综合分数差值或优胜方；
+- `finding`：上下文存在可审计差异，但当前策略仍允许比较；差异必须随报告保存；
+- `compatible = true`：只表示比较上下文满足策略，不表示双方 Run 都通过 Case，也不自动产生偏好方向。
+
+内容身份与兼容身份不得混用。原始 Request/Observation 的内容标识必须保留“字段未提供”和“明确声明未知”的差异；比较策略只能对规范已声明为语义等价的默认字段做规范化，并必须把该规则纳入策略版本。
 
 ## 6. Domain Pack 契约
 
@@ -367,8 +389,11 @@ Claim 不是日志字符串。它必须指向明确命题、适用域、指标�
 - 所有 MetricDefinition、Claim、Evidence 和 DecisionPolicy 的版本。
 - 能力解析结果、必选/可选指标集合，以及对应的公共状态轴。
 - `executionOutcomePolicy`、执行失败/取消/跳过原因和归因证据。
+- Experiment、共享输入和 ParameterSet 的内容标识，以及每个 Arm 的 Subject/Runner 版本。
 
 同一 `RunSpec` 在声明为确定性的组件上必须可重放；不能重放的设备或随机过程必须保存足以审计的原始观测和环境快照。
+
+凡以内容标识作为比较前提的严格策略，都必须在比较时重新验证所引用 RunSpec、Observation、Run、Report 与 RunBundle 的内容标识；只比较调用方提供的字符串不构成完整性证据。
 
 ## 14. 首版核心边界
 
@@ -376,7 +401,7 @@ Claim 不是日志字符串。它必须指向明确命题、适用域、指标�
 
 1. 能注册一个领域包；
 2. 能冻结一个 EvaluationCase、可选 Experiment 和 RunSpec；
-3. 能执行或导入一次 Run；
+3. 能执行或导入一次 Run，并以双臂 Experiment 证明共同输入与参数；
 4. 能保存 Observation；
 5. 能计算多个独立 MetricResult；
 6. 能输出 Claim、Evidence 和不可计算原因；
@@ -389,6 +414,7 @@ Claim 不是日志字符串。它必须指向明确命题、适用域、指标�
 - 跨领域本体平台；
 - 自动定理证明系统；
 - 通用工作流编排器；
+- 任意命令、模块或用户代码执行器；
 - 统一综合评分；
 - 训练平台或自动调参；
 - 设备参数写入。

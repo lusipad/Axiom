@@ -1,1 +1,12 @@
 implementation-notes.md
+.venv/
+__pycache__/
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+build/
+dist/
+web/node_modules/
+web/coverage/
+web/.vite/
+.omx/

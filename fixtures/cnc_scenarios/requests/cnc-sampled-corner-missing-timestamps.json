@@ -1,0 +1,30 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [0.0, 0.0],
+      [4.0, 0.0],
+      [8.0, 0.0],
+      [12.0, 0.0],
+      [16.0, 0.0],
+      [19.0, 1.0],
+      [20.0, 4.0],
+      [20.0, 8.0],
+      [20.0, 12.0],
+      [20.0, 16.0],
+      [20.0, 20.0]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": false
+    }
+  },
+  "case": {
+    "caseId": "cnc-sampled-corner-missing-timestamps@1",
+    "requiredMetrics": [
+      "parameter.interval.mean"
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [0.0, 0.0],
+      [3.0, 4.0]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "workpiece",
+      "closed": false
+    }
+  },
+  "case": {
+    "caseId": "basic-geometry@1",
+    "requiredMetrics": [
+      "point.count",
+      {
+        "metricId": "path.length.open",
+        "threshold": {
+          "operator": "<=",
+          "value": 6.0,
+          "unit": "mm"
+        }
+      }
+    ],
+    "optionalMetrics": [
+      "closure.gap",
+      "step.length.mean"
+    ],
+    "scoreProfile": {
+      "profileId": "basic-geometry-score@1",
+      "applicableContext": "README quick start",
+      "rules": [
+        {
+          "metricId": "path.length.open",
+          "direction": "lower-is-better",
+          "best": 0.0,
+          "worst": 10.0,
+          "weight": 1.0,
+          "unit": "mm"
+        }
+      ]
+    }
+  }
+}

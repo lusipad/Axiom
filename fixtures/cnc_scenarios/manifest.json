@@ -1,0 +1,457 @@
+{
+  "suiteId": "axiom.cnc-synthetic-scenarios@1",
+  "datasetType": "deterministic-engineering-synthetic",
+  "synthetic": true,
+  "disclaimer": "These fixtures model sampled CNC-like geometry and timing. They are not real machine observations and do not establish controller, process, collision, or safety claims.",
+  "numericTolerance": {
+    "absolute": 1e-09,
+    "relative": 1e-12
+  },
+  "sources": [
+    "https://linuxcnc.org/docs/stable/html/gcode/g-code.html",
+    "https://linuxcnc.org/docs/html/user/user-concepts.html"
+  ],
+  "experimentCases": [
+    {
+      "id": "cnc-contour-true-ab@1",
+      "file": "experiments/cnc-contour-true-ab.json",
+      "expectedExitCode": 1,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Failed",
+      "expectedArmOutcomes": ["Failed", "Passed"],
+      "expectedSharedInputHash": "7abd5f264506e4f8847eaadcba52a3c4b271ddcab567a217c2904b9b73a15b85",
+      "expectedParameterSetHash": "6564f8de058d80ce23a2ae720785bb93d70174522f8024ec443ed63f8ca7a5ca",
+      "expectedExperimentSpecHash": "e0cd9144d290a51a4c3023e443856305f07cadeb8aed64eab7ddbee9825b13b0",
+      "expectedCompatible": true,
+      "expectedMetric": {
+        "metricId": "paired.euclidean.max",
+        "left": 0.08,
+        "right": 0.02,
+        "delta": -0.06,
+        "unit": "mm",
+        "preferredSubjectId": "ordered-point.offset-compensated"
+      }
+    }
+  ],
+  "comparisonCases": [
+    {
+      "id": "cnc-contour-ab-pass-vs-fail@1",
+      "file": "comparisons/cnc-contour-ab-pass-vs-fail.json",
+      "expectedMetrics": {
+        "paired.euclidean.max": {
+          "left": 0.025,
+          "right": 0.08,
+          "delta": 0.055,
+          "direction": "lower-is-better"
+        },
+        "paired.euclidean.rms": {
+          "left": 0.01670828137980285,
+          "right": 0.035237290853109955,
+          "delta": 0.018529009473307105,
+          "direction": "lower-is-better"
+        }
+      }
+    },
+    {
+      "id": "cnc-run-compatibility-matrix@1",
+      "file": "comparisons/cnc-run-compatibility-matrix.json",
+      "commonMutations": [],
+      "cases": [
+        {
+          "id": "case-hash-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.caseHash",
+              "value": "sha256:case-other"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "CaseMismatch",
+              "path": "report.provenance.caseHash"
+            }
+          ]
+        },
+        {
+          "id": "schema-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.schemaVersion",
+              "value": 2
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "SchemaMismatch",
+              "path": "runSpec.request.artifact.schemaVersion"
+            }
+          ]
+        },
+        {
+          "id": "metric-definition-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.metricResults.0.metricDefinitionId",
+              "value": "paired.euclidean.max@2"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "MetricDefinitionMismatch",
+              "path": "report.metricResults[paired.euclidean.rms].metricDefinitionId"
+            }
+          ]
+        },
+        {
+          "id": "profile-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.scoreProfileHash",
+              "value": "sha256:other-profile"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ProfileMismatch",
+              "path": "report.provenance.scoreProfileHash"
+            }
+          ]
+        },
+        {
+          "id": "reference-binding-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.referenceBindingHash",
+              "value": "sha256:different-reference-binding"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ReferenceBindingMismatch",
+              "path": "report.provenance.referenceBindingHash"
+            }
+          ]
+        },
+        {
+          "id": "execution-policy-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.provenance.executionOutcomePolicy",
+              "value": "axiom.core.execution-outcome.relaxed@1"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ExecutionPolicyMismatch",
+              "path": "report.provenance.executionOutcomePolicy"
+            }
+          ]
+        },
+        {
+          "id": "unit-mismatch",
+          "rightMutations": [
+            {
+              "path": "report.metricResults.0.unit",
+              "value": "coordinate-unit"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "UnitMismatch",
+              "path": "report.metricResults[paired.euclidean.rms].unit"
+            }
+          ]
+        },
+        {
+          "id": "frame-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.semantics.coordinateFrame",
+              "value": "G55-workpiece"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "FrameMismatch",
+              "path": "runSpec.request.artifact.semantics.coordinateFrame"
+            }
+          ]
+        },
+        {
+          "id": "artifact-unit-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.semantics.unit",
+              "value": "cm"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ArtifactUnitMismatch",
+              "path": "runSpec.request.artifact.semantics.unit"
+            }
+          ]
+        },
+        {
+          "id": "closed-semantics-mismatch",
+          "rightMutations": [
+            {
+              "path": "runSpec.request.artifact.semantics.closed",
+              "value": true
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "ClosedSemanticsMismatch",
+              "path": "runSpec.request.artifact.semantics.closed"
+            }
+          ]
+        },
+        {
+          "id": "invalid-terminal-state",
+          "rightMutations": [
+            {
+              "path": "report.caseOutcome",
+              "value": "Invalid"
+            }
+          ],
+          "expectedReasons": [
+            {
+              "code": "InvalidRunState",
+              "path": "report.caseOutcome"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "cnc-g1-linear-finishing@1",
+      "file": "requests/cnc-g1-linear-finishing.json",
+      "scenario": "G21/G54/G1-style linear segment sampled every 10 mm",
+      "sourceSemantics": ["G21", "G54", "G1", "deterministic equal-distance/equal-time sampling"],
+      "expectedExitCode": 0,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedMetrics": {
+        "point.count": {"status": "Computed", "value": 11},
+        "coordinate.dimension": {"status": "Computed", "value": 3},
+        "path.length.open": {"status": "Computed", "value": 100.0, "unit": "mm", "thresholdPassed": true},
+        "closure.gap": {"status": "Computed", "value": 100.0, "unit": "mm"},
+        "step.length.mean": {"status": "Computed", "value": 10.0, "unit": "mm"},
+        "step.length.std": {"status": "Computed", "value": 0.0, "unit": "mm"},
+        "parameter.interval.mean": {"status": "Computed", "value": 1.0, "unit": "s"}
+      },
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.parameter.values@1",
+        "ordered-point.parameter.time@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-g2-quarter-arc@1",
+      "file": "requests/cnc-g2-quarter-arc.json",
+      "scenario": "G17/G2 clockwise quarter-circle finishing arc, radius 20 mm",
+      "sourceSemantics": ["G21", "G54", "G17", "G2"],
+      "expectedExitCode": 0,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedMetrics": {
+        "point.count": {"status": "Computed", "value": 9},
+        "coordinate.dimension": {"status": "Computed", "value": 3},
+        "path.length.open": {"status": "Computed", "value": 31.365485300185355, "unit": "mm", "thresholdPassed": true},
+        "closure.gap": {"status": "Computed", "value": 28.284271247461902, "unit": "mm"},
+        "step.length.mean": {"status": "Computed", "value": 3.9206856625231694, "unit": "mm"},
+        "step.length.std": {"status": "Computed", "value": 5.046949151399938e-07, "unit": "mm"}
+      },
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-g3-closed-circle@1",
+      "file": "requests/cnc-g3-closed-circle.json",
+      "scenario": "G17/G3 circular bore contour, radius 10 mm, closure supplied by closed semantics",
+      "sourceSemantics": ["G21", "G54", "G17", "G3"],
+      "expectedExitCode": 0,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedMetrics": {
+        "point.count": {"status": "Computed", "value": 8},
+        "path.length.open": {"status": "Computed", "value": 53.5756812438363, "unit": "mm"},
+        "closure.gap": {"status": "Computed", "value": 7.653668749119471, "unit": "mm"},
+        "path.length.closed": {"status": "Computed", "value": 61.22934999295577, "unit": "mm", "thresholdPassed": true},
+        "step.length.mean": {"status": "Computed", "value": 7.653668749119471, "unit": "mm"},
+        "step.length.std": {"status": "Computed", "value": 0.0, "unit": "mm"}
+      },
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.sequence.ordered@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-g3-helical-ramp@1",
+      "file": "requests/cnc-g3-helical-ramp.json",
+      "scenario": "G17/G3 two-turn helical ramp, radius 10 mm, Z descent 4 mm",
+      "sourceSemantics": ["G21", "G54", "G17", "G3", "Z helix word"],
+      "expectedExitCode": 0,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedMetrics": {
+        "coordinate.dimension": {"status": "Computed", "value": 3},
+        "bounds.axis_aligned": {"status": "Computed", "value": {"min": [-10.0, -10.0, -4.0], "max": [10.0, 10.0, 0.0]}, "unit": "mm"},
+        "path.length.open": {"status": "Computed", "value": 122.52401071724468, "unit": "mm", "thresholdPassed": true},
+        "closure.gap": {"status": "Computed", "value": 4.0, "unit": "mm"},
+        "step.length.mean": {"status": "Computed", "value": 7.657750669827792, "unit": "mm"},
+        "step.length.std": {"status": "Computed", "value": 0.0, "unit": "mm"},
+        "parameter.interval.mean": {"status": "Computed", "value": 1.5, "unit": "s"}
+      },
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.parameter.values@1",
+        "ordered-point.parameter.time@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-sampled-corner@1",
+      "file": "requests/cnc-sampled-corner.json",
+      "scenario": "Synthetic rounded-corner point sequence with millisecond timestamp jitter",
+      "sourceSemantics": ["G21", "G54", "synthetic rounded-corner observation", "synthetic position sampling"],
+      "expectedExitCode": 0,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedMetrics": {
+        "path.length.open": {"status": "Computed", "value": 39.071067811865476, "unit": "mm"},
+        "step.length.min": {"status": "Computed", "value": 3.5355339059327378, "unit": "mm"},
+        "step.length.max": {"status": "Computed", "value": 4.0, "unit": "mm"},
+        "step.length.mean": {"status": "Computed", "value": 3.9071067811865476, "unit": "mm"},
+        "parameter.interval.min": {"status": "Computed", "value": 3.9000000000000004, "unit": "ms"},
+        "parameter.interval.max": {"status": "Computed", "value": 4.199999999999999, "unit": "ms"},
+        "parameter.interval.mean": {"status": "Computed", "value": 4.05, "unit": "ms"},
+        "parameter.interval.std": {"status": "Computed", "value": 0.12041594578792171, "unit": "ms"}
+      },
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.parameter.values@1",
+        "ordered-point.parameter.time@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-sampled-corner-missing-timestamps@1",
+      "file": "requests/cnc-sampled-corner-missing-timestamps.json",
+      "scenario": "Synthetic rounded-corner position export with timestamp field omitted",
+      "sourceSemantics": ["G21", "G54", "synthetic rounded-corner observation", "timestamp field omitted"],
+      "expectedExitCode": 1,
+      "expectedExecutionStatus": "Skipped",
+      "expectedCaseOutcome": "Inconclusive",
+      "expectedMetrics": {
+        "parameter.interval.mean": {
+          "status": "InsufficientContext",
+          "value": null,
+          "reasonCode": "ParameterMissing"
+        }
+      },
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-contour-observation-pass@1",
+      "file": "requests/cnc-contour-observation-pass.json",
+      "scenario": "Nominal G1 contour compared with a deterministic synthetic observation within 0.03 mm",
+      "sourceSemantics": ["G21", "G54", "G1", "synthetic observation", "index-paired comparison"],
+      "expectedExitCode": 0,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedMetrics": {
+        "paired.euclidean.rms": {"status": "Computed", "value": 0.01670828137980285, "unit": "mm"},
+        "paired.euclidean.max": {"status": "Computed", "value": 0.025, "unit": "mm", "thresholdPassed": true}
+      },
+      "expectedScore": {"status": "Computed", "value": 50.0},
+      "expectedReferenceStrategyId": "ordered-point.correspondence.index-paired@1",
+      "expectedProvenanceFields": ["referenceHash", "referenceBindingHash", "scoreProfileHash"],
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.reference.bound@1",
+        "ordered-point.correspondence.policy-bound@1"
+      ],
+      "expectedDomainFailureCodes": []
+    },
+    {
+      "id": "cnc-contour-observation-fail@1",
+      "file": "requests/cnc-contour-observation-fail.json",
+      "scenario": "Nominal G1 contour compared with a deterministic synthetic local deviation of 0.08 mm",
+      "sourceSemantics": ["G21", "G54", "G1", "synthetic out-of-tolerance observation", "index-paired comparison"],
+      "expectedExitCode": 1,
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Failed",
+      "expectedMetrics": {
+        "paired.euclidean.rms": {"status": "Computed", "value": 0.035237290853109955, "unit": "mm"},
+        "paired.euclidean.max": {"status": "Computed", "value": 0.08, "unit": "mm", "thresholdPassed": false}
+      },
+      "expectedScore": {"status": "Computed", "value": 0.0},
+      "expectedReferenceStrategyId": "ordered-point.correspondence.index-paired@1",
+      "expectedProvenanceFields": ["referenceHash", "referenceBindingHash", "scoreProfileHash"],
+      "expectedCapabilityIds": [
+        "ordered-point.artifact.parsed@1",
+        "ordered-point.artifact.valid@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.coordinate.unit-known@1",
+        "ordered-point.coordinate.frame-known@1",
+        "ordered-point.sequence.closed-declared@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.reference.bound@1",
+        "ordered-point.correspondence.policy-bound@1"
+      ],
+      "expectedDomainFailureCodes": []
+    }
+  ]
+}

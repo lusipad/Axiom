@@ -1,0 +1,75 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [0.0, 0.01],
+      [10.0, -0.015],
+      [20.0, 0.025],
+      [30.0, -0.02],
+      [40.0, 0.015],
+      [50.0, -0.01]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": false
+    }
+  },
+  "referenceBinding": {
+    "reference": {
+      "artifactType": "ordered-point-sequence",
+      "schemaVersion": 1,
+      "points": [
+        [0.0, 0.0],
+        [10.0, 0.0],
+        [20.0, 0.0],
+        [30.0, 0.0],
+        [40.0, 0.0],
+        [50.0, 0.0]
+      ],
+      "semantics": {
+        "unit": "mm",
+        "coordinateFrame": "G54-workpiece",
+        "closed": false
+      }
+    },
+    "alignment": "ordered-point.alignment.identity@1",
+    "strategyId": "ordered-point.correspondence.index-paired@1",
+    "distanceId": "ordered-point.distance.euclidean@1",
+    "tolerance": {
+      "policyId": "ordered-point.tolerance.absolute@1",
+      "value": 0.001,
+      "unit": "mm"
+    },
+    "boundaryPolicy": "ordered-point.boundary.finite-sequence@1"
+  },
+  "case": {
+    "caseId": "cnc-contour-observation-pass@1",
+    "requiredMetrics": [
+      "paired.euclidean.rms",
+      {
+        "metricId": "paired.euclidean.max",
+        "threshold": {
+          "operator": "<=",
+          "value": 0.03,
+          "unit": "mm"
+        }
+      }
+    ],
+    "scoreProfile": {
+      "profileId": "cnc-contour-deviation-score@1",
+      "applicableContext": "synthetic contour observation",
+      "rules": [
+        {
+          "metricId": "paired.euclidean.max",
+          "direction": "lower-is-better",
+          "best": 0.0,
+          "worst": 0.05,
+          "weight": 1.0,
+          "unit": "mm"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "artifact": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [0.0, 0.0],
+      [4.0, 0.0],
+      [8.0, 0.0],
+      [12.0, 0.0],
+      [16.0, 0.0],
+      [19.5, 0.5],
+      [20.0, 4.0],
+      [20.0, 8.0],
+      [20.0, 12.0],
+      [20.0, 16.0],
+      [20.0, 20.0]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": false
+    },
+    "parameter": {
+      "kind": "time",
+      "unit": "ms",
+      "values": [0.0, 4.0, 8.0, 12.1, 16.0, 20.2, 24.1, 28.3, 32.2, 36.4, 40.5]
+    }
+  },
+  "case": {
+    "caseId": "cnc-sampled-corner@1",
+    "requiredMetrics": [
+      "path.length.open",
+      "step.length.min",
+      "step.length.max",
+      "step.length.mean",
+      "parameter.interval.min",
+      "parameter.interval.max",
+      "parameter.interval.mean",
+      "parameter.interval.std"
+    ]
+  }
+}

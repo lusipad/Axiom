@@ -1,0 +1,104 @@
+{
+  "experimentId": "cnc-contour-true-ab@1",
+  "sharedInput": {
+    "artifactType": "ordered-point-sequence",
+    "schemaVersion": 1,
+    "points": [
+      [0.0, 0.0],
+      [10.0, 0.0],
+      [20.0, 0.0],
+      [30.0, 0.0],
+      [40.0, 0.0],
+      [50.0, 0.0]
+    ],
+    "semantics": {
+      "unit": "mm",
+      "coordinateFrame": "G54-workpiece",
+      "closed": false
+    }
+  },
+  "parameterSet": {
+    "parameterSetId": "finish-pass-offset@1",
+    "parameterSchemaId": "ordered-point.offset-error-parameters@1",
+    "schemaVersion": 1,
+    "values": {
+      "errorVector": [0.0, 0.08],
+      "compensationGain": 0.75
+    },
+    "units": {
+      "errorVector": "mm",
+      "compensationGain": "ratio"
+    }
+  },
+  "arms": [
+    {
+      "armId": "baseline",
+      "subjectId": "ordered-point.offset-baseline",
+      "subjectVersion": "1"
+    },
+    {
+      "armId": "candidate",
+      "subjectId": "ordered-point.offset-compensated",
+      "subjectVersion": "1"
+    }
+  ],
+  "evaluation": {
+    "case": {
+      "caseId": "cnc-contour-true-ab-evaluation@1",
+      "requiredMetrics": [
+        "paired.euclidean.rms",
+        {
+          "metricId": "paired.euclidean.max",
+          "threshold": {
+            "operator": "<=",
+            "value": 0.03,
+            "unit": "mm"
+          }
+        }
+      ],
+      "scoreProfile": {
+        "profileId": "cnc-contour-score@1",
+        "applicableContext": "true Case D contour experiment",
+        "rules": [
+          {
+            "metricId": "paired.euclidean.max",
+            "direction": "lower-is-better",
+            "best": 0.0,
+            "worst": 0.1,
+            "weight": 1.0,
+            "unit": "mm"
+          }
+        ],
+        "missingValuePolicy": "reject"
+      }
+    },
+    "referenceBinding": {
+      "reference": {
+        "artifactType": "ordered-point-sequence",
+        "schemaVersion": 1,
+        "points": [
+          [0.0, 0.0],
+          [10.0, 0.0],
+          [20.0, 0.0],
+          [30.0, 0.0],
+          [40.0, 0.0],
+          [50.0, 0.0]
+        ],
+        "semantics": {
+          "unit": "mm",
+          "coordinateFrame": "G54-workpiece",
+          "closed": false
+        }
+      },
+      "alignment": "ordered-point.alignment.identity@1",
+      "strategyId": "ordered-point.correspondence.index-paired@1",
+      "distanceId": "ordered-point.distance.euclidean@1",
+      "tolerance": {
+        "policyId": "ordered-point.tolerance.absolute@1",
+        "value": 0.001,
+        "unit": "mm"
+      },
+      "boundaryPolicy": "ordered-point.boundary.finite-sequence@1"
+    }
+  }
+}

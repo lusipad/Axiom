@@ -106,11 +106,11 @@ class AdapterReceipt(AxiomModel):
     def require_consistent_identity_and_outcome(self) -> "AdapterReceipt":
         if self.descriptor != self.invocation.descriptor:
             raise ValueError("descriptor must equal invocation.descriptor")
-        if self.input_content_hash != self.invocation.input_m4_content_hash:
-            raise ValueError("inputContentHash must equal invocation.inputM4ContentHash")
         if any(not isinstance(key, str) or not key or not isinstance(value, str) or not value for key, value in self.numeric_environment.items()):
             raise ValueError("numericEnvironment must contain non-empty string keys and values")
         if self.status == "Succeeded":
+            if self.input_content_hash != self.invocation.input_m4_content_hash:
+                raise ValueError("Succeeded receipts require inputContentHash to equal invocation.inputM4ContentHash")
             if self.output_content_hash is None:
                 raise ValueError("Succeeded receipts require outputContentHash")
             if self.failure_code is not None or self.failure_message is not None:

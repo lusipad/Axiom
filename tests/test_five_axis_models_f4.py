@@ -290,6 +290,25 @@ def test_adapter_receipt_cross_validation_and_collision_contracts_reject_invalid
     with pytest.raises(ValidationError, match="Succeeded receipts must not declare failureCode or failureMessage"):
         AdapterReceipt.model_validate(bad_receipt)
 
+    mismatched_success = _adapter_receipt_payload()
+    mismatched_success["inputContentHash"] = _HASH_C
+    with pytest.raises(
+        ValidationError,
+        match="Succeeded receipts require inputContentHash to equal invocation.inputM4ContentHash",
+    ):
+        AdapterReceipt.model_validate(mismatched_success)
+
+    failed_mismatch = _adapter_receipt_payload()
+    failed_mismatch.update(
+        status="Failed",
+        inputContentHash=_HASH_C,
+        outputContentHash=None,
+        failureCode="InputContentHashMismatch",
+        failureMessage="The supplied M4 artifact did not match the invocation binding.",
+    )
+    failed_receipt = AdapterReceipt.model_validate(failed_mismatch)
+    assert failed_receipt.input_content_hash == _HASH_C
+
     bad_cross_validation = _cross_validation_payload()
     bad_cross_validation["maxJerkGap"] = 1e-3
     with pytest.raises(ValidationError, match="Supported cross-validation requires maxJerkGap to satisfy tolerances"):

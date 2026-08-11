@@ -72,12 +72,17 @@ _INTRINSIC_METRICS = {
     "step.length.rms",
     "step.length.std",
 }
-_TIME_METRICS = {
+_TIME_INTERVAL_METRICS = {
     "parameter.interval.min",
     "parameter.interval.max",
     "parameter.interval.mean",
     "parameter.interval.std",
 }
+_KINEMATIC_METRICS = {
+    "speed.point.mean",
+    "acceleration.point.max",
+}
+_TIME_METRICS = _TIME_INTERVAL_METRICS | _KINEMATIC_METRICS
 _REFERENCE_STRATEGIES = {
     "paired.euclidean.rms": "ordered-point.correspondence.index-paired@1",
     "paired.euclidean.max": "ordered-point.correspondence.index-paired@1",
@@ -106,25 +111,27 @@ class _ArtifactState:
 
 def evaluate(payload: Mapping[str, Any] | EvaluationRequest) -> EvaluationReport:
     """Evaluate one ordered point sequence without inferring missing semantics."""
-    content_hash = _content_hash(payload)
+    payload_hash = _content_hash(payload)
     try:
         request = payload if isinstance(payload, EvaluationRequest) else EvaluationRequest.model_validate(payload)
     except ValidationError as exc:
-        return EvaluationReport(
-            execution_status=ExecutionStatus.SKIPPED,
-            case_outcome=CaseOutcome.INVALID,
-            domain_failures=[
-                DomainFailure(
-                    code="MalformedRequest",
-                    message="Request does not satisfy evaluation-request@1.",
-                    path=_validation_path(exc),
-                )
-            ],
-            content_hash=content_hash,
+        return _seal_evaluation_report(
+            EvaluationReport(
+                execution_status=ExecutionStatus.SKIPPED,
+                case_outcome=CaseOutcome.INVALID,
+                domain_failures=[
+                    DomainFailure(
+                        code="MalformedRequest",
+                        message="Request does not satisfy evaluation-request@1.",
+                        path=_validation_path(exc),
+                    )
+                ],
+                content_hash=payload_hash,
+            )
         )
 
-    content_hash = _content_hash(request)
-    provenance = _build_provenance(request, content_hash)
+    request_hash = _content_hash(request)
+    provenance = _build_provenance(request, request_hash)
 
     artifact_state = _validate_artifact(request.artifact, "artifact")
     failures = list(artifact_state.failures)
@@ -231,7 +238,6 @@ def evaluate(payload: Mapping[str, Any] | EvaluationRequest) -> EvaluationReport
             metric_results=results,
             capabilities=capabilities,
             failures=failures,
-            content_hash=content_hash,
             score=_invalid_score(profile.profile_id) if profile is not None else None,
             provenance=provenance,
         )
@@ -262,7 +268,6 @@ def evaluate(payload: Mapping[str, Any] | EvaluationRequest) -> EvaluationReport
         metric_results=results,
         capabilities=capabilities,
         failures=failures,
-        content_hash=content_hash,
         score=score,
         provenance=provenance,
     )
@@ -501,18 +506,71 @@ def _compute_time(metric_id: str, state: _ArtifactState) -> MetricResult:
         return _unavailable(metric_id, MetricStatus.INSUFFICIENT_CONTEXT, "ParameterMissing")
     if _CAP_PARAMETER not in state.capabilities:
         return _unavailable(metric_id, MetricStatus.INVALID_OBSERVATION, "InvalidParameterValues")
-    if len(parameter.values) < 2:
-        return _unavailable(metric_id, MetricStatus.NOT_APPLICABLE, "MinimumPointCountNotMet")
+    if metric_id in _TIME_INTERVAL_METRICS:
+        if len(parameter.values) < 2:
+            return _unavailable(metric_id, MetricStatus.NOT_APPLICABLE, "MinimumPointCountNotMet")
 
-    intervals = np.diff(np.asarray(parameter.values, dtype=np.float64))
-    statistic = metric_id.rsplit(".", 1)[-1]
-    calculators = {"min": np.min, "max": np.max, "mean": np.mean, "std": np.std}
+        intervals = np.diff(np.asarray(parameter.values, dtype=np.float64))
+        statistic = metric_id.rsplit(".", 1)[-1]
+        calculators = {"min": np.min, "max": np.max, "mean": np.mean, "std": np.std}
+        return _computed(
+            metric_id,
+            float(calculators[statistic](intervals)),
+            unit=state.time_unit or "parameter-unit",
+            method="numpy-time-interval-statistic@1",
+        )
+    if _CAP_TIME not in state.capabilities:
+        return _unavailable(metric_id, MetricStatus.INSUFFICIENT_CONTEXT, "TimeUnitMissing")
+
+    assert state.points is not None
+    if metric_id == "speed.point.mean":
+        if len(parameter.values) < 2:
+            return _unavailable(metric_id, MetricStatus.NOT_APPLICABLE, "MinimumPointCountNotMet")
+        return _compute_speed_mean(metric_id, state)
+    if len(parameter.values) < 3:
+        return _unavailable(metric_id, MetricStatus.NOT_APPLICABLE, "MinimumPointCountNotMet")
+    return _compute_acceleration_max(metric_id, state)
+
+
+def _compute_speed_mean(metric_id: str, state: _ArtifactState) -> MetricResult:
+    velocities, _ = _forward_adjacent_velocities(state)
+    speeds = np.linalg.norm(velocities, axis=1)
     return _computed(
         metric_id,
-        float(calculators[statistic](intervals)),
-        unit=state.time_unit or "parameter-unit",
-        method="numpy-time-interval-statistic@1",
+        float(np.mean(speeds)),
+        unit=_kinematic_unit(state, order=1),
+        method="numpy-forward-adjacent-speed@1",
     )
+
+
+def _compute_acceleration_max(metric_id: str, state: _ArtifactState) -> MetricResult:
+    velocities, intervals = _forward_adjacent_velocities(state)
+    midpoint_intervals = 0.5 * (intervals[:-1] + intervals[1:])
+    accelerations = np.diff(velocities, axis=0) / midpoint_intervals[:, np.newaxis]
+    magnitudes = np.linalg.norm(accelerations, axis=1)
+    return _computed(
+        metric_id,
+        float(np.max(magnitudes)),
+        unit=_kinematic_unit(state, order=2),
+        method="numpy-forward-adjacent-acceleration@1",
+    )
+
+
+def _forward_adjacent_velocities(state: _ArtifactState) -> tuple[np.ndarray, np.ndarray]:
+    assert state.points is not None
+    parameter = state.artifact.parameter
+    assert parameter is not None
+    intervals = np.diff(np.asarray(parameter.values, dtype=np.float64))
+    deltas = np.diff(state.points, axis=0)
+    return deltas / intervals[:, np.newaxis], intervals
+
+
+def _kinematic_unit(state: _ArtifactState, *, order: int) -> str:
+    assert state.time_unit is not None
+    length_unit = state.length_unit or "coordinate-unit"
+    if order == 1:
+        return f"{length_unit}/{state.time_unit}"
+    return f"{length_unit}/{state.time_unit}^{order}"
 
 
 def _compute_reference(
@@ -932,25 +990,28 @@ def _report(
     metric_results: list[MetricResult],
     capabilities: set[str],
     failures: list[DomainFailure],
-    content_hash: str,
     score: ScoreResult | None,
     provenance: Provenance,
 ) -> EvaluationReport:
-    return EvaluationReport(
-        execution_status=execution_status,
-        case_outcome=case_outcome,
-        metric_results=metric_results,
-        capabilities=[
-            CapabilityResolution(
-                capability_id=capability,
-                source="ReferenceBinding" if capability in {_CAP_REFERENCE, _CAP_CORRESPONDENCE} else "Artifact",
-            )
-            for capability in sorted(capabilities)
-        ],
-        domain_failures=failures,
-        content_hash=content_hash,
-        provenance=provenance,
-        score=score,
+    return _seal_evaluation_report(
+        EvaluationReport(
+            execution_status=execution_status,
+            case_outcome=case_outcome,
+            metric_results=metric_results,
+            capabilities=[
+                CapabilityResolution(
+                    capability_id=capability,
+                    source="ReferenceBinding"
+                    if capability in {_CAP_REFERENCE, _CAP_CORRESPONDENCE}
+                    else "Artifact",
+                )
+                for capability in sorted(capabilities)
+            ],
+            domain_failures=failures,
+            content_hash="",
+            provenance=provenance,
+            score=score,
+        )
     )
 
 
@@ -1015,8 +1076,10 @@ def _is_versioned_id(value: str) -> bool:
 def _metric_requirements(metric_id: str) -> list[str]:
     if metric_id in {"point.count", "coordinate.dimension", "coordinate.finite"}:
         return [_CAP_PARSED]
-    if metric_id in _TIME_METRICS:
+    if metric_id in _TIME_INTERVAL_METRICS:
         return [_CAP_PARAMETER]
+    if metric_id in _KINEMATIC_METRICS:
+        return [_CAP_VALID, _CAP_ORDERED, _CAP_EUCLIDEAN, _CAP_TIME]
     if metric_id in _REFERENCE_STRATEGIES:
         return [_CAP_REFERENCE, _CAP_CORRESPONDENCE, _CAP_EUCLIDEAN]
     if metric_id in _INTRINSIC_METRICS:
@@ -1064,6 +1127,26 @@ def _canonical_content_hash(payload: Any) -> str:
         else payload
     )
     return _hash_serializable(serializable)
+
+
+def _seal_evaluation_report(report: EvaluationReport) -> EvaluationReport:
+    report_hash = _evaluation_report_hash(report)
+    if report.content_hash == report_hash:
+        return report
+    return report.model_copy(update={"content_hash": report_hash})
+
+
+def _evaluation_report_hash(report: EvaluationReport) -> str:
+    return _hash_serializable(_evaluation_report_identity_payload(report))
+
+
+def _evaluation_report_identity_payload(report: EvaluationReport) -> dict[str, Any]:
+    return report.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude={"content_hash"},
+    )
 
 
 def _hash_serializable(serializable: Any) -> str:

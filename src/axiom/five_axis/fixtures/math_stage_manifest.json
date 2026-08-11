@@ -1,0 +1,92 @@
+{
+  "manifestId": "five-axis.math-stage-manifest@1",
+  "schemaVersion": 1,
+  "stage": "F0",
+  "capabilityIds": [
+    "five-axis.contract.manifest@1",
+    "five-axis.contract.envelope.m0@1",
+    "five-axis.contract.envelope.m1@1",
+    "five-axis.contract.envelope.m2@1",
+    "five-axis.contract.envelope.m3@1",
+    "five-axis.contract.envelope.m4@1",
+    "five-axis.contract.envelope.m5@1",
+    "five-axis.derived.sampled-cartesian-view@1",
+    "five-axis.adapter.ordered-point-export@1"
+  ],
+  "fixtureContentIds": [
+    "1a7d099c875dd9d0121a8f02e765370365281971cb1ac7c2879e4c3c93568558"
+  ],
+  "policyVersions": {
+    "collisionContext": "five-axis.collision-context.required@1",
+    "reconstructionPolicy": "five-axis.reconstruction.none@1"
+  },
+  "numericEnvironment": {
+    "python": "3.12.0",
+    "pydantic": "2.13.4"
+  },
+  "expectedStatus": "Passed",
+  "expectedClaim": null,
+  "tolerances": [
+    {
+      "metricId": "five-axis.contract.sample-spacing@1",
+      "unit": "mm",
+      "value": 0.0
+    }
+  ],
+  "envelopes": [
+    {
+      "envelopeId": "five-axis.m0-artifact@1",
+      "stage": "M0",
+      "envelopeType": "artifact",
+      "schemaId": "five-axis.envelope@1",
+      "contentId": "b03dd4a135051b3aefeda57a3e9adf47f330fc4c70b817bb27db726a2011ed2f",
+      "coordinateSpec": {
+        "coordinateSystem": "cartesian",
+        "axes": ["X", "Y", "Z"],
+        "unit": "mm",
+        "coordinateFrame": "machine.work-envelope@1"
+      },
+      "capabilityIds": ["five-axis.contract.envelope.m0@1"]
+    },
+    {
+      "envelopeId": "five-axis.m1-certificate@1",
+      "stage": "M1",
+      "envelopeType": "certificate",
+      "schemaId": "five-axis.envelope@1",
+      "contentId": "f3d9b5dd51ac94bbd6a7d2634e90e206ebd1d4b8b0be226d11da10e3decf2f72",
+      "capabilityIds": ["five-axis.contract.envelope.m1@1"]
+    },
+    {
+      "envelopeId": "five-axis.m2-profile@1",
+      "stage": "M2",
+      "envelopeType": "profile",
+      "schemaId": "five-axis.envelope@1",
+      "contentId": "701737059035ad31db50d3822b2ea5b395be23a9d117824ed626b0e829ac32cf",
+      "capabilityIds": ["five-axis.contract.envelope.m2@1"]
+    },
+    {
+      "envelopeId": "five-axis.m3-policy@1",
+      "stage": "M3",
+      "envelopeType": "policy",
+      "schemaId": "five-axis.envelope@1",
+      "contentId": "fbccf996b318af0484f095e564107d2de8c03f5fbbfd4b8bf74b390b64f95c6e",
+      "capabilityIds": ["five-axis.contract.envelope.m3@1"]
+    },
+    {
+      "envelopeId": "five-axis.m4-certificate@1",
+      "stage": "M4",
+      "envelopeType": "certificate",
+      "schemaId": "five-axis.envelope@1",
+      "contentId": "a2606fcc751b639f830676c20287856866bddcb0a4d70f973e047bdc3592d365",
+      "capabilityIds": ["five-axis.contract.envelope.m4@1"]
+    },
+    {
+      "envelopeId": "five-axis.m5-artifact@1",
+      "stage": "M5",
+      "envelopeType": "artifact",
+      "schemaId": "five-axis.envelope@1",
+      "contentId": "87faf3bcc9d2141a407b995f7d4bafab022237767486a4bc2a326e1960ea1ee4",
+      "capabilityIds": ["five-axis.contract.envelope.m5@1"]
+    }
+  ]
+}

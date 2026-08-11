@@ -1,0 +1,133 @@
+{
+  "fixtureId": "r1-case-a-self-described@1",
+  "caseType": "A",
+  "description": "只有点、没有 semantics 的单序列自描述合同；内在几何必须可算，闭合语义不得被猜测。",
+  "request": {
+    "artifact": {
+      "artifactType": "ordered-point-sequence",
+      "schemaVersion": 1,
+      "points": [
+        [0.0, 0.0],
+        [3.0, 4.0],
+        [6.0, 4.0]
+      ]
+    },
+    "case": {
+      "caseId": "r1-case-a-self-described@1",
+      "requiredMetrics": [
+        "point.count",
+        "path.length.open",
+        "closure.gap",
+        "path.length.closed"
+      ],
+      "optionalMetrics": []
+    }
+  },
+  "expected": {
+    "runnerId": "artifact-import@1",
+    "evaluatorVersion": "ordered-point-evaluator@1",
+    "executionOutcomePolicy": "axiom.core.execution-outcome.default@1",
+    "executionStatus": "Skipped",
+    "caseOutcome": "Inconclusive",
+    "capabilityIds": [
+      "ordered-point.artifact.parsed@1",
+      "ordered-point.artifact.valid@1",
+      "ordered-point.coordinate.euclidean@1",
+      "ordered-point.sequence.ordered@1"
+    ],
+    "metricResults": {
+      "point.count": {
+        "metricDefinitionId": "ordered-point.point.count@1",
+        "status": "Computed",
+        "value": 3,
+        "numericTolerance": {
+          "absolute": 0.0,
+          "relative": 0.0
+        }
+      },
+      "path.length.open": {
+        "metricDefinitionId": "ordered-point.path.length.open@1",
+        "status": "Computed",
+        "value": 8.0,
+        "unit": "coordinate-unit",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "closure.gap": {
+        "metricDefinitionId": "ordered-point.closure.gap@1",
+        "status": "Computed",
+        "value": 7.211102550927978,
+        "unit": "coordinate-unit",
+        "numericTolerance": {
+          "absolute": 1e-12,
+          "relative": 1e-12
+        }
+      },
+      "path.length.closed": {
+        "metricDefinitionId": "ordered-point.path.length.closed@1",
+        "status": "InsufficientContext",
+        "value": null,
+        "reasonCode": "ClosedSemanticsMissing"
+      }
+    }
+  },
+  "metricDefinitionContracts": {
+    "point.count": {
+      "metricDefinitionId": "ordered-point.point.count@1",
+      "requires": [
+        "ordered-point.artifact.parsed@1"
+      ],
+      "direction": null,
+      "numericTolerance": {
+        "absolute": 0.0,
+        "relative": 0.0,
+        "unit": null
+      }
+    },
+    "path.length.open": {
+      "metricDefinitionId": "ordered-point.path.length.open@1",
+      "requires": [
+        "ordered-point.artifact.valid@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.coordinate.euclidean@1"
+      ],
+      "direction": null,
+      "numericTolerance": {
+        "absolute": 1e-12,
+        "relative": 1e-12,
+        "unit": "result-unit"
+      }
+    },
+    "closure.gap": {
+      "metricDefinitionId": "ordered-point.closure.gap@1",
+      "requires": [
+        "ordered-point.artifact.valid@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.coordinate.euclidean@1"
+      ],
+      "direction": null,
+      "numericTolerance": {
+        "absolute": 1e-12,
+        "relative": 1e-12,
+        "unit": "result-unit"
+      }
+    },
+    "path.length.closed": {
+      "metricDefinitionId": "ordered-point.path.length.closed@1",
+      "requires": [
+        "ordered-point.artifact.valid@1",
+        "ordered-point.sequence.ordered@1",
+        "ordered-point.coordinate.euclidean@1",
+        "ordered-point.sequence.closed-declared@1"
+      ],
+      "direction": null,
+      "numericTolerance": {
+        "absolute": 1e-12,
+        "relative": 1e-12,
+        "unit": "result-unit"
+      }
+    }
+  }
+}

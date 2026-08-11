@@ -1,0 +1,18 @@
+{
+  "suiteId": "five-axis-f0-fixtures@1",
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "id": "five-axis.math-stage-manifest@1",
+      "file": "math_stage_manifest.json",
+      "contentHash": "51ce0d6638a7ce5e915fc93b48ae0c7e92552e5c0ed94dd2a1aee09623a1fe71",
+      "artifactType": "five-axis.math-stage-manifest"
+    },
+    {
+      "id": "five-axis.sampled-cartesian-view@1",
+      "file": "sampled_cartesian_view.json",
+      "contentHash": "1a7d099c875dd9d0121a8f02e765370365281971cb1ac7c2879e4c3c93568558",
+      "artifactType": "five-axis.sampled-cartesian-position-view"
+    }
+  ]
+}

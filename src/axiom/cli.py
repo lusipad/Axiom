@@ -12,6 +12,7 @@ from .comparison import compare
 from .evaluator import evaluate
 from .experiment import run_experiment
 from .models import CaseOutcome, ExecutionStatus
+from .run import evaluate_run
 
 
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
@@ -22,11 +23,13 @@ MAX_EXPERIMENT_BYTES = 2 * MAX_REQUEST_BYTES
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="axiom",
-        description="Evaluate and compare ordered discrete point sequences.",
+        description="Evaluate domain artifacts and run reproducible Axiom experiments.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     evaluate_command = commands.add_parser("evaluate", help="evaluate one JSON request")
     evaluate_command.add_argument("request", type=Path, help="path to an evaluation-request@1 JSON file")
+    run_command = commands.add_parser("run", help="execute a DomainPack RunSpec")
+    run_command.add_argument("run_spec", type=Path, help="path to a run-spec@1 JSON file")
     compare_command = commands.add_parser("compare", help="compare two imported runs from one JSON spec")
     compare_command.add_argument("comparison", type=Path, help="path to a comparison-spec@1 JSON file")
     experiment_command = commands.add_parser("experiment", help="execute and compare two local Subjects")
@@ -49,6 +52,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "evaluate":
         path, label, limit = args.request, "评估请求", MAX_REQUEST_BYTES
+    elif args.command == "run":
+        path, label, limit = args.run_spec, "运行请求", MAX_REQUEST_BYTES
     elif args.command == "compare":
         path, label, limit = args.comparison, "比较请求", MAX_COMPARISON_BYTES
     else:
@@ -93,6 +98,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if report.comparison is None or not report.comparison.compatibility.compatible:
             return 1
         return 0 if report.case_outcome is CaseOutcome.PASSED else 1
+
+    if args.command == "run":
+        bundle = evaluate_run(payload)
+        print(bundle.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        if bundle.report.case_outcome is CaseOutcome.INVALID:
+            return 2
+        return 0 if bundle.report.case_outcome is CaseOutcome.PASSED else 1
 
     report = evaluate(payload)
     print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))

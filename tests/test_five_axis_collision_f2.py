@@ -553,6 +553,112 @@ def test_segment_certificate_refutes_interior_collision_with_safe_endpoints() ->
     assert 0.0 < self_pair.witness_sigma < 1.0
 
 
+def test_polynomial_interval_matches_linear_segment_diagnostic() -> None:
+    axis_path = _axis_path()
+    expected = f2_collision.evaluate_configuration_segment_collision(
+        axis_path,
+        collision_model=_collision_model(),
+        segment_id="m3.seg.1",
+    )
+
+    actual = f2_collision.evaluate_configuration_polynomial_interval_collision(
+        axis_path,
+        collision_model=_collision_model(),
+        interval_id="m5.interval.1",
+        parameter_start=2.0,
+        parameter_end=3.0,
+        branch_id="branch.1",
+        coefficients=((0.0, 0.0, 0.0, 0.0, 0.0), (2.0, 0.0, 0.0, 0.0, 0.0)),
+    )
+
+    assert actual.status == expected.status
+    assert actual.collision_free == expected.collision_free
+    assert actual.minimum_clearance_lower_bound == pytest.approx(expected.minimum_clearance_lower_bound)
+    assert actual.interval_id == "m5.interval.1"
+    assert actual.parameter_name == "normalized-local"
+    assert actual.parameter_start == 2.0
+    assert actual.parameter_end == 3.0
+
+
+def test_septic_polynomial_interval_certifies_safe_constant_motion() -> None:
+    axis_path = _axis_path()
+    coefficients = ((0.0, 0.0, 0.0, 0.0, 0.0),) * 8
+
+    result = f2_collision.evaluate_configuration_polynomial_interval_collision(
+        axis_path,
+        collision_model=_collision_model(),
+        interval_id="m5.interval.safe",
+        parameter_start=0.0,
+        parameter_end=0.01,
+        branch_id="branch.1",
+        coefficients=coefficients,
+    )
+
+    assert result.status == "safe"
+    assert result.collision_free is True
+    assert result.certificate_kind == "proof"
+    assert result.evidence_level == "Certified"
+    assert not hasattr(result, "claim_id")
+
+
+def test_septic_polynomial_refutes_interior_collision_with_safe_endpoints() -> None:
+    axis_path = _axis_path()
+    coefficients = (
+        (0.0, 0.0, 0.0, 0.0, 0.0),
+        (4.0, 0.0, 0.0, 0.0, 0.0),
+        (-4.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, 0.0),
+    )
+
+    result = f2_collision.evaluate_configuration_polynomial_interval_collision(
+        axis_path,
+        collision_model=_collision_model(),
+        interval_id="m5.interval.collision",
+        parameter_start=5.0,
+        parameter_end=7.0,
+        branch_id="branch.1",
+        parameter_name="time",
+        coefficients=coefficients,
+    )
+
+    self_pair = next(pair for pair in result.pair_results if pair.pair_id == "self-1")
+    assert result.status == "collision"
+    assert result.collision_free is False
+    assert result.parameter_name == "time"
+    assert self_pair.witness_parameter is not None
+    assert 5.0 < self_pair.witness_parameter < 7.0
+
+
+@pytest.mark.parametrize(
+    ("coefficients", "coefficient_basis", "match"),
+    [
+        (((0.0,) * 5,) * 3, "local-power@1", "InvalidCoefficientShape"),
+        (((0.0,) * 5,) * 8, "bernstein@1", "UnsupportedCoefficientBasis"),
+        ((((math.nan,) + (0.0,) * 4),) + (((0.0,) * 5,) * 7), "local-power@1", "NonFinitePolynomialCoefficient"),
+    ],
+)
+def test_polynomial_interval_rejects_invalid_coefficient_contract(
+    coefficients: tuple[tuple[float, ...], ...],
+    coefficient_basis: str,
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        f2_collision.evaluate_configuration_polynomial_interval_collision(
+            _axis_path(),
+            collision_model=_collision_model(),
+            interval_id="m5.interval.invalid",
+            parameter_start=0.0,
+            parameter_end=1.0,
+            branch_id="branch.1",
+            coefficients=coefficients,
+            coefficient_basis=coefficient_basis,
+        )
+
+
 def test_boundary_contact_counts_as_collision() -> None:
     axis_path = _axis_path()
     result = f2_collision.evaluate_configuration_q_free(

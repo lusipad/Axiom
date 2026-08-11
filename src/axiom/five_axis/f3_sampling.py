@@ -37,6 +37,7 @@ _POLICY_ID_ALIASES = {
     "foh": FOH_POLICY_ID,
     "zoh": ZOH_POLICY_ID,
 }
+ArtifactKind = Literal["auto", "sampled-trajectory", "discrete-command"]
 _POLICY_DECLARED_CAPABILITIES = {
     REFERENCE_M4_POLICY_ID: ("position", "velocity", "acceleration", "jerk"),
     POLYNOMIAL_POLICY_ID: ("position", "velocity", "acceleration", "jerk"),
@@ -75,6 +76,16 @@ def _coerce_policy_id(value: str) -> str:
     if resolved not in _POLICY_DECLARED_CAPABILITIES:
         raise ValueError("policyId must be one of reference-m4, polynomial, foh, zoh")
     return resolved
+
+
+def _resolve_artifact_kind(policy_id: str, artifact_kind: ArtifactKind) -> Literal["sampled-trajectory", "discrete-command"]:
+    if artifact_kind == "auto":
+        if policy_id in {REFERENCE_M4_POLICY_ID, POLYNOMIAL_POLICY_ID}:
+            return "sampled-trajectory"
+        return "discrete-command"
+    if artifact_kind in {"sampled-trajectory", "discrete-command"}:
+        return artifact_kind
+    raise ValueError("artifact_kind must be one of auto, sampled-trajectory, discrete-command")
 
 
 def _lookup(source: Any, *names: str, default: Any = None) -> Any:
@@ -762,9 +773,11 @@ def sample_continuous_trajectory(
     sample_period: float,
     policy: ReconstructionPolicy | str,
     final_hold: bool,
+    artifact_kind: ArtifactKind = "auto",
 ) -> M5SampledTrajectory | M5DiscreteCommand:
     sample_period = float(_require_finite_json_number(sample_period))
     reconstruction_policy = policy if isinstance(policy, ReconstructionPolicy) else ReconstructionPolicy(policyId=policy)
+    resolved_artifact_kind = _resolve_artifact_kind(reconstruction_policy.policy_id, artifact_kind)
     duration = _duration_of(m4)
     times, remainder = _sample_times(duration, sample_period)
     source_m4_id = _source_m4_id(m4)
@@ -814,7 +827,7 @@ def sample_continuous_trajectory(
         )
     common = dict(
         schema_id="five-axis.m5-sampled-trajectory@1"
-        if reconstruction_policy.policy_id in {REFERENCE_M4_POLICY_ID, POLYNOMIAL_POLICY_ID}
+        if resolved_artifact_kind == "sampled-trajectory"
         else "five-axis.m5-discrete-command@1",
         schema_version=1,
         content_id="0" * 64,
@@ -838,7 +851,7 @@ def sample_continuous_trajectory(
             ),
         ),
     )
-    if reconstruction_policy.policy_id in {REFERENCE_M4_POLICY_ID, POLYNOMIAL_POLICY_ID}:
+    if resolved_artifact_kind == "sampled-trajectory":
         artifact = M5SampledTrajectory.model_construct(
             artifact_type="five-axis.m5-sampled-trajectory",
             sampled_trajectory_id=f"{source_m4_id}.m5-sampled",

@@ -23,6 +23,7 @@ _EPSILON = 1e-12
 _MIN_SIGMA_SPAN = 1e-5
 _MAX_SUBDIVISION_DEPTH = 18
 _SUPPORTED_INTERPOLATIONS = frozenset({"linear", "cubic-hermite"})
+_SUPPORTED_POLYNOMIAL_ROWS = frozenset({2, 4, 8})
 _SUPPORTED_CLAIM_ID = "five-axis.configuration-collision-free-claim@1"
 _FORBIDDEN_CLAIM_IDS = (
     "five-axis.model-collision-free-claim@1",
@@ -305,6 +306,45 @@ class ConfigurationCollisionEvaluation(AxiomModel):
     pair_results: tuple[ConfigurationCollisionPairResult, ...] = Field(alias="pairResults")
 
 
+class PolynomialCollisionPairResult(AxiomModel):
+    pair_id: str = Field(alias="pairId")
+    pair_kind: _PairKind = Field(alias="pairKind")
+    status: _PairStatus
+    reason_code: str = Field(alias="reasonCode")
+    left_entity_id: str = Field(alias="leftEntityId")
+    right_entity_id: str = Field(alias="rightEntityId")
+    minimum_clearance_lower_bound: float | None = Field(default=None, alias="minimumClearanceLowerBound")
+    witness_parameter: float | None = Field(default=None, alias="witnessParameter")
+
+
+class PolynomialCollisionIntervalEvaluation(AxiomModel):
+    interval_id: str = Field(alias="intervalId")
+    parameter_name: Literal["normalized-local", "time"] = Field(alias="parameterName")
+    parameter_start: float = Field(alias="parameterStart")
+    parameter_end: float = Field(alias="parameterEnd")
+    status: _OverallStatus
+    collision_free: bool | None = Field(alias="collisionFree")
+    certificate_kind: _CertificateKind = Field(alias="certificateKind")
+    reason_code: str = Field(alias="reasonCode")
+    evidence_level: _EvidenceLevel = Field(alias="evidenceLevel")
+    machine_profile_id: str = Field(alias="machineProfileId")
+    machine_profile_content_id: str = Field(alias="machineProfileContentId")
+    source_axis_path_id: str = Field(alias="sourceAxisPathId")
+    source_axis_path_content_id: str = Field(alias="sourceAxisPathContentId", pattern=r"^[0-9a-f]{64}$")
+    collision_model_id: str = Field(alias="collisionModelId")
+    collision_model_content_id: str = Field(alias="collisionModelContentId")
+    branch_id: str = Field(alias="branchId")
+    minimum_clearance_lower_bound: float | None = Field(default=None, alias="minimumClearanceLowerBound")
+    clearance_unit: str = Field(alias="clearanceUnit")
+    policy_id: str = Field(alias="policyId")
+    continuous_method: Literal["five-axis.configuration-polynomial-envelope-recursive@1"] = Field(
+        alias="continuousMethod"
+    )
+    evaluation_count: int = Field(alias="evaluationCount")
+    subdivision_count: int = Field(alias="subdivisionCount")
+    pair_results: tuple[PolynomialCollisionPairResult, ...] = Field(alias="pairResults")
+
+
 @dataclass(frozen=True)
 class _PairResolution:
     status: _PairStatus
@@ -313,6 +353,16 @@ class _PairResolution:
     witness_sigma: float | None = None
     evaluations: int = 0
     subdivisions: int = 0
+
+
+@dataclass(frozen=True)
+class _PolynomialJointInterval:
+    segment_id: str
+    branch_id: str
+    sigma_start: float
+    sigma_end: float
+    coefficients: tuple[tuple[float, ...], ...]
+    coefficient_basis: str = "local-power@1"
 
 
 def _hash_collision_model(model: ConfigurationCollisionModel) -> str:
@@ -412,11 +462,17 @@ def _entity_box_at_q(profile: MachineProfile, entity: CollisionEntity, joint_val
     return _transform_aabb(entity.local_aabb, _entity_transform(profile, entity, joint_values))
 
 
-def _segment_coefficients(segment: JointPolynomialSegment) -> np.ndarray:
+def _segment_coefficients(segment: JointPolynomialSegment | _PolynomialJointInterval) -> np.ndarray:
     coefficient_basis = getattr(segment, "coefficient_basis", None) or getattr(segment, "coefficientBasis", None) or "local-power@1"
     if coefficient_basis != "local-power@1":
         raise ValueError(f"UnsupportedCoefficientBasis:{coefficient_basis}")
     rows = np.asarray(segment.coefficients, dtype=float)
+    if isinstance(segment, _PolynomialJointInterval):
+        if rows.ndim != 2 or rows.shape[0] not in _SUPPORTED_POLYNOMIAL_ROWS or rows.shape[1] != 5:
+            raise ValueError("InvalidCoefficientShape:local-power")
+        if not np.isfinite(rows).all():
+            raise ValueError("NonFinitePolynomialCoefficient")
+        return rows
     expected_rows = 2 if segment.interpolation == "linear" else 4 if segment.interpolation == "cubic-hermite" else None
     if segment.interpolation not in _SUPPORTED_INTERPOLATIONS or expected_rows is None:
         raise ValueError(f"UnsupportedInterpolation:{segment.interpolation}")
@@ -425,14 +481,14 @@ def _segment_coefficients(segment: JointPolynomialSegment) -> np.ndarray:
     return rows
 
 
-def _local_tau(segment: JointPolynomialSegment, sigma: float) -> float:
+def _local_tau(segment: JointPolynomialSegment | _PolynomialJointInterval, sigma: float) -> float:
     span = segment.sigma_end - segment.sigma_start
     if span <= _EPSILON:
         return 0.0
     return (sigma - segment.sigma_start) / span
 
 
-def _evaluate_segment(segment: JointPolynomialSegment, sigma: float) -> tuple[float, ...]:
+def _evaluate_segment(segment: JointPolynomialSegment | _PolynomialJointInterval, sigma: float) -> tuple[float, ...]:
     if hasattr(segment, "evaluate"):
         evaluated = segment.evaluate(sigma)
         return tuple(float(value) for value in evaluated)
@@ -460,7 +516,11 @@ def _polynomial_extrema(coefficients: np.ndarray, tau_start: float, tau_end: flo
     return (min(values), max(values))
 
 
-def _joint_bounds(segment: JointPolynomialSegment, sigma_start: float, sigma_end: float) -> tuple[tuple[float, float], ...]:
+def _joint_bounds(
+    segment: JointPolynomialSegment | _PolynomialJointInterval,
+    sigma_start: float,
+    sigma_end: float,
+) -> tuple[tuple[float, float], ...]:
     tau_start = _local_tau(segment, sigma_start)
     tau_end = _local_tau(segment, sigma_end)
     local_start, local_end = sorted((tau_start, tau_end))
@@ -562,7 +622,7 @@ def _refine_segment_pair(
     pair: CollisionPair,
     left: CollisionEntity,
     right: CollisionEntity,
-    segment: JointPolynomialSegment,
+    segment: JointPolynomialSegment | _PolynomialJointInterval,
     sigma_start: float,
     sigma_end: float,
     *,
@@ -908,60 +968,30 @@ def evaluate_configuration_q_free(
     )
 
 
-def evaluate_configuration_segment_collision(
+def _resolve_configuration_interval_pairs(
     axis_path: M3CandidateAxisPath,
     *,
-    collision_model: ConfigurationCollisionModel | Mapping[str, Any],
-    segment_id: str,
-    sigma_start: float | None = None,
-    sigma_end: float | None = None,
-    max_subdivision_depth: int = _MAX_SUBDIVISION_DEPTH,
-) -> ConfigurationCollisionEvaluation:
-    model = _normalize_collision_model(collision_model)
-    content_reason = _content_binding_error(model, axis_path)
-    segment = _branch_segment(axis_path, segment_id=segment_id)
-    interval_start = segment.sigma_start if sigma_start is None else sigma_start
-    interval_end = segment.sigma_end if sigma_end is None else sigma_end
-    if interval_start < segment.sigma_start - _EPSILON or interval_end > segment.sigma_end + _EPSILON or interval_end < interval_start:
-        raise ValueError("SegmentIntervalOutOfBounds")
-    if content_reason is not None:
-        return _overall_result(
-            query_kind="segment",
-            axis_path=axis_path,
-            model=model,
-            branch_id=segment.branch_id,
-            segment_id=segment.segment_id,
-            sigma_start=interval_start,
-            sigma_end=interval_end,
-            pair_results=(
-                ConfigurationCollisionPairResult(
-                    pairId="model",
-                    pairKind="environment",
-                    status="unsupported",
-                    reasonCode=content_reason,
-                    leftEntityId="model",
-                    rightEntityId="model",
-                ),
-            ),
-            minimum_clearance_lower_bound=None,
-            evaluation_count=0,
-            subdivision_count=0,
-        )
+    model: ConfigurationCollisionModel,
+    segment: JointPolynomialSegment | _PolynomialJointInterval,
+    interval_start: float,
+    interval_end: float,
+    max_subdivision_depth: int,
+) -> tuple[tuple[tuple[CollisionPair, _PairResolution], ...], float | None, int, int]:
     entities = {entity.entity_id: entity for entity in model.entities}
-    pair_results: list[ConfigurationCollisionPairResult] = []
+    resolutions: list[tuple[CollisionPair, _PairResolution]] = []
     lower_bounds: list[float] = []
     evaluation_count = 0
     subdivision_count = 0
     for pair in model.pairs:
         if not _pair_applicable(pair, entities, segment.branch_id):
-            pair_results.append(
-                ConfigurationCollisionPairResult(
-                    pairId=pair.pair_id,
-                    pairKind=pair.pair_kind,
-                    status="not-applicable",
-                    reasonCode="PairInactiveOnBranch",
-                    leftEntityId=pair.left_entity_id,
-                    rightEntityId=pair.right_entity_id,
+            resolutions.append(
+                (
+                    pair,
+                    _PairResolution(
+                        status="not-applicable",
+                        minimum_clearance_lower_bound=None,
+                        reason_code="PairInactiveOnBranch",
+                    ),
                 )
             )
             continue
@@ -980,7 +1010,51 @@ def evaluate_configuration_segment_collision(
         subdivision_count += resolution.subdivisions
         if resolution.minimum_clearance_lower_bound is not None:
             lower_bounds.append(resolution.minimum_clearance_lower_bound)
-        pair_results.append(
+        resolutions.append((pair, resolution))
+    return (
+        tuple(resolutions),
+        min(lower_bounds) if lower_bounds else None,
+        evaluation_count,
+        subdivision_count,
+    )
+
+
+def _evaluate_configuration_interval_collision(
+    axis_path: M3CandidateAxisPath,
+    *,
+    model: ConfigurationCollisionModel,
+    segment: JointPolynomialSegment | _PolynomialJointInterval,
+    interval_start: float,
+    interval_end: float,
+    max_subdivision_depth: int,
+) -> ConfigurationCollisionEvaluation:
+    content_reason = _content_binding_error(model, axis_path)
+    if content_reason is not None:
+        pair_results = (
+            ConfigurationCollisionPairResult(
+                pairId="model",
+                pairKind="environment",
+                status="unsupported",
+                reasonCode=content_reason,
+                leftEntityId="model",
+                rightEntityId="model",
+            ),
+        )
+        minimum_clearance_lower_bound = None
+        evaluation_count = 0
+        subdivision_count = 0
+    else:
+        resolutions, minimum_clearance_lower_bound, evaluation_count, subdivision_count = (
+            _resolve_configuration_interval_pairs(
+                axis_path,
+                model=model,
+                segment=segment,
+                interval_start=interval_start,
+                interval_end=interval_end,
+                max_subdivision_depth=max_subdivision_depth,
+            )
+        )
+        pair_results = tuple(
             ConfigurationCollisionPairResult(
                 pairId=pair.pair_id,
                 pairKind=pair.pair_kind,
@@ -991,6 +1065,7 @@ def evaluate_configuration_segment_collision(
                 minimumClearanceLowerBound=resolution.minimum_clearance_lower_bound,
                 witnessSigma=resolution.witness_sigma,
             )
+            for pair, resolution in resolutions
         )
     return _overall_result(
         query_kind="segment",
@@ -1001,9 +1076,169 @@ def evaluate_configuration_segment_collision(
         sigma_start=interval_start,
         sigma_end=interval_end,
         pair_results=pair_results,
-        minimum_clearance_lower_bound=min(lower_bounds) if lower_bounds else None,
+        minimum_clearance_lower_bound=minimum_clearance_lower_bound,
         evaluation_count=evaluation_count,
         subdivision_count=subdivision_count,
+    )
+
+
+def evaluate_configuration_segment_collision(
+    axis_path: M3CandidateAxisPath,
+    *,
+    collision_model: ConfigurationCollisionModel | Mapping[str, Any],
+    segment_id: str,
+    sigma_start: float | None = None,
+    sigma_end: float | None = None,
+    max_subdivision_depth: int = _MAX_SUBDIVISION_DEPTH,
+) -> ConfigurationCollisionEvaluation:
+    model = _normalize_collision_model(collision_model)
+    segment = _branch_segment(axis_path, segment_id=segment_id)
+    interval_start = segment.sigma_start if sigma_start is None else sigma_start
+    interval_end = segment.sigma_end if sigma_end is None else sigma_end
+    if interval_start < segment.sigma_start - _EPSILON or interval_end > segment.sigma_end + _EPSILON or interval_end < interval_start:
+        raise ValueError("SegmentIntervalOutOfBounds")
+    return _evaluate_configuration_interval_collision(
+        axis_path,
+        model=model,
+        segment=segment,
+        interval_start=interval_start,
+        interval_end=interval_end,
+        max_subdivision_depth=max_subdivision_depth,
+    )
+
+
+def evaluate_configuration_polynomial_interval_collision(
+    axis_path: M3CandidateAxisPath,
+    *,
+    collision_model: ConfigurationCollisionModel | Mapping[str, Any],
+    interval_id: str,
+    parameter_start: float,
+    parameter_end: float,
+    branch_id: str,
+    coefficients: Sequence[Sequence[float]],
+    coefficient_basis: str = "local-power@1",
+    parameter_name: Literal["normalized-local", "time"] = "normalized-local",
+    max_subdivision_depth: int = _MAX_SUBDIVISION_DEPTH,
+) -> PolynomialCollisionIntervalEvaluation:
+    """Validate a normalized local-power joint interval against the F2 collision model.
+
+    Coefficients are ordered by ascending power over local parameter ``u`` in
+    ``[0, 1]``.  The result remains a segment-level diagnostic and therefore
+    cannot publish a path-level collision claim.
+    """
+
+    if not interval_id:
+        raise ValueError("intervalId is required")
+    if not branch_id:
+        raise ValueError("branchId is required")
+    if not math.isfinite(parameter_start) or not math.isfinite(parameter_end):
+        raise ValueError("PolynomialIntervalBoundsMustBeFinite")
+    if parameter_end <= parameter_start:
+        raise ValueError("PolynomialIntervalBoundsInvalid")
+    interval = _PolynomialJointInterval(
+        segment_id=interval_id,
+        branch_id=branch_id,
+        sigma_start=float(parameter_start),
+        sigma_end=float(parameter_end),
+        coefficients=tuple(tuple(float(value) for value in row) for row in coefficients),
+        coefficient_basis=coefficient_basis,
+    )
+    _segment_coefficients(interval)
+    model = _normalize_collision_model(collision_model)
+    content_reason = _content_binding_error(model, axis_path)
+    if content_reason is not None:
+        pair_results = (
+            PolynomialCollisionPairResult(
+                pairId="model",
+                pairKind="environment",
+                status="unsupported",
+                reasonCode=content_reason,
+                leftEntityId="model",
+                rightEntityId="model",
+            ),
+        )
+        minimum_clearance_lower_bound = None
+        evaluation_count = 0
+        subdivision_count = 0
+    else:
+        resolutions, minimum_clearance_lower_bound, evaluation_count, subdivision_count = (
+            _resolve_configuration_interval_pairs(
+                axis_path,
+                model=model,
+                segment=interval,
+                interval_start=interval.sigma_start,
+                interval_end=interval.sigma_end,
+                max_subdivision_depth=max_subdivision_depth,
+            )
+        )
+        pair_results = tuple(
+            PolynomialCollisionPairResult(
+                pairId=pair.pair_id,
+                pairKind=pair.pair_kind,
+                status=resolution.status,
+                reasonCode=resolution.reason_code,
+                leftEntityId=pair.left_entity_id,
+                rightEntityId=pair.right_entity_id,
+                minimumClearanceLowerBound=resolution.minimum_clearance_lower_bound,
+                witnessParameter=resolution.witness_sigma,
+            )
+            for pair, resolution in resolutions
+        )
+    statuses = [pair.status for pair in pair_results if pair.status != "not-applicable"]
+    if not statuses:
+        status: _OverallStatus = "not-applicable"
+        collision_free = None
+        certificate_kind: _CertificateKind = "none"
+        reason_code = "NoApplicableCollisionPairs"
+        evidence_level: _EvidenceLevel = "Validated"
+    elif any(item == "collision" for item in statuses):
+        status = "collision"
+        collision_free = False
+        certificate_kind = "counterexample"
+        reason_code = "CollisionWitnessFound"
+        evidence_level = "Observed"
+    elif any(item == "unsupported" for item in statuses):
+        status = "unsupported"
+        collision_free = None
+        certificate_kind = "none"
+        reason_code = next(pair.reason_code for pair in pair_results if pair.status == "unsupported")
+        evidence_level = "Validated"
+    elif any(item == "unresolved" for item in statuses):
+        status = "unresolved"
+        collision_free = None
+        certificate_kind = "none"
+        reason_code = "ClearanceIntervalUnresolved"
+        evidence_level = "Validated"
+    else:
+        status = "safe"
+        collision_free = True
+        certificate_kind = "proof"
+        reason_code = "ConfigurationCollisionCertified"
+        evidence_level = "Certified"
+    return PolynomialCollisionIntervalEvaluation(
+        intervalId=interval.segment_id,
+        parameterName=parameter_name,
+        parameterStart=interval.sigma_start,
+        parameterEnd=interval.sigma_end,
+        status=status,
+        collisionFree=collision_free,
+        certificateKind=certificate_kind,
+        reasonCode=reason_code,
+        evidenceLevel=evidence_level,
+        machineProfileId=axis_path.machine_profile.profile_id,
+        machineProfileContentId=axis_path.machine_profile_content_id,
+        sourceAxisPathId=axis_path.axis_path_id,
+        sourceAxisPathContentId=_artifact_content_hash(axis_path),
+        collisionModelId=model.model_id,
+        collisionModelContentId=_hash_collision_model(model),
+        branchId=interval.branch_id,
+        minimumClearanceLowerBound=minimum_clearance_lower_bound,
+        clearanceUnit=model.minimum_clearance.unit,
+        policyId=model.policy_id,
+        continuousMethod="five-axis.configuration-polynomial-envelope-recursive@1",
+        evaluationCount=evaluation_count,
+        subdivisionCount=subdivision_count,
+        pairResults=pair_results,
     )
 
 
@@ -1051,8 +1286,11 @@ __all__ = [
     "ConfigurationCollisionEvaluation",
     "ConfigurationCollisionModel",
     "ConfigurationCollisionPairResult",
+    "PolynomialCollisionIntervalEvaluation",
+    "PolynomialCollisionPairResult",
     "evaluate_configuration_q_free",
     "evaluate_configuration_path_collision",
+    "evaluate_configuration_polynomial_interval_collision",
     "evaluate_configuration_segment_collision",
     "hash_configuration_collision_model",
 ]

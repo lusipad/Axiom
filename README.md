@@ -79,14 +79,15 @@ v0.7 保留 Point Lab、F1 Geometry Reference Workbench 与 F2 Kinematics Refere
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[test]"
 .\.venv\Scripts\python.exe -m axiom evaluate examples\basic-evaluation.json
-.\.venv\Scripts\python.exe -m axiom run <run-spec.json>
+# 准备符合 run-spec@1 的 JSON 后：
+.\.venv\Scripts\python.exe -m axiom run .\path\to\run-spec.json
 .\.venv\Scripts\python.exe -m axiom compare fixtures\cnc_scenarios\comparisons\cnc-contour-ab-pass-vs-fail.json
 .\.venv\Scripts\python.exe -m axiom experiment fixtures\cnc_scenarios\experiments\cnc-contour-true-ab.json
 .\.venv\Scripts\python.exe -m axiom serve --host 127.0.0.1 --port 8000
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1、F2 与 F3 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)；这些文件是源码仓库的冻结验收资料，不承诺为 wheel 内部文件路径。安装发布包后，可由 F1/F2/F3 示例 API 获取包含 `manifest / scenario / source / artifacts / runSpec` 的完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
+启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1、F2 与 F3 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F2 机床/碰撞参考见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)，F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)；这些文件是源码仓库的冻结验收资料，不承诺为 wheel 内部文件路径。安装发布包后，可由 F1/F2/F3 示例 API 获取包含 `manifest / scenario / source / artifacts / runSpec` 的完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
 
 Python 中可直接执行内建 F0 示例：
 

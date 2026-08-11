@@ -2,7 +2,7 @@
 
 > 文档类型：平台核心规范  
 > 规范对象：`Axiom Core`  
-> 状态：Draft / 契约闭合版 v0.3
+> 状态：Draft / 契约闭合版 v0.4
 > 上位文档：[项目规划蓝图](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)  
 > 首个实现域：[有序离散点领域包规范](有序离散点领域包规范.md)
 
@@ -146,6 +146,8 @@ v0.3 的有序离散点实现把 `Experiment` 落为恰好两个不同 Arm 的�
 
 内容身份与兼容身份不得混用。原始 Request/Observation 的内容标识必须保留“字段未提供”和“明确声明未知”的差异；比较策略只能对规范已声明为语义等价的默认字段做规范化，并必须把该规则纳入策略版本。
 
+`Provenance.requestHash` 标识规范化后的请求内容；`EvaluationReport.contentHash` 标识报告本体，两者不得复用。报告内容标识定义为：按字段别名序列化报告、删除值为 `null` 的可选字段和自引用字段 `contentHash`，再对键排序后的紧凑 JSON 计算 SHA-256。进入 `RunBundle` 后，`Run.reportContentHash` 和所有 Claim 的 `reportContentHash` 必须与 `EvaluationReport.contentHash` 完全相同；完整性校验必须同时检查三处引用以及 bundle 自身内容标识。裸 `evaluate` 与 `evaluate_run`/`Experiment` 可以因后者绑定了更完整的运行 provenance 而得到不同报告哈希；统一的是身份公式，不是不同报告 payload 的哈希值。
+
 ## 6. Domain Pack 契约
 
 一个领域包至少必须声明：
@@ -169,7 +171,25 @@ v0.3 的有序离散点实现把 `Experiment` 落为恰好两个不同 Arm 的�
 - 用一个综合分数覆盖硬约束失败；
 - 声称另一个领域包的 Artifact 与自己的类型天然等价。
 
-### 6.1 能力协商
+### 6.1 描述符、运行绑定与 Artifact Adapter
+
+`DomainPack` 描述符是可序列化、可哈希的机器契约；Evaluator 的 callable、进程资源或网络连接不是描述符内容。可执行实现必须另行注册同 ID 的 `DomainRuntimeBinding`，至少提供：
+
+1. `parse_request`：把 Core 保存的领域中立 Request/Artifact envelope 严格校验为领域请求；
+2. `evaluate`：只消费已经校验的领域请求并返回公共 `EvaluationReport`；
+3. 与描述符一致的 DomainPack ID、Evaluator 版本和 Artifact 类型/schema 支持范围。
+
+Binding 直接产出的 `EvaluationReport.contentHash` 也必须遵守 §5.3 的报告身份公式。Core 在补齐 Runner、Subject、Experiment 等 provenance 后必须重新封存报告身份，这是对跨绑定一致性的防御性校正；它不能被解释为允许领域 Evaluator 自定义另一套哈希语义。
+
+Core 的调度只能按注册 ID 解析绑定，不得按某个领域的 Artifact 字段或 ID 编写条件分支。只有描述符而没有 binding 时必须得到 `DomainPackEvaluatorUnavailable`；解析失败必须保留领域错误路径，不能回退到其他 Evaluator。
+
+Core 用领域中立 Artifact envelope 保存任意领域载荷。envelope 至少强制 `artifactType` 和 `schemaVersion`，并逐字段保留领域 JSON；它不负责声明未知字段在领域内合法。强类型领域模型与 profile 仍由 `parse_request` 验证。这样做只保证 Core 可承载第二个领域，不表示两个 Artifact 语义相同。
+
+跨领域转换必须注册版本化 `ArtifactAdapter`。一次转换至少保存：Adapter ID、源/目标 Artifact 类型、源/结果内容标识、父 provenance、明确保留的语义和明确丢弃的语义。转换结果是新 Artifact，不得沿用源内容标识。按数组形状、维数或字段巧合进行隐式转换属于契约错误。
+
+首版 registry 只需支持进程内静态注册与冲突检测，不要求动态模块发现、任意代码加载或 RPC。Runner/Reference Solver/SUT 的传输机制由使用它们的领域阶段另行冻结，不能扩大本节的含义。
+
+### 6.2 能力协商
 
 能力 ID 必须稳定、带命名空间并显式携带主版本，格式为：
 
@@ -189,6 +209,8 @@ requires:
   - ordered-point.reference.bound@1
   - ordered-point.correspondence.policy-bound@1
 ```
+
+`MetricDefinition` 还必须以机器可读字段声明数值比较容差；涉及差分、端点、滤波、插值、对应或重建的指标，还必须保存对应的版本化策略 ID。实现内部采用某个库函数不能替代这项声明。
 
 能力解析必须记录每项能力来自 Artifact、Profile、Adapter 还是 Evaluator 实现，并使用下列唯一规则：
 
@@ -399,7 +421,7 @@ Claim 不是日志字符串。它必须指向明确命题、适用域、指标�
 
 `R0` 只需要证明以下能力：
 
-1. 能注册一个领域包；
+1. 能注册领域包描述符及独立运行绑定，并让至少两个领域通过同一 Core 调度路径执行；
 2. 能冻结一个 EvaluationCase、可选 Experiment 和 RunSpec；
 3. 能执行或导入一次 Run，并以双臂 Experiment 证明共同输入与参数；
 4. 能保存 Observation；
@@ -424,6 +446,8 @@ Claim 不是日志字符串。它必须指向明确命题、适用域、指标�
 满足下列条件时，通用框架才可以进入稳定版本：
 
 - 不修改核心对象即可接入有序离散点和五轴轨迹两个领域包；
+- Core 调度不包含有序点或五轴 ID/字段特判；只有描述符、缺少 binding 和领域解析失败均得到唯一、结构化状态；
+- 任一跨领域变换都有版本化 Adapter、全新内容标识和可追溯的保留/丢弃语义；
 - 同一 Artifact 在补充语义后可以获得更多指标，旧结果仍可解释；
 - 缺失上下文时不伪造指标；
 - ReferenceModel、Subject、Evaluator、SurrogateModel 的输出可清楚区分；

@@ -71,7 +71,7 @@ function pointRunBundle(subjectId: string, value: number, passed: boolean): RunB
       contentHash: `content-${subjectId}`,
     },
     claims: [{
-      claimId: `claim-${subjectId}`,
+      claimDefinitionId: `claim-${subjectId}`,
       status: passed ? "Accepted" : "Rejected",
       predicate: "paired.euclidean.max <= 0.03 mm",
       metricId: "paired.euclidean.max",
@@ -314,8 +314,8 @@ function f1Run(scenarioId = "nominal-certified"): F1RunBundle {
     },
     report: { executionStatus: "Succeeded", caseOutcome: collisionFree ? "Passed" : "Failed", metricResults: metrics },
     claims: [
-      { claimId: `geometry-${scenarioId}`, status: "Supported", predicate: "five-axis.GeometryValid is true", metricId: "five-axis.geometry.valid@1", evidence: { level: "Exact", method: "five-axis.f1.geometry-tolerance-gate@1" } },
-      { claimId: `collision-${scenarioId}`, status: collisionFree ? "Supported" : "Refuted", predicate: `five-axis.TaskGeometryCollisionFree is ${collisionFree}`, metricId: "five-axis.task-geometry.collision-free@1", evidence: { level: collisionFree ? "Certified" : "Observed", method: "continuous-envelope-recursive" } },
+      { claimDefinitionId: `geometry-${scenarioId}`, status: "Supported", predicate: "five-axis.GeometryValid is true", metricId: "five-axis.geometry.valid@1", evidence: { level: "Exact", method: "five-axis.f1.geometry-tolerance-gate@1" } },
+      { claimDefinitionId: `collision-${scenarioId}`, status: collisionFree ? "Supported" : "Refuted", predicate: `five-axis.TaskGeometryCollisionFree is ${collisionFree}`, metricId: "five-axis.task-geometry.collision-free@1", evidence: { level: collisionFree ? "Certified" : "Observed", method: "continuous-envelope-recursive" } },
     ],
     bundleHash: `bundle-${scenarioId}`,
   };

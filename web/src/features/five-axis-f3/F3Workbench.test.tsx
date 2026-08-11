@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Catalog } from "../../types";
@@ -411,14 +411,14 @@ function f3RunBundle(scenarioId: string): F3RunBundle {
     },
     claims: [
       {
-        claimId: CONTINUOUS_CLAIM_ID,
+        claimDefinitionId: CONTINUOUS_CLAIM_ID,
         metricId: CONTINUOUS_CLAIM_ID,
         status: "Supported",
         predicate: "five-axis.ContinuouslyFeasible is true",
         evidence: { level: "Certified", method: "time-law-closure" },
       },
       {
-        claimId: INTERVAL_CLAIM_ID,
+        claimDefinitionId: INTERVAL_CLAIM_ID,
         metricId: INTERVAL_CLAIM_ID,
         status: isDiscreteCommand ? "Inconclusive" : "Supported",
         predicate: isDiscreteCommand ? "five-axis.IntervalCertified is inconclusive under moving ZOH" : "five-axis.IntervalCertified is true",
@@ -464,6 +464,12 @@ describe("Five-Axis F3 workbench", () => {
     expect(screen.getByText("误差账本")).toBeInTheDocument();
     expect(screen.getByText("sampled trajectory")).toBeInTheDocument();
     expect(screen.getAllByTitle(hashD).length).toBeGreaterThan(0);
+    // Regression: ISSUE-002 — the UI read claimId instead of the API claimDefinitionId.
+    // Found by /qa on 2026-08-12.
+    // Report: .gstack/qa-reports/qa-report-localhost-2026-08-12.md
+    const verdictCard = screen.getByText("CLAIM VERDICT").closest(".verdict-card");
+    expect(verdictCard).not.toBeNull();
+    expect(within(verdictCard as HTMLElement).getByText("Supported")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("场景"), { target: { value: "zoh-moving-unsupported" } });
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("scenarioId=zoh-moving-unsupported"))).toBe(true));

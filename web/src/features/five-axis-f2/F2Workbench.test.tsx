@@ -122,8 +122,8 @@ function runBundle(scenarioId: string): F2RunBundle {
       ],
     },
     claims: [
-      { claimId: "claim.kinematics", status: "Supported", predicate: "five-axis.KinematicallyFeasible is true", metricId: "five-axis.kinematically-feasible@1", evidence: { level: "Exact", method: "kinematics-closure" } },
-      { claimId: "claim.collision", status: collisionFree ? "Supported" : "Refuted", predicate: `five-axis.ConfigurationCollisionFree is ${collisionFree}`, metricId: "five-axis.configuration-collision-free@1", evidence: { level: collisionFree ? "Certified" : "Observed", method: "collision-closure" } },
+      { claimDefinitionId: "claim.kinematics", status: "Supported", predicate: "five-axis.KinematicallyFeasible is true", metricId: "five-axis.kinematically-feasible@1", evidence: { level: "Exact", method: "kinematics-closure" } },
+      { claimDefinitionId: "claim.collision", status: collisionFree ? "Supported" : "Refuted", predicate: `five-axis.ConfigurationCollisionFree is ${collisionFree}`, metricId: "five-axis.configuration-collision-free@1", evidence: { level: collisionFree ? "Certified" : "Observed", method: "collision-closure" } },
     ],
     bundleHash: `bundle-${scenarioId}`,
   };

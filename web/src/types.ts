@@ -97,7 +97,7 @@ export interface MetricResult {
 }
 
 export interface Claim {
-  claimId: string;
+  claimDefinitionId: string;
   status: string;
   predicate: string;
   metricId?: string;

@@ -55,7 +55,7 @@ function downloadJson(filename: string, value: unknown): void {
 }
 
 function claimById(bundle: F3RunBundle | null, claimId: string): Claim | undefined {
-  return bundle?.claims.find((item) => item.claimId === claimId);
+  return bundle?.claims.find((item) => item.claimDefinitionId === claimId);
 }
 
 function isM5ErrorLedgerEntry(value: unknown): value is M5ErrorLedgerEntry {
@@ -624,7 +624,7 @@ export function F3Workbench({ catalog }: { catalog: Catalog | null }) {
             <div className="section-title compact"><span>02</span><h2>标准声明</h2></div>
             <div className="claims-list f3-claims-list">
               {(bundle?.claims ?? []).map((item) => (
-                <article key={item.claimId}>
+                <article key={item.claimDefinitionId}>
                   <header>
                     <strong className={resultClass(item.status)}>{item.status}</strong>
                     <span>{item.evidence?.level ?? "—"}</span>

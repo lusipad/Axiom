@@ -317,6 +317,7 @@ def _m2_payload() -> dict:
         "candidateGeometryId": "m2.path.1",
         "sourceReferencePathId": "m1.path.1",
         "sourceReferencePathContentId": "c" * 64,
+        "coordinateContext": {"unit": "MM", "coordinateFrame": "workpiece"},
         "pathProgress": _path_progress(segment_id, progress_id="m2.progress.1"),
         "positionSemantics": "continuous",
         "positionSegments": [

@@ -1236,6 +1236,7 @@ class M2CandidateTaskGeometry(AxiomModel):
         alias="sourceReferencePathContentId",
         pattern=_CONTENT_HASH_PATTERN,
     )
+    coordinate_context: CoordinateContext = Field(alias="coordinateContext")
     path_progress: PathProgress = Field(alias="pathProgress")
     position_semantics: Literal["continuous", "static"] = Field(default="continuous", alias="positionSemantics")
     static_position: tuple[float, float, float] | None = Field(default=None, alias="staticPosition")

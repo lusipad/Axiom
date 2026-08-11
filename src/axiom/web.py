@@ -17,17 +17,22 @@ from .five_axis import (
     F2MathStageManifest,
     F3ExamplePayload,
     F3MathStageManifest,
+    F4ExamplePayload,
+    F4MathStageManifest,
     MathStageManifest,
     build_f1_manifest,
     build_f2_manifest,
     build_f3_manifest,
+    build_f4_manifest,
     f0_example_run_spec,
     f1_example_payload,
     f2_example_payload,
     f3_example_payload,
+    f4_example_payload,
     list_f1_scenarios,
     list_f2_scenarios,
     list_f3_scenarios,
+    list_f4_scenarios,
     load_f0_manifest,
 )
 from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
@@ -197,6 +202,39 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     ) -> dict[str, Any]:
         try:
             return f3_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/five-axis/f4/manifest",
+        response_model=F4MathStageManifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def five_axis_f4_manifest(
+        scenarioId: str = "canonical-dual-table-solver",
+    ) -> F4MathStageManifest:
+        try:
+            return build_f4_manifest(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/five-axis/f4/scenarios")
+    def five_axis_f4_scenarios() -> Any:
+        return [scenario.to_dict() for scenario in list_f4_scenarios()]
+
+    @app.get(
+        "/api/v1/examples/five-axis-f4",
+        response_model=F4ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def five_axis_f4_example(
+        scenarioId: str = "canonical-dual-table-solver",
+    ) -> dict[str, Any]:
+        try:
+            return f4_example_payload(scenarioId)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

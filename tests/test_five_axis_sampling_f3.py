@@ -549,6 +549,26 @@ def test_reference_m4_roundtrip_stays_supported(monkeypatch: pytest.MonkeyPatch)
     assert roundtrip.source_m4_content_id == _canonical_hash(roundtrip.source_m4)
 
 
+def test_artifact_kind_auto_preserves_default_polynomial_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_evaluator(monkeypatch, _smooth_state)
+    m4 = _build_m4(1.0, velocity_limit=100.0, acceleration_limit=100.0, jerk_limit=100.0)
+
+    default_artifact = sample_continuous_trajectory(m4, sample_period=0.5, policy=POLYNOMIAL_POLICY_ID, final_hold=False)
+    explicit_auto_artifact = sample_continuous_trajectory(
+        m4,
+        sample_period=0.5,
+        policy=POLYNOMIAL_POLICY_ID,
+        final_hold=False,
+        artifact_kind="auto",
+    )
+
+    assert isinstance(default_artifact, M5SampledTrajectory)
+    assert explicit_auto_artifact.model_dump(mode="json", by_alias=True) == default_artifact.model_dump(
+        mode="json",
+        by_alias=True,
+    )
+
+
 def test_same_samples_reconstruct_differently_by_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_evaluator(monkeypatch, _smooth_state)
     m4 = _build_m4(1.0, velocity_limit=100.0, acceleration_limit=100.0, jerk_limit=100.0)
@@ -579,6 +599,29 @@ def test_foh_and_zoh_stay_overall_unsupported_under_full_closure_request(monkeyp
     assert next(item for item in foh_result.quantities if item.quantity == "acceleration").status == "Unsupported"
     assert zoh_result.status == "Unsupported"
     assert next(item for item in zoh_result.quantities if item.quantity == "velocity").status == "Unsupported"
+
+
+def test_polynomial_policy_can_emit_certified_discrete_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_evaluator(monkeypatch, _smooth_state)
+    m4 = _build_m4(1.0, velocity_limit=100.0, acceleration_limit=100.0, jerk_limit=100.0)
+
+    artifact = sample_continuous_trajectory(
+        m4,
+        sample_period=0.5,
+        policy=POLYNOMIAL_POLICY_ID,
+        final_hold=False,
+        artifact_kind="discrete-command",
+    )
+    result = verify_interval_reconstruction(artifact)
+
+    assert isinstance(artifact, M5DiscreteCommand)
+    assert artifact.schema_id == "five-axis.m5-discrete-command@1"
+    assert artifact.artifact_type == "five-axis.m5-discrete-command"
+    assert artifact.discrete_command_id == f"{artifact.source_m4_id}.m5-command"
+    assert result.status == "Supported"
+    assert result.evidence_level == "Certified"
+    assert result.artifact_type == artifact.artifact_type
+    assert result.artifact_id == artifact.discrete_command_id
 
 
 def test_polynomial_verifier_catches_interior_overspeed_not_visible_at_samples(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -639,6 +682,20 @@ def test_sampling_rejects_non_finite_sample_period(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(ValueError, match="value must be a finite JSON number"):
         sample_continuous_trajectory(m4, sample_period=float("nan"), policy=REFERENCE_M4_POLICY_ID, final_hold=False)
+
+
+def test_sampling_rejects_unknown_artifact_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_evaluator(monkeypatch, _smooth_state)
+    m4 = _build_m4(1.0, velocity_limit=100.0, acceleration_limit=100.0, jerk_limit=100.0)
+
+    with pytest.raises(ValueError, match="artifact_kind must be one of auto, sampled-trajectory, discrete-command"):
+        sample_continuous_trajectory(
+            m4,
+            sample_period=0.5,
+            policy=POLYNOMIAL_POLICY_ID,
+            final_hold=False,
+            artifact_kind="invalid-artifact-kind",
+        )
 
 
 def test_policy_state_rejects_times_past_duration_without_final_hold(monkeypatch: pytest.MonkeyPatch) -> None:

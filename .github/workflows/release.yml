@@ -36,6 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade -c constraints/acceptance.txt pip
           python -m pip install -c constraints/acceptance.txt -e ".[test]"
           python -m pip install build
           pnpm --dir web install --frozen-lockfile
@@ -87,6 +88,7 @@ jobs:
         run: |
           python -m venv release-smoke
           $wheel = (Get-ChildItem -Path dist -Filter *.whl -File | Select-Object -First 1).FullName
+          & .\release-smoke\Scripts\python.exe -m pip install --upgrade -c constraints/acceptance.txt pip
           & .\release-smoke\Scripts\python.exe -m pip install $wheel
           & .\release-smoke\Scripts\axiom.exe --help
           @'
@@ -101,16 +103,25 @@ jobs:
               current_f3_numeric_environment,
               validate_f3_example_run_spec,
           )
+          from axiom.five_axis.f4_scenarios import (
+              build_f4_stage_acceptance_report,
+              validate_f4_example_run_spec,
+          )
+          from axiom.five_axis.f4_runtime import current_f4_numeric_environment
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.7.0"
+          assert version("axiom-evaluator") == "0.8.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
               "openblasNumThreads": "1",
               "ompNumThreads": "1",
           }
-          for environment in (current_f2_numeric_environment(), current_f3_numeric_environment()):
+          for environment in (
+              current_f2_numeric_environment(),
+              current_f3_numeric_environment(),
+              current_f4_numeric_environment(),
+          ):
               assert expected_policy.items() <= environment.items()
 
           f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
@@ -124,6 +135,28 @@ jobs:
           unsupported = evaluate_run(validate_f3_example_run_spec("second-order-proven-optimal"))
           assert validate_run_bundle_integrity(unsupported) == []
           assert unsupported.run.case_outcome.value == "Unsupported"
+
+          f4 = evaluate_run(validate_f4_example_run_spec("canonical-head-table-solver"))
+          assert validate_run_bundle_integrity(f4) == []
+          assert f4.run.case_outcome.value == "Passed"
+          expected_f4_claims = {
+              "five-axis.geometry-valid-claim@1",
+              "five-axis.task-geometry-collision-free-claim@1",
+              "five-axis.kinematically-feasible-claim@1",
+              "five-axis.configuration-collision-free-claim@1",
+              "five-axis.continuously-feasible-claim@1",
+              "five-axis.interval-certified-claim@1",
+              "five-axis.model-collision-free-claim@1",
+          }
+          claims = {claim.claim_definition_id: claim.status.value for claim in f4.claims}
+          assert {claim_id: claims[claim_id] for claim_id in expected_f4_claims} == {
+              claim_id: "Supported" for claim_id in expected_f4_claims
+          }
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(claims)
+          assert build_f4_stage_acceptance_report().status == "Passed"
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `

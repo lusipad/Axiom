@@ -2,6 +2,34 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.8.0 - 2026-08-12
+
+### Added
+
+- 增加 Five-Axis Math F4 参考求解器 / SUT 验收闭环：`five-axis.domain-pack@5`、静态 `five-axis.solver-adapter@1`、reference / SUT in-process adapters、三类 canonical solver 拓扑、`adapter-input-hash-mismatch` 与 `interval-interior-collision` 反例，以及冻结的 M0–M5 manifest 与 example payload。
+- 增加 F4 的七个数学 gate claims，分别覆盖 `GeometryValid`、`TaskGeometryCollisionFree`、`KinematicallyFeasible`、`ConfigurationCollisionFree`、`ContinuouslyFeasible`、`IntervalCertified` 与 `ModelCollisionFree`。
+- 增加 F4 公开 API 查询面：`/api/v1/five-axis/f4/manifest`、`/api/v1/five-axis/f4/scenarios` 与 `/api/v1/examples/five-axis-f4`。
+- 增加 F4 Gate Acceptance Lab 网页工作台，展示三拓扑覆盖、Adapter receipts、Reference/SUT gap、M5 区间碰撞见证和七个数学 claims；反例禁止执行并明确不计入闭环。
+
+### Changed
+
+- R2 数学领域 gate 现在以 Math F4 为完成门，Roadmap 下一阶段切到 R3 设备只读接入。
+- 文档与示例都把 F4 的数学边界固定为 Windows AMD64 + CPython 3.12.10 + Haswell / 单线程 baseline，不把 Ubuntu 或设备写入声明当成本阶段支持范围。
+- Windows 验收约束固定 `pip==26.1.2`，源码安装与 wheel 烟测都会先按 `constraints/acceptance.txt` 升级安装器，避免发布环境落入已知漏洞版本。
+- F4 只通过 reference / SUT cross-validation 与 M5 重建碰撞证据发布数学 claims，不引入 `DeviceSafe`、`ProcessSafe` 或上机许可。
+
+### Verification
+
+- F4 的 example payload 可经 `POST /api/v1/runs/evaluate` 回放为 `Passed`，并保留七个数学 gate claims。
+- API 层已暴露 F4 manifest / scenarios / example payload 端点，供网页工作台消费同一份数据契约。
+- Windows AMD64 + CPython 3.12.10 精确环境下，Python 全量 503 项、前端 14 项、TypeScript 检查、生产构建、wheel 安装后 CLI/API/网页烟测均通过；依赖审计未发现已知漏洞。
+- 当前文档同步保留了 0.7.0 的旧条目，不回写历史版本内容。
+
+### Boundary
+
+- 本次 F4 完成门不包含真实控制器、驱动器写入、设备启动、过程安全批准或学习模型闭环。
+- `DeviceSafe`、`ProcessSafe` 和任何上机许可在 F4 仍然禁止发布。
+
 ## 0.7.0 - 2026-08-12
 
 ### 新增

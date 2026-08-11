@@ -1,0 +1,247 @@
+{
+  "suiteId": "axiom.five-axis-f4-reference@1",
+  "datasetType": "deterministic-engineering-reference",
+  "synthetic": true,
+  "disclaimer": "The CL syntax is representative of CNC cutter-location input. Machine profiles, collision geometry, adapter invocations and results are deterministic reference models, not observations from a physical machine and not device-safety evidence.",
+  "programFile": "programs/continuous-five-axis-line.cl",
+  "sourceSyntaxId": "axiom-cl-subset@1",
+  "expectedStageAcceptanceReportContentHash": "d9a1b557e05c1ad163d4dda0080fa0159391cdbab88acf38199c8cf0ed466d2f",
+  "expectedStageAcceptanceReportStatus": "Passed",
+  "expectedTopologyCoverage": [
+    {
+      "topology": "dual-table",
+      "covered": true
+    },
+    {
+      "topology": "head-table",
+      "covered": true
+    },
+    {
+      "topology": "dual-head",
+      "covered": true
+    }
+  ],
+  "expectedCounterexampleCoverage": [
+    {
+      "counterexampleId": "counterexample.adapter-input-hash-mismatch",
+      "covered": true
+    },
+    {
+      "counterexampleId": "counterexample.interval-interior-collision",
+      "covered": true
+    }
+  ],
+  "cases": [
+    {
+      "id": "canonical-dual-table-solver",
+      "topology": "dual-table",
+      "countsTowardClosure": true,
+      "expectedCandidateGeometryContentId": "07f2499e6542f541611be04e5577bb46814a69f3a906d4a61aa69353c0e5f313",
+      "expectedAxisPathContentId": "2fdcb5900120dba9c41c8cd9ae3a96938fe93440625abc93497d1237947b6e35",
+      "expectedContinuousTrajectoryContentId": "94faf8a29f47d7d571081bd8b67a2e5fd645928b14930b9eb7be2afc8f280c2f",
+      "expectedCollisionModelContentId": "5102de0bf855aca16478f47fd3d5b39bf7936b7bb642f5a8c16e931e6ca1d50a",
+      "expectedReferenceInvocationContentId": "8ec1616886a23e9e45eded63be75cdbd12462494d277bf9817f54fbbe222dac8",
+      "expectedSutInvocationContentId": "6d6bb2702df9b94b5ca05d433470db161a54e09e6e3b9dd458986bddf5385c74",
+      "expectedReferenceReceiptStatus": "Succeeded",
+      "expectedSutReceiptStatus": "Succeeded",
+      "expectedCrossValidationStatus": "Supported",
+      "expectedCollisionStatus": "safe",
+      "expectedReferenceCommandContentId": "4e3aeed8c366687938a763f80d44f15262fb8180e5dc1a9c307e5ef1136b6b84",
+      "expectedSutCommandContentId": "b76deedbaceb59d6f25d122d9335c09c68f0ea670648556682488e9bfc6e7820",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.geometry-valid-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Exact"
+        },
+        "five-axis.task-geometry-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.model-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "canonical-head-table-solver",
+      "topology": "head-table",
+      "countsTowardClosure": true,
+      "expectedCandidateGeometryContentId": "38cc741b57698e51788a42bb96ebb5f058d0d33baa647737687c01cba568137e",
+      "expectedAxisPathContentId": "e89ec46999aac7288635a49a1cd275e78618196cb485c688d8f116772f9e169c",
+      "expectedContinuousTrajectoryContentId": "8ddf6ce2b73447f5b333d01c0e0c99958c70ecbe929a076c131a33b84f0c02ea",
+      "expectedCollisionModelContentId": "29eb04fc28d6ad5d4cab9074a5eef147fd28794acce9fe73bc60e3225ac9e70f",
+      "expectedReferenceInvocationContentId": "d58d67979adf65786dae477bf121c4aec40eefdda5f2c50003c6ca7f6048c059",
+      "expectedSutInvocationContentId": "3e62874ba679bcbda995ceec0ac67b23a334532ccee3bf5729a7034de0912fb7",
+      "expectedReferenceReceiptStatus": "Succeeded",
+      "expectedSutReceiptStatus": "Succeeded",
+      "expectedCrossValidationStatus": "Supported",
+      "expectedCollisionStatus": "safe",
+      "expectedReferenceCommandContentId": "085ab2047f6089fb3fa681c7a83ee3aa63c9d379b55529bbbabbd0411874d218",
+      "expectedSutCommandContentId": "acf36cac482818638bab12fed8cdaba2087bc7107d953257afcf208a8232fa54",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.geometry-valid-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Exact"
+        },
+        "five-axis.task-geometry-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.model-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "canonical-dual-head-solver",
+      "topology": "dual-head",
+      "countsTowardClosure": true,
+      "expectedCandidateGeometryContentId": "17ca3c4d41247fa6205e77b93c4d99fb95efa9d10f25b0902d22e3cb062b84a7",
+      "expectedAxisPathContentId": "e80f2a848409cbacba565897eba3fb7760dcfd7e423e3e76625680a66035591c",
+      "expectedContinuousTrajectoryContentId": "8f450c23022f7fe50890d16135f9535b2d30ef60fc9ab825f786d99ce604bb63",
+      "expectedCollisionModelContentId": "ae589742322273d8507ce343d46d8a1349a41ea46aaaea617c1b8c713ccc9034",
+      "expectedReferenceInvocationContentId": "d93ae9a7b61dae8cff32b0cbc6e3c34a20ab74002741391183391757b076ca06",
+      "expectedSutInvocationContentId": "1390d560152da6aaad42709bffcf56a3611c62b370e1324993f8fbd980b8b09b",
+      "expectedReferenceReceiptStatus": "Succeeded",
+      "expectedSutReceiptStatus": "Succeeded",
+      "expectedCrossValidationStatus": "Supported",
+      "expectedCollisionStatus": "safe",
+      "expectedReferenceCommandContentId": "01edc2b1fb0fcd5c1bc10539a2af800f4b64d7f43fb2ddde35ecabff04dc47d6",
+      "expectedSutCommandContentId": "ba1742b9ad24fcc4aea209f8639db5348269974a2d39f0834c6c5ecae1e4cee0",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed",
+      "expectedClaims": {
+        "five-axis.geometry-valid-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Exact"
+        },
+        "five-axis.task-geometry-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.continuously-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.interval-certified-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.model-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
+      }
+    },
+    {
+      "id": "adapter-input-hash-mismatch",
+      "topology": "dual-table",
+      "countsTowardClosure": false,
+      "expectedCandidateGeometryContentId": "07f2499e6542f541611be04e5577bb46814a69f3a906d4a61aa69353c0e5f313",
+      "expectedAxisPathContentId": "2fdcb5900120dba9c41c8cd9ae3a96938fe93440625abc93497d1237947b6e35",
+      "expectedContinuousTrajectoryContentId": "54eb7e394658b888b93d2dbb4416a3c7cce7d24d66364a736fcfbdb390dbbb3c",
+      "expectedCollisionModelContentId": "5102de0bf855aca16478f47fd3d5b39bf7936b7bb642f5a8c16e931e6ca1d50a",
+      "expectedReferenceInvocationContentId": "aec4074a7a14cc12b6c473452969d789be53bb0cc3787ce2499915d4d2dd0308",
+      "expectedSutInvocationContentId": "bebd7ff13d3116e7d21e5cf9e9a65e8c1ce3209c36ad139e0d9c78e0a8a152c2",
+      "expectedReferenceReceiptStatus": "Succeeded",
+      "expectedSutReceiptStatus": "Failed",
+      "expectedCrossValidationStatus": "Inconclusive",
+      "expectedCollisionStatus": "unsupported",
+      "expectedReferenceCommandContentId": "b4c826472a832dad51f22b96ef6f05ffb355580aaa98ad534d1f3b1029ca63e4",
+      "expectedSutCommandContentId": null,
+      "expectedSutFailureCode": "InputContentHashMismatch"
+    },
+    {
+      "id": "interval-interior-collision",
+      "topology": "dual-table",
+      "countsTowardClosure": false,
+      "expectedCandidateGeometryContentId": "07f2499e6542f541611be04e5577bb46814a69f3a906d4a61aa69353c0e5f313",
+      "expectedAxisPathContentId": "2fdcb5900120dba9c41c8cd9ae3a96938fe93440625abc93497d1237947b6e35",
+      "expectedContinuousTrajectoryContentId": "699755fadecd5e503a919709912a5b66db6e24255844a052ba72bbb12050f20c",
+      "expectedCollisionModelContentId": "24ea93d9dc653f164033af17bafeedcd5de35f1cbc7f41596704d42154ad3868",
+      "expectedReferenceInvocationContentId": "f581f882ff4b0aafdaba1f1037bb4d555bb13e7256ab01c48735cff8639880fa",
+      "expectedSutInvocationContentId": "2c523da020c22dd520541f4b7c592633616179f2cf38c4ae9a66052a830983ed",
+      "expectedReferenceReceiptStatus": "Succeeded",
+      "expectedSutReceiptStatus": "Succeeded",
+      "expectedCrossValidationStatus": "Supported",
+      "expectedCollisionStatus": "collision",
+      "expectedReferenceCommandContentId": "11914b4a9dd6ee4e011a2aa7063b680c7e8339e5e258a64c235b93d0c6545527",
+      "expectedSutCommandContentId": "2156937f6c11c1669a4f1f229d18447b4959c5692df883f11ea1b9cf79fede9a",
+      "expectedCollisionInterval": {
+        "tStart": 0.25,
+        "tEnd": 0.5,
+        "witnessTime": 0.375,
+        "startEndpointStatus": "safe",
+        "endEndpointStatus": "safe"
+      }
+    }
+  ],
+  "environmentBoundIdentities": [
+    {
+      "label": "windows-haswell-single-thread-python-3.12-reference-2026-08-11",
+      "numericEnvironment": {
+        "system": "Windows",
+        "machine": "AMD64",
+        "python": "3.12.10",
+        "numpy": "2.5.2",
+        "scipy": "1.18.0",
+        "pint": "0.25.3",
+        "pydantic": "2.13.4",
+        "openblasCoreType": "Haswell",
+        "openblasNumThreads": "1",
+        "ompNumThreads": "1"
+      },
+      "bundleHashes": {
+        "canonical-dual-table-solver": "66be71c2937de4365ea68b790f93e3fd1d663195c4c3f56211d79492208d89e8",
+        "canonical-head-table-solver": "beec29557d6bf8c22363616c65a73f4394e484c9b516478898e9c4039bc44d79",
+        "canonical-dual-head-solver": "64b46de0c8784dac3a5c67560dc3f033afe585a967dd0e99619cbb7abb534375"
+      }
+    }
+  ]
+}

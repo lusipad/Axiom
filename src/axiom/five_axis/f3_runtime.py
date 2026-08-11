@@ -218,6 +218,8 @@ FIVE_AXIS_F3_DOMAIN_PACK = register_domain_pack(
 
 def current_f3_numeric_environment() -> dict[str, str]:
     return {
+        "system": platform.system(),
+        "machine": platform.machine(),
         "python": platform.python_version(),
         "numpy": package_version("numpy"),
         "scipy": package_version("scipy"),

@@ -13,6 +13,7 @@ from axiom.five_axis.f2_kinematics import (
     build_canonical_head_table_bc_profile,
     build_canonical_table_table_ac_profile,
     forward_kinematics,
+    normalize_numeric_identity,
 )
 from axiom.five_axis.f2_models import M3CandidateAxisPath, MachineProfile
 from axiom.five_axis.f2_path import lift_m2_path_to_m3_axis_path
@@ -20,6 +21,7 @@ from axiom.five_axis.f2_path import lift_m2_path_to_m3_axis_path
 
 def _hash_model(model: Any) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

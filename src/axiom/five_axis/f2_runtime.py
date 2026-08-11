@@ -46,7 +46,7 @@ from .f2_collision import (
     ConfigurationCollisionModel,
     evaluate_configuration_path_collision,
 )
-from .f2_kinematics import forward_kinematics, jacobian_evidence
+from .f2_kinematics import forward_kinematics, jacobian_evidence, normalize_numeric_identity
 from .f2_models import M3CandidateAxisPath
 
 
@@ -234,6 +234,8 @@ FIVE_AXIS_F2_DOMAIN_PACK = register_domain_pack(
 
 def current_f2_numeric_environment() -> dict[str, str]:
     return {
+        "system": platform.system(),
+        "machine": platform.machine(),
         "python": platform.python_version(),
         "numpy": package_version("numpy"),
         "scipy": package_version("scipy"),
@@ -316,7 +318,7 @@ def _selected_branch_solutions(artifact: M3CandidateAxisPath) -> tuple[Any, ...]
 
 
 def _model_content_hash(model: AxiomModel) -> str:
-    return _content_hash(model.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _content_hash(normalize_numeric_identity(model.model_dump(mode="json", by_alias=True, exclude_none=True)))
 
 
 def _position_tolerance_absolute(artifact: M3CandidateAxisPath) -> float:
@@ -827,7 +829,9 @@ def _collision_model_binding_failure(
 
 
 def _artifact_content_hash(artifact: M3CandidateAxisPath) -> str:
-    return _content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _content_hash(
+        normalize_numeric_identity(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    )
 
 
 def _collision_path_evaluation(

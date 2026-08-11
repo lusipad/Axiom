@@ -11,60 +11,84 @@
     {
       "id": "canonical-head-head",
       "machineProfileId": "five-axis.machine-profile.canonical-head-head-cb@1",
-      "expectedCandidateGeometryContentId": "8d0bad41c2d3aeb66985bc60fdb1ba45c9c9f16dd69d1c082dad765b9c99b24e",
-      "expectedMachineProfileContentId": "3078d726ee37a891d1b42b860630cdc4274aeb74d405808018e28d48f2d32672",
-      "expectedCollisionModelContentId": "4a770f2006e1f098d39b3a8bb37ee490ef93236b3ab0b4a5e797ceabb8547b9c",
+      "expectedCandidateGeometryContentId": "6a27a13ae86852c08b10e7baad997f73c5532a890e9ec9fdeb17bfad3dd7b6fb",
+      "expectedMachineProfileContentId": "757c49685681f1d230e0ff27b25239985b0ad0daf102910dd798d1fb7b1d9fd1",
+      "expectedCollisionModelContentId": "31338d3f184a2ed32566ab553ff0596f21259acb4829fedbfef32ca63748141d",
       "expectedAxisPathId": "five-axis.f2.scenario.canonical-head-head.candidate.m3-path",
       "expectedExecutionStatus": "Succeeded",
       "expectedCaseOutcome": "Passed",
       "expectedClaims": {
-        "five-axis.kinematically-feasible-claim@1": {"status": "Supported", "evidenceLevel": "Certified"},
-        "five-axis.configuration-collision-free-claim@1": {"status": "Supported", "evidenceLevel": "Certified"}
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
       },
       "expectedCollisionStatus": "safe"
     },
     {
       "id": "canonical-head-table",
       "machineProfileId": "five-axis.machine-profile.canonical-head-table-workpiece-c-tool-b@1",
-      "expectedCandidateGeometryContentId": "ec02a331db42ed125f783506c857655da85c01c473ee02aa12fd411251b67bae",
-      "expectedMachineProfileContentId": "d36b6fbf621361521b6373266ceac4410a98d5ca594e03b3b6c92f7fb80ce268",
-      "expectedCollisionModelContentId": "b3a4df901bfa2ac9496f960d1e3e115d1d0d01672e82fa98dde01cb017b7a5aa",
+      "expectedCandidateGeometryContentId": "feeaf24946690068700e9c100805e6b8ad6593382ca0aaf7804562eeb6537aa6",
+      "expectedMachineProfileContentId": "2f0bb8deca82c3a5f72deeb78f90439ea081ac8dc7cdef3ac43c1be3c2ff03f7",
+      "expectedCollisionModelContentId": "25e650a8e8a0c30813815b14026475b2c65b8e0befb09f83490de503911c6f64",
       "expectedAxisPathId": "five-axis.f2.scenario.canonical-head-table.candidate.m3-path",
       "expectedExecutionStatus": "Succeeded",
       "expectedCaseOutcome": "Passed",
       "expectedClaims": {
-        "five-axis.kinematically-feasible-claim@1": {"status": "Supported", "evidenceLevel": "Certified"},
-        "five-axis.configuration-collision-free-claim@1": {"status": "Supported", "evidenceLevel": "Certified"}
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
       },
       "expectedCollisionStatus": "safe"
     },
     {
       "id": "canonical-table-table",
       "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
-      "expectedCandidateGeometryContentId": "7c27c6a83b5bc386392a1821508225aec3f54e5aec6e1d124dabd5eee5c3c18b",
-      "expectedMachineProfileContentId": "84339e0ec18ae5062c44f542c48d6789a521a23378f0ab2cc4187492cd440489",
-      "expectedCollisionModelContentId": "58dec61c11d4147cacdd0dcfd91e88e3993c7afe1d5dff246b130a8ddb331267",
+      "expectedCandidateGeometryContentId": "16877861cadc1404a482c65d3ce51e58d6f1e17e78b5a87cad6155eb226d5b79",
+      "expectedMachineProfileContentId": "8f1fcbb8e7a4145db3cf4cf439945d547b86dbd210b712cc68db2e12e5a88fe0",
+      "expectedCollisionModelContentId": "a5e7e45354fe142d8f9be3682eea45511f2c2e760039e1c6705ab4cb40e9d529",
       "expectedAxisPathId": "five-axis.f2.scenario.canonical-table-table.candidate.m3-path",
       "expectedExecutionStatus": "Succeeded",
       "expectedCaseOutcome": "Passed",
       "expectedClaims": {
-        "five-axis.kinematically-feasible-claim@1": {"status": "Supported", "evidenceLevel": "Certified"},
-        "five-axis.configuration-collision-free-claim@1": {"status": "Supported", "evidenceLevel": "Certified"}
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        }
       },
       "expectedCollisionStatus": "safe"
     },
     {
       "id": "configuration-interior-collision",
       "machineProfileId": "five-axis.machine-profile.canonical-table-table-ac@1",
-      "expectedCandidateGeometryContentId": "5ccb64eeccb217a2414bfc511fd733def6842afc494eba395cb9b1267373a4e0",
-      "expectedMachineProfileContentId": "84339e0ec18ae5062c44f542c48d6789a521a23378f0ab2cc4187492cd440489",
-      "expectedCollisionModelContentId": "e4047348b2ee9691d5ce4e5aae00cb07dc6e681e6e1e28169c3be0c4f4d62276",
+      "expectedCandidateGeometryContentId": "711b9456a79387535ad3cc4311e351f4a63cfd2937197b75d180228ed10e7176",
+      "expectedMachineProfileContentId": "8f1fcbb8e7a4145db3cf4cf439945d547b86dbd210b712cc68db2e12e5a88fe0",
+      "expectedCollisionModelContentId": "e3db055b6c112d941ad61d2401d45b2432300a7cddef2d991905ff23b8d760b4",
       "expectedAxisPathId": "five-axis.f2.scenario.configuration-interior-collision.candidate.m3-path",
       "expectedExecutionStatus": "Succeeded",
       "expectedCaseOutcome": "Passed",
       "expectedClaims": {
-        "five-axis.kinematically-feasible-claim@1": {"status": "Supported", "evidenceLevel": "Certified"},
-        "five-axis.configuration-collision-free-claim@1": {"status": "Refuted", "evidenceLevel": "Observed"}
+        "five-axis.kinematically-feasible-claim@1": {
+          "status": "Supported",
+          "evidenceLevel": "Certified"
+        },
+        "five-axis.configuration-collision-free-claim@1": {
+          "status": "Refuted",
+          "evidenceLevel": "Observed"
+        }
       },
       "expectedCollisionStatus": "collision",
       "expectedWitnessSigma": 0.5
@@ -72,8 +96,10 @@
   ],
   "environmentBoundIdentities": [
     {
-      "label": "windows-python-3.14-reference-2026-08-11",
+      "label": "windows-python-3.14-reference-2026-08-12",
       "numericEnvironment": {
+        "system": "Windows",
+        "machine": "AMD64",
         "python": "3.14.3",
         "numpy": "2.4.3",
         "scipy": "1.18.0",
@@ -81,15 +107,17 @@
         "pydantic": "2.12.5"
       },
       "bundleHashes": {
-        "canonical-head-head": "71363cdafee1ac288e4171001474f1c4afafbf67dc04fb737e55d850394ace4f",
-        "canonical-head-table": "7fdf28d50221b66ade72aba5c3cc273ed45224281d022073cd179ca37e56c1e0",
-        "canonical-table-table": "62df30744d669cdb0a3379982a7185299c67807f4f4dbfe6de80b484083120b9",
-        "configuration-interior-collision": "e5aeb8189f8f287be764a8248c858e05cc5dbc7d470f58d0003117d1556b588f"
+        "canonical-head-head": "42d86f1383dc48b6a0d57b5d226a5ffba061ac5c354e8a7e2a9203e5d33254ec",
+        "canonical-head-table": "1489af3d8772738d3f772d6fe7b82bf2181744246fbf580b63a8ae97eb80429a",
+        "canonical-table-table": "d8ae38954b5cdbd50c51ea071e17297648c4843dcef7710f614057800a099431",
+        "configuration-interior-collision": "b70da7a65c03cf1b0af58c2b614b2abbd721f7064f629f273eced0ed1e85e4d2"
       }
     },
     {
-      "label": "acceptance-python-3.12-reference-2026-08-11",
+      "label": "windows-acceptance-python-3.12-reference-2026-08-12",
       "numericEnvironment": {
+        "system": "Windows",
+        "machine": "AMD64",
         "python": "3.12.13",
         "numpy": "2.5.2",
         "scipy": "1.18.0",
@@ -97,10 +125,10 @@
         "pydantic": "2.13.4"
       },
       "bundleHashes": {
-        "canonical-head-head": "2b97ef02085d730f9a318e976928e35e3146b67579215ef494e3ded4bd90a064",
-        "canonical-head-table": "2343d9700e29fc278d92cf6d6305ed1f82dd22c38c12faeea7720a9f1fcb82ca",
-        "canonical-table-table": "58a7207d71740b37c2fb4e060ed530720e7110669e396959039ec247da65039a",
-        "configuration-interior-collision": "1b2ea8f07856ebd61be1e8d367d6533d4aa588cdada747866881cd6150fc162e"
+        "canonical-head-head": "edba2efa5c79a467faccc3be588061fcfd999292ea3a946bb1ccda4ad7376b37",
+        "canonical-head-table": "f9ef6575c71ba9d9f5ea965aae3add7a31fe98ad37193053e49a4c796c75f14f",
+        "canonical-table-table": "dbc88f9b6fc10949b49f1e728975f43c12e8300f58fb25ffcc66562b9bde47eb",
+        "configuration-interior-collision": "e93c21741093a270d2949d550f6994c32039708cf6e91cc07fa35a3746e4da90"
       }
     }
   ]

@@ -11,6 +11,7 @@ from pydantic import Field, field_validator, model_validator
 from ..models import AxiomModel
 from .f1_models import ExpectedMetric, StageDecision
 from .f2_models import M3CandidateAxisPath
+from .f2_kinematics import normalize_numeric_identity
 
 
 _EPSILON = 1e-12
@@ -45,6 +46,7 @@ def _require_unique_versioned_ids(values: tuple[str, ...], *, field_name: str) -
 
 def _canonical_content_id(model: AxiomModel) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

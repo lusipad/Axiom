@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import platform
 
 import axiom.five_axis.f3_runtime as f3_runtime_module
 from axiom.five_axis.f3_runtime import (
@@ -108,6 +109,8 @@ def test_f3_run_bundle_is_deterministic() -> None:
         mode="json", by_alias=True, exclude_none=True
     )
     assert first.bundle_hash
+    assert first.report.provenance.numeric_environment["system"] == platform.system()
+    assert first.report.provenance.numeric_environment["machine"] == platform.machine()
 
 
 def test_f3_runtime_replays_each_verifier_at_most_once_per_evaluation(monkeypatch) -> None:

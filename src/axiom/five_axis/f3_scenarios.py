@@ -13,6 +13,7 @@ from ..evaluator import _content_hash
 from ..models import AxiomModel, RunSpec
 from .f1_models import ExpectedMetric, M1ReferencePath, NormalizedProgram, StageDecision
 from .f2_models import M3CandidateAxisPath
+from .f2_kinematics import normalize_numeric_identity
 from .f2_scenarios import load_f2_scenario
 from .f3_models import (
     ArtifactDescriptor,
@@ -68,6 +69,7 @@ CAP_RECONSTRUCTION = "five-axis.reconstruction.policy-bound@1"
 
 def _canonical_content_id(model: Any) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return _content_hash(json.loads(canonical))
 
@@ -81,6 +83,8 @@ def _safe_package_version(distribution: str) -> str:
 
 def current_f3_numeric_environment() -> dict[str, str]:
     return {
+        "system": platform.system(),
+        "machine": platform.machine(),
         "python": platform.python_version(),
         "numpy": _safe_package_version("numpy"),
         "scipy": _safe_package_version("scipy"),

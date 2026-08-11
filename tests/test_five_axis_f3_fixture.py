@@ -87,11 +87,10 @@ def test_f3_reference_fixture_replays_environment_bound_bundle_hashes_when_appli
         for identity in manifest["environmentBoundIdentities"]
         if identity["numericEnvironment"] == current_f3_numeric_environment()
     ]
-    if not matching:
-        return
-
-    for scenario_id, expected_hash in matching[0]["bundleHashes"].items():
+    expected_hashes = matching[0]["bundleHashes"] if matching else {}
+    for scenario_id in (case["id"] for case in manifest["cases"]):
         first = evaluate_run(validate_f3_example_run_spec(scenario_id))
         second = evaluate_run(validate_f3_example_run_spec(scenario_id))
-        assert first.bundle_hash == expected_hash
-        assert second.bundle_hash == expected_hash
+        assert first.bundle_hash == second.bundle_hash
+        if scenario_id in expected_hashes:
+            assert first.bundle_hash == expected_hashes[scenario_id]

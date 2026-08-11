@@ -42,3 +42,19 @@ jobs:
 
       - name: Verify Python application
         run: python -m pytest
+
+  verify-windows-fixtures:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12.13"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: python -m pip install -c constraints/acceptance.txt -e ".[test]"
+
+      - name: Verify Windows-bound five-axis identities
+        run: python -m pytest tests/test_five_axis_f2_fixture.py tests/test_five_axis_f3_fixture.py

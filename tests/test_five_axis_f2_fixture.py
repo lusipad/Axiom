@@ -11,6 +11,7 @@ import pydantic
 import scipy  # type: ignore[import-untyped]
 
 from axiom import evaluate_run
+from axiom.evaluator import _content_hash
 from axiom.five_axis.f2_scenarios import (
     f2_example_payload,
     validate_f2_example_run_spec,
@@ -27,6 +28,8 @@ def _load_manifest() -> dict[str, Any]:
 
 def _numeric_environment() -> dict[str, str]:
     return {
+        "system": platform.system(),
+        "machine": platform.machine(),
         "python": platform.python_version(),
         "numpy": np.__version__,
         "scipy": scipy.__version__,
@@ -49,6 +52,9 @@ def test_f2_reference_fixture_freezes_portable_artifact_and_claim_contracts() ->
         assert payload["source"]["normalizedProgram"]["sourceSyntaxId"] == manifest["sourceSyntaxId"]
         assert payload["source"]["normalizedProgram"]["programId"] == manifest["expectedNormalizedProgramId"]
         assert payload["source"]["referencePath"]["referencePathId"] == manifest["expectedReferencePathId"]
+        reference_path_content_id = _content_hash(payload["source"]["referencePath"])
+        assert artifacts["candidateGeometry"]["sourceReferencePathContentId"] == reference_path_content_id
+        assert artifacts["candidateGeometry"]["provenance"][0]["sourceContentId"] == reference_path_content_id
         assert artifacts["machineProfile"]["profileId"] == case["machineProfileId"]
         assert axis_path["sourceCandidateGeometryContentId"] == case["expectedCandidateGeometryContentId"]
         assert axis_path["machineProfileContentId"] == case["expectedMachineProfileContentId"]
@@ -91,12 +97,10 @@ def test_f2_reference_fixture_replays_environment_bound_bundle_hashes_when_appli
         for identity in manifest["environmentBoundIdentities"]
         if identity["numericEnvironment"] == environment
     ]
-    if not matching:
-        return
-
-    expected_hashes = matching[0]["bundleHashes"]
-    for scenario_id, expected_hash in expected_hashes.items():
+    expected_hashes = matching[0]["bundleHashes"] if matching else {}
+    for scenario_id in (case["id"] for case in manifest["cases"]):
         first = evaluate_run(validate_f2_example_run_spec(scenario_id))
         second = evaluate_run(validate_f2_example_run_spec(scenario_id))
-        assert first.bundle_hash == expected_hash
-        assert second.bundle_hash == expected_hash
+        assert first.bundle_hash == second.bundle_hash
+        if scenario_id in expected_hashes:
+            assert first.bundle_hash == expected_hashes[scenario_id]

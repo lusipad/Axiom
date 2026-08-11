@@ -24,7 +24,7 @@ from .f1_models import (
     SegmentRegularityEvidence,
     ToleranceBinding,
 )
-from .f2_kinematics import canonical_numeric_evidence, inverse_kinematics
+from .f2_kinematics import canonical_numeric_evidence, inverse_kinematics, normalize_numeric_identity
 from .f2_models import (
     BranchGraph,
     BranchNode,
@@ -554,6 +554,7 @@ def _tuple3(values: Any) -> tuple[float, float, float]:
 
 def _content_id(model: Any) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

@@ -34,6 +34,7 @@ from .f2_kinematics import (
     build_canonical_head_head_cb_profile,
     build_canonical_head_table_bc_profile,
     build_canonical_table_table_ac_profile,
+    normalize_numeric_identity,
 )
 from .f2_models import (
     ArtifactDescriptor,
@@ -212,7 +213,7 @@ def _collision_model(
     collide_inside_interval: bool,
 ) -> ConfigurationCollisionModel:
     profile_content_id = _content_hash(
-        profile.model_dump(mode="json", by_alias=True, exclude_none=True)
+        normalize_numeric_identity(profile.model_dump(mode="json", by_alias=True, exclude_none=True))
     )
     column_box = (
         _box((-0.08, -0.25, -0.25), (0.08, 0.25, 0.25))

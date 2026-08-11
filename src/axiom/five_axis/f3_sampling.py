@@ -10,7 +10,7 @@ import numpy as np
 from pydantic import Field, field_validator, model_validator
 
 from ..models import AxiomModel
-from .f2_kinematics import forward_kinematics
+from .f2_kinematics import forward_kinematics, normalize_numeric_identity
 from .f3_models import M4ContinuousTrajectory
 
 try:
@@ -60,20 +60,10 @@ def _require_finite_vector(value: Any, *, expected: int, field_name: str) -> Any
     return value
 
 
-def _normalize_canonical_numbers(value: Any) -> Any:
-    if isinstance(value, float) and value == 0.0:
-        return 0.0
-    if isinstance(value, list):
-        return [_normalize_canonical_numbers(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _normalize_canonical_numbers(item) for key, item in value.items()}
-    return value
-
-
 def _canonical_content_id(model: Any, *, exclude: set[str] | None = None) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True, exclude=exclude or set())
     payload.pop("contentId", None)
-    payload = _normalize_canonical_numbers(payload)
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

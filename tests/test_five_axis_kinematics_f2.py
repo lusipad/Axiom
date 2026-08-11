@@ -19,6 +19,7 @@ from axiom.five_axis.f2_kinematics import (
     ik_candidate_to_contract,
     inverse_kinematics,
     jacobian_evidence,
+    normalize_numeric_identity,
 )
 
 
@@ -177,6 +178,26 @@ def test_jacobian_evidence_keeps_raw_value_for_singularity_gate(monkeypatch: pyt
 
     assert evidence.minimum_singular_value == 1e-8
     assert evidence.singular is False
+
+
+def test_numeric_identity_absorbs_supported_backend_roundoff() -> None:
+    windows_like = {
+        "conditioningMetric": 7.96369400488,
+        "minimumSingularValue": 0.18091034853,
+    }
+    linux_like = {
+        "conditioningMetric": 7.96369401105,
+        "minimumSingularValue": 0.18091034839,
+    }
+
+    assert normalize_numeric_identity(windows_like) == normalize_numeric_identity(linux_like)
+
+
+def test_numeric_identity_canonicalizes_signed_zero() -> None:
+    normalized = normalize_numeric_identity(-0.0)
+
+    assert normalized == 0.0
+    assert math.copysign(1.0, normalized) == 1.0
 
 
 def test_general_profile_uses_numeric_fallback_and_round_trips() -> None:

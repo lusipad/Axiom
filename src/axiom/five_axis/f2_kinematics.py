@@ -31,6 +31,7 @@ _ORIENTATION_TOLERANCE_RAD = 1e-9
 _POSITION_RESIDUAL_SCALE_MM = 1.0
 _ORIENTATION_RESIDUAL_SCALE_RAD = 1.0
 _NUMERIC_EVIDENCE_SIGNIFICANT_DIGITS = 12
+_NUMERIC_IDENTITY_SIGNIFICANT_DIGITS = 8
 _DEFAULT_TOOL_OFFSET = (0.0, 0.0, -100.0)
 _LINEAR_LIMITS = (-500.0, 500.0)
 _TILT_LIMITS = (-2.0 * math.pi / 3.0, 2.0 * math.pi / 3.0)
@@ -49,6 +50,20 @@ class KinematicsError(ValueError):
 
 def canonical_numeric_evidence(value: float) -> float:
     return float(f"{value:.{_NUMERIC_EVIDENCE_SIGNIFICANT_DIGITS}g}")
+
+
+def normalize_numeric_identity(value: Any) -> Any:
+    """Canonicalize JSON numbers for portable hashes without changing evaluated values."""
+
+    if isinstance(value, float):
+        if value == 0.0:
+            return 0.0
+        return float(f"{value:.{_NUMERIC_IDENTITY_SIGNIFICANT_DIGITS}g}")
+    if isinstance(value, list):
+        return [normalize_numeric_identity(item) for item in value]
+    if isinstance(value, dict):
+        return {key: normalize_numeric_identity(item) for key, item in value.items()}
+    return value
 
 
 @dataclass(frozen=True)

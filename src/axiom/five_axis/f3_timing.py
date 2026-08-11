@@ -9,6 +9,7 @@ from typing import Literal
 import numpy as np
 
 from .f1_models import NodeEvent
+from .f2_kinematics import normalize_numeric_identity
 from .f2_models import JointPolynomialSegment, M3CandidateAxisPath
 from .f3_models import (
     AxisConstraintUsage,
@@ -53,6 +54,7 @@ class _NodeRequirement:
 
 def _canonical_content_id(model: object) -> str:
     payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)  # type: ignore[attr-defined]
+    payload = normalize_numeric_identity(payload)
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

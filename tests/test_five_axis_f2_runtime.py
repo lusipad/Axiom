@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import copy
 import math
+import platform
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from axiom.evaluator import _content_hash
 from axiom.five_axis.f2_collision import ConfigurationCollisionModel, hash_configuration_collision_model
 from axiom.five_axis.f1_models import M2CandidateTaskGeometry
+from axiom.five_axis.f2_kinematics import normalize_numeric_identity
 from axiom.five_axis.f2_models import M3CandidateAxisPath, MachineProfile
 from axiom.five_axis.f2_runtime import (
     AXIS_LIMIT_MARGIN_MIN_METRIC_ID,
@@ -31,6 +33,12 @@ from axiom.runtime import get_domain_runtime_binding
 
 _HASH_A = "a" * 64
 _TILT_RAD = 0.25
+
+
+def _portable_content_hash(value: dict) -> str:
+    return _content_hash(normalize_numeric_identity(value))
+
+
 def _lineage(statement_id: str, index: int, text: str) -> dict:
     return {
         "statementId": statement_id,
@@ -184,7 +192,7 @@ def _m2_payload(*, end_x: float = 20.0) -> dict:
 
 def _m2_content_hash() -> str:
     artifact = M2CandidateTaskGeometry.model_validate(_m2_payload())
-    return _content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _portable_content_hash(artifact.model_dump(mode="json", by_alias=True, exclude_none=True))
 
 
 def _machine_profile_payload() -> dict:
@@ -285,7 +293,7 @@ def _machine_profile_payload() -> dict:
 
 def _machine_profile_content_hash() -> str:
     profile = MachineProfile.model_validate(_machine_profile_payload())
-    return _content_hash(profile.model_dump(mode="json", by_alias=True, exclude_none=True))
+    return _portable_content_hash(profile.model_dump(mode="json", by_alias=True, exclude_none=True))
 
 
 def _axis_limit_state(*, violated: bool = False) -> list[dict]:
@@ -339,7 +347,11 @@ def _m3_payload(
     node_id = "m3.node.1"
     end_x = 520.0 if violated_end_solution else 20.0
     m2_payload = _m2_payload(end_x=end_x)
-    m2_content_hash = _content_hash(M2CandidateTaskGeometry.model_validate(m2_payload).model_dump(mode="json", by_alias=True, exclude_none=True))
+    m2_content_hash = _portable_content_hash(
+        M2CandidateTaskGeometry.model_validate(m2_payload).model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
+    )
     machine_profile_content_hash = _machine_profile_content_hash()
     if rotary_motion:
         coefficients = [
@@ -772,3 +784,5 @@ def test_f2_runtime_provenance_and_claim_hashes_are_deterministic() -> None:
     assert first == second
     assert first["report"]["provenance"]["runnerId"] == F2_RUNNER_ID
     assert first["report"]["provenance"]["evaluatorVersion"] == F2_EVALUATOR_ID
+    assert first["report"]["provenance"]["numericEnvironment"]["system"] == platform.system()
+    assert first["report"]["provenance"]["numericEnvironment"]["machine"] == platform.machine()

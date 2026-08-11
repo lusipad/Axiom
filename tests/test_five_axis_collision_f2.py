@@ -9,11 +9,15 @@ from pydantic import ValidationError
 import axiom.five_axis.f2_collision as f2_collision
 from axiom.evaluator import _content_hash
 from axiom.five_axis.f1_models import M2CandidateTaskGeometry
-from axiom.five_axis.f2_kinematics import build_canonical_head_table_bc_profile
+from axiom.five_axis.f2_kinematics import build_canonical_head_table_bc_profile, normalize_numeric_identity
 from axiom.five_axis.f2_models import M3CandidateAxisPath, MachineProfile
 
 
 _HASH_A = "a" * 64
+
+
+def _portable_content_hash(value: dict) -> str:
+    return _content_hash(normalize_numeric_identity(value))
 
 
 def _lineage(statement_id: str, index: int, text: str) -> dict:
@@ -282,12 +286,12 @@ def _m3_payload(*, coefficients: list[list[float]], interpolation: str = "linear
     final_values = end_values or [2.0, 0.0, 0.0, 0.0, 0.0]
     source_geometry = _m2_payload()
     machine_profile = _machine_profile_payload()
-    source_content_id = _content_hash(
+    source_content_id = _portable_content_hash(
         M2CandidateTaskGeometry.model_validate(source_geometry).model_dump(
             mode="json", by_alias=True, exclude_none=True
         )
     )
-    machine_content_id = _content_hash(
+    machine_content_id = _portable_content_hash(
         MachineProfile.model_validate(machine_profile).model_dump(mode="json", by_alias=True, exclude_none=True)
     )
     return {
@@ -379,7 +383,7 @@ def _collision_model(*, active_branch_ids: tuple[str, ...] = tuple(), rotary_anc
     model = {
         "modelId": "five-axis.configuration-collision.demo@1",
         "machineProfileId": "five-axis.machine-profile.dual-head.demo@1",
-        "machineProfileContentId": _content_hash(
+        "machineProfileContentId": _portable_content_hash(
             MachineProfile.model_validate(_machine_profile_payload()).model_dump(
                 mode="json", by_alias=True, exclude_none=True
             )

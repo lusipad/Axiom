@@ -21,6 +21,11 @@
 - FOH/ZOH 不继承完整高阶连续证书；移动 ZOH 和未闭合高阶导数的 FOH 返回结构化 `Unsupported`，不会制造 `IntervalCertified` 正向 Claim。
 - 误差账本按 quantity/unit/source/bound/method 分项记录，位置、姿态、时间与浮点误差不再合并为无量纲依据的单一总误差。
 
+### 修复
+
+- 统一 M5 内容身份中的 signed zero，使示例 RunSpec 经浏览器 `JSON.stringify` 往返后仍能通过冻结哈希校验。
+- 统一网页运行态 Claim 与 API 的 `claimDefinitionId` 字段，确保 Supported、Inconclusive 与 Refuted 结论按真实证据展示。
+
 ### 当前边界
 
 - F3 的二阶 `ProvenOptimal` 仅适用于冻结的线性 stop-to-stop 子集；Jerk 路径只证明可行，不宣称一般三阶固定路径全局最优。

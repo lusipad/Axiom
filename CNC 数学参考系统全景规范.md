@@ -160,7 +160,8 @@ flowchart TB
 | `five-axis.collision-context.complete@1` | 刀具组件、工件/毛坯、夹具、机床几何、接触策略和裕量完整 |
 | `five-axis.process-state.bound@1` | 工序事件绑定版本化 stock snapshot/update 策略和唯一状态链 |
 | `five-axis.machine-profile.bound@1` | 机床拓扑、运动链、轴约束和几何版本完整 |
-| `five-axis.continuous-collision.checked@1` | M2/M3 连续扫掠与配置间隙已按声明方法验证 |
+| `five-axis.task-geometry.collision.checked@1` | M2 名义扫掠、允许接触、禁止接触与过切已按声明方法覆盖连续区间 |
+| `five-axis.configuration.collision.checked@1` | M3 选定配置路径的机器部件间隙已按声明方法覆盖连续区间 |
 | `five-axis.time-law.bound@1` | M4 时间律、边界状态和连续约束完整 |
 | `five-axis.reconstruction.policy-bound@1` | M5 离散命令绑定 §10.1 的重建与终点策略 |
 
@@ -169,9 +170,9 @@ flowchart TB
 | Claim | `requires` |
 |---|---|
 | `GeometryValid` | `path-progress.bound`、`regularity.certified`、`correspondence.policy-bound` |
-| `TaskGeometryCollisionFree` | `collision-context.complete`、`process-state.bound`、`path-progress.bound`、`continuous-collision.checked` |
+| `TaskGeometryCollisionFree` | `collision-context.complete`、`process-state.bound`、`path-progress.bound`、`task-geometry.collision.checked` |
 | `KinematicallyFeasible` | `path-progress.bound`、`regularity.certified`、`machine-profile.bound` |
-| `ConfigurationCollisionFree` | `collision-context.complete`、`machine-profile.bound`、`continuous-collision.checked` |
+| `ConfigurationCollisionFree` | `collision-context.complete`、`machine-profile.bound`、`configuration.collision.checked` |
 | `ModelCollisionFree` | `TaskGeometryCollisionFree` 与 `ConfigurationCollisionFree` 的证据；离散候选还需要重建区间碰撞证据 |
 | `ContinuouslyFeasible` | `regularity.certified`、`time-law.bound`；请求 Jerk 时每个移动段还必须达到 C3 |
 | `IntervalCertified` | `time-law.bound`、`reconstruction.policy-bound`，以及 Case 请求的全部区间验证能力 |
@@ -951,6 +952,16 @@ Axiom Core 也允许只读导入既有设备运行。若历史运行没有可关
 | 连续证书容差和自适应细分策略 | Math F1 验收前 | 容差进入 MetricDefinition/Manifest，采样不能冒充连续界 |
 | Jerk 可行规划的首批交叉算法 | Math F3 开始前 | 至少两种独立路径或一个严格证书方法 |
 | Reference Solver 与 SUT 的进程内、文件或 RPC Adapter | Math F4 集成前 | 输入输出内容标识、版本、失败状态和 provenance 等价 |
+
+### 18.1 Math F1 已冻结实现选择
+
+Math F1 按 [ADR-0008](架构决策记录/ADR-0008-领域包多Artifact声明与单主Artifact运行.md) 与 [ADR-0009](架构决策记录/ADR-0009-F1规范化前端与连续证据边界.md) 冻结以下选择：
+
+- 权威 M0 对象为 `five-axis.normalized-program@1`；首个文本前端为严格的 `axiom-cl-subset@1`，覆盖 `UNITS`、`FROM`、`GOTO`、`FEDRAT`、`DWELL`、`END`，不声称完整 ISO 3592、RS274 或厂商方言兼容；
+- M0、M1、M2 是同一 DomainPack 的不同有类型 Artifact；一次 Run 只携带其中一个主 Artifact，层间通过内容身份和 provenance 派生；
+- 连续误差的首版数值核使用显式定义域的解析曲线、分段多项式/B-spline 和球面插值；每项结果仍必须记录 Axiom 冻结的导数界、细分容差、求解器版本与数值环境；
+- 首版 Certified 任务碰撞只覆盖 Manifest 声明的解析刀具基本体、解析路径和解析/AABB 上下文。一般 mesh/CAD 后端必须另行声明能力，有限查询最高为 `Validated`；
+- `five-axis.task-geometry.collision.checked@1` 与 `five-axis.configuration.collision.checked@1` 分层发布，禁止用 F1 的 M2 证据满足 M3 Claim。
 
 ---
 

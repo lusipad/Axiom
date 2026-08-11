@@ -106,6 +106,27 @@ def test_sut_path_does_not_depend_on_reference_sampler(monkeypatch: pytest.Monke
     assert isinstance(command, M5DiscreteCommand)
 
 
+def test_cross_validation_measures_solver_equivalence_independently_of_limit_certification() -> None:
+    m4 = _scenario_m4()
+    commands = []
+    for descriptor in (REFERENCE_ADAPTER_DESCRIPTOR, SUT_ADAPTER_DESCRIPTOR):
+        invocation = build_adapter_invocation(
+            descriptor,
+            m4,
+            sample_period=0.25,
+            policy=POLYNOMIAL_POLICY_ID,
+            final_hold=False,
+        )
+        receipt, command = execute_adapter(invocation, m4)
+        assert receipt.status == "Succeeded"
+        assert isinstance(command, M5DiscreteCommand)
+        commands.append(command)
+
+    assert verify_interval_reconstruction(commands[0]).status == "Unsupported"
+    assert verify_interval_reconstruction(commands[1]).status == "Unsupported"
+    assert cross_validate_discrete_commands(commands[0], commands[1]).status == "Supported"
+
+
 def test_unknown_adapter_and_identity_mismatch_are_structurally_unsupported() -> None:
     m4 = _scenario_m4()
     unknown_invocation = build_adapter_invocation(

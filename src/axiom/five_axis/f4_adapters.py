@@ -20,7 +20,6 @@ from .f3_sampling import (
     POLYNOMIAL_POLICY_ID,
     ReconstructionPolicy,
     sample_continuous_trajectory,
-    verify_interval_reconstruction,
 )
 from .f3_timing import evaluate_continuous_state
 from .f4_models import AdapterDescriptor, AdapterInvocation, AdapterReceipt, CrossValidationResult
@@ -348,39 +347,30 @@ def cross_validate_discrete_commands(
         return _cross_validation_result(reference, sut, tolerances=tolerances, status="Inconclusive")
     if sut.reconstruction_policy.policy_id != POLYNOMIAL_POLICY_ID:
         return _cross_validation_result(reference, sut, tolerances=tolerances, status="Inconclusive")
-    reference_verification = verify_interval_reconstruction(reference)
-    sut_verification = verify_interval_reconstruction(sut)
-    status: _CrossValidationStatus
-    if reference_verification.status == "Refuted" or sut_verification.status == "Refuted":
-        status = "Refuted"
-    elif reference_verification.status != "Supported" or sut_verification.status != "Supported":
-        status = "Inconclusive"
-    elif not _commands_are_shape_compatible(reference, sut):
-        status = "Inconclusive"
-    else:
-        max_position_gap, max_velocity_gap, max_acceleration_gap, max_jerk_gap = _max_state_gaps(reference, sut)
-        absolute_limits = {item.target: item.tolerance.absolute for item in tolerances}
-        status = (
-            "Supported"
-            if max_position_gap <= absolute_limits["position"] + _EPSILON
-            and max_velocity_gap <= absolute_limits["velocity"] + _EPSILON
-            and max_acceleration_gap <= absolute_limits["acceleration"] + _EPSILON
-            and max_jerk_gap <= absolute_limits["jerk"] + _EPSILON
-            else "Refuted"
-        )
-        return CrossValidationResult(
-            referenceContentHash=reference.content_id,
-            sutContentHash=sut.content_id,
-            status=status,
-            maxPositionGap=max_position_gap,
-            maxVelocityGap=max_velocity_gap,
-            maxAccelerationGap=max_acceleration_gap,
-            maxJerkGap=max_jerk_gap,
-            tolerances=tolerances,
-            evidenceLevel="Validated",
-            method="five-axis.f4.adapter-cross-validation.polynomial@1",
-        )
-    return _cross_validation_result(reference, sut, tolerances=tolerances, status=status)
+    if not _commands_are_shape_compatible(reference, sut):
+        return _cross_validation_result(reference, sut, tolerances=tolerances, status="Inconclusive")
+    max_position_gap, max_velocity_gap, max_acceleration_gap, max_jerk_gap = _max_state_gaps(reference, sut)
+    absolute_limits = {item.target: item.tolerance.absolute for item in tolerances}
+    status: _CrossValidationStatus = (
+        "Supported"
+        if max_position_gap <= absolute_limits["position"] + _EPSILON
+        and max_velocity_gap <= absolute_limits["velocity"] + _EPSILON
+        and max_acceleration_gap <= absolute_limits["acceleration"] + _EPSILON
+        and max_jerk_gap <= absolute_limits["jerk"] + _EPSILON
+        else "Refuted"
+    )
+    return CrossValidationResult(
+        referenceContentHash=reference.content_id,
+        sutContentHash=sut.content_id,
+        status=status,
+        maxPositionGap=max_position_gap,
+        maxVelocityGap=max_velocity_gap,
+        maxAccelerationGap=max_acceleration_gap,
+        maxJerkGap=max_jerk_gap,
+        tolerances=tolerances,
+        evidenceLevel="Validated",
+        method="five-axis.f4.adapter-cross-validation.polynomial@1",
+    )
 
 
 def _cross_validation_result(

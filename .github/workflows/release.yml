@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.12.13"
           cache: pip
 
       - uses: pnpm/setup@v1
@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install -e ".[test]"
+          python -m pip install -c constraints/acceptance.txt -e ".[test]"
           python -m pip install build
           pnpm --dir web install --frozen-lockfile
 
@@ -66,7 +66,13 @@ jobs:
           wheel = next(Path("dist").glob("*.whl"))
           with zipfile.ZipFile(wheel) as archive:
               names = archive.namelist()
-          required = ("axiom/web_dist/index.html", "axiom/web_dist/assets/")
+          required = (
+              "axiom/web_dist/index.html",
+              "axiom/web_dist/assets/",
+              "axiom/five_axis/fixtures/manifest.json",
+              "axiom/five_axis/fixtures/math_stage_manifest.json",
+              "axiom/five_axis/fixtures/sampled_cartesian_view.json",
+          )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
                   raise SystemExit(f"release wheel is missing {entry}")
@@ -99,4 +105,9 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Axiom $GITHUB_REF_NAME"
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Axiom $GITHUB_REF_NAME"
+          fi

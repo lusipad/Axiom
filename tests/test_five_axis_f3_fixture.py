@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,17 @@ FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "five_axis_f3"
 
 def _manifest() -> dict[str, Any]:
     return json.loads((FIXTURE_ROOT / "manifest.json").read_text(encoding="utf-8"))
+
+
+def _fixture_environment() -> dict[str, str]:
+    return current_f3_numeric_environment()
+
+
+def _actual_bundle_hashes(scenario_ids: list[str]) -> dict[str, str]:
+    return {
+        scenario_id: evaluate_run(validate_f3_example_run_spec(scenario_id)).bundle_hash
+        for scenario_id in scenario_ids
+    }
 
 
 def test_f3_reference_fixture_freezes_artifacts_policies_and_claims() -> None:
@@ -85,12 +97,28 @@ def test_f3_reference_fixture_replays_environment_bound_bundle_hashes_when_appli
     matching = [
         identity
         for identity in manifest["environmentBoundIdentities"]
-        if identity["numericEnvironment"] == current_f3_numeric_environment()
+        if identity["numericEnvironment"] == _fixture_environment()
     ]
+    scenario_ids = [case["id"] for case in manifest["cases"]]
+    if os.environ.get("AXIOM_REQUIRE_ENVIRONMENT_BOUND_GOLDENS") == "1":
+        actual_hashes = _actual_bundle_hashes(scenario_ids)
+        assert len(matching) == 1, (
+            "missing unique environment-bound fixture identity for "
+            f"{_fixture_environment()!r}; actual bundle hashes: {actual_hashes!r}"
+        )
     expected_hashes = matching[0]["bundleHashes"] if matching else {}
-    for scenario_id in (case["id"] for case in manifest["cases"]):
+    if os.environ.get("AXIOM_REQUIRE_ENVIRONMENT_BOUND_GOLDENS") == "1":
+        assert set(expected_hashes) == set(scenario_ids), (
+            "environment-bound bundle hashes do not cover every scenario for "
+            f"{_fixture_environment()!r}: expected keys={sorted(expected_hashes)!r}, "
+            f"actual hashes={_actual_bundle_hashes(scenario_ids)!r}"
+        )
+    for scenario_id in scenario_ids:
         first = evaluate_run(validate_f3_example_run_spec(scenario_id))
         second = evaluate_run(validate_f3_example_run_spec(scenario_id))
         assert first.bundle_hash == second.bundle_hash
         if scenario_id in expected_hashes:
-            assert first.bundle_hash == expected_hashes[scenario_id]
+            assert first.bundle_hash == expected_hashes[scenario_id], (
+                f"{scenario_id}: expected {expected_hashes[scenario_id]!r}, got {first.bundle_hash!r}, "
+                f"environment={_fixture_environment()!r}, actual bundle hashes={_actual_bundle_hashes(scenario_ids)!r}"
+            )

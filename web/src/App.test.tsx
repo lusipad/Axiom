@@ -45,6 +45,7 @@ const catalog: Catalog = {
     { domainPackId: "five-axis.domain-pack@2", comparisonPolicyIds: [], runnerIds: ["artifact-import@1"], runtimeBound: true },
     { domainPackId: "machine-observation.domain-pack@1", comparisonPolicyIds: [], runnerIds: ["machine-trace-import@1"], runtimeBound: true },
     { domainPackId: "five-axis.domain-pack@6", comparisonPolicyIds: [], runnerIds: ["windows-file-import@1"], runtimeBound: true },
+    { domainPackId: "intelligence.domain-pack@2", comparisonPolicyIds: [], runnerIds: ["intelligence-real-holdout-validation@1"], runtimeBound: true },
   ],
   artifactAdapters: [],
 };
@@ -422,6 +423,31 @@ describe("Axiom workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: /Physical.*R4/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
     expect(screen.getByRole("button", { name: /Physical.*R4/i })).toBeInTheDocument();
+  });
+
+  it("R5-B 入口保持 Windows 真实 holdout 边界且不暴露设备控制", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.includes("/intelligence/r5b/") || url.includes("/examples/intelligence-r5b")) {
+        return Promise.resolve(jsonResponse({ detail: "R5-B unavailable" }, 503));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Intelligence.*R5-B/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
+    expect(screen.getByText("REAL HOLDOUT VALIDATION · REAL GENERALIZATION OPEN · NOT DEVICE SAFE")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Intelligence.*R5-B/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /写入|控制设备|在线学习|自动部署/i })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/intelligence/r5b/manifest"))).toBe(true);
   });
 
   it("Machine R3 入口展示只读边界而不暴露写入控件", async () => {

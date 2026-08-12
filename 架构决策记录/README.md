@@ -32,6 +32,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0020](ADR-0020-R7B-部署影子就绪性与厂商边界.md) | R7-B 先冻结厂商无关的只读部署证据门，不在目标控制器未选时伪造厂商 Adapter | Accepted |
 | [ADR-0021](ADR-0021-R7C-Windows虚拟OPC-UA传输验收边界.md) | R7-C 使用隔离的官方 .NET 栈闭合 Windows 虚拟 OPC UA 只读传输合同，厂商与现实门保持 Open | Accepted |
 | [ADR-0022](ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md) | R7-D 锁定 Beckhoff TwinCAT 3 / TF6100 厂商验收链，并把 Profile、运行时、现实与安全 gate 分开 | Accepted |
+| [ADR-0023](ADR-0023-R7E样本索引采集与R41双运行现实门.md) | R7-E 用样本索引触发七节点只读采集，R4.1 用独立 calibration/holdout 双运行关闭 case-scoped 现实门 | Accepted |
 
 ## 生命周期规则
 

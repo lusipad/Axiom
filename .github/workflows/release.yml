@@ -120,11 +120,13 @@ jobs:
               "axiom/machine/fixtures/captures/read-only-paired-pass.trace.json",
               "axiom/physical/fixtures/manifest.json",
               "axiom/physical/fixtures/captures/in-domain-synthetic-sil.response.json",
+              "axiom/physical/reality_models.py",
               "axiom/intelligence/fixtures/manifest.json",
               "axiom/optimization/search.py",
               "axiom/control/models.py",
               "axiom/control/r7c_models.py",
               "axiom/control/r7d_models.py",
+              "axiom/control/r7e_models.py",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -175,11 +177,15 @@ jobs:
           )
           from axiom.physical import (
               FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID,
+              FIVE_AXIS_REALITY_DOMAIN_PACK_ID,
               PhysicalModelValidationRequest,
               analyze_physical_validation,
+              build_r41_manifest,
               load_r4_manifest,
               r4_example_payload,
+              r41_example_payload,
               validate_r4_example_run_spec,
+              validate_r41_example_run_spec,
           )
           from axiom.physical.runtime import REALITY_VALIDATED_CLAIM_ID
           from axiom.optimization import (
@@ -193,22 +199,26 @@ jobs:
               R7B_DOMAIN_PACK_ID,
               R7C_DOMAIN_PACK_ID,
               R7D_DOMAIN_PACK_ID,
+              R7E_DOMAIN_PACK_ID,
               build_r7_manifest,
               build_r7b_manifest,
               build_r7c_manifest,
               build_r7d_manifest,
+              build_r7e_manifest,
               r7_example_payload,
               r7b_example_payload,
               r7c_example_payload,
               r7d_example_payload,
+              r7e_example_payload,
               validate_r7_example_run_spec,
               validate_r7b_example_run_spec,
               validate_r7c_example_run_spec,
               validate_r7d_example_run_spec,
+              validate_r7e_example_run_spec,
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.17.0"
+          assert version("axiom-evaluator") == "0.18.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -256,6 +266,29 @@ jobs:
           r7d = evaluate_run(validate_r7d_example_run_spec())
           assert validate_run_bundle_integrity(r7d) == []
           assert r7d.run.case_outcome.value == "Inconclusive"
+
+          r7e_manifest = build_r7e_manifest()
+          assert r7e_manifest.domain_pack_id == R7E_DOMAIN_PACK_ID
+          assert r7e_manifest.supported_platforms == ("Windows",)
+          assert r7e_manifest.target_vendor == "Beckhoff Automation"
+          assert r7e_manifest.target_interface == "TF6100 OPC UA Server"
+          assert r7e_manifest.capture_policy == "sample-index-triggered-batch-read"
+          assert r7e_manifest.deployment_shadow_status == "Open"
+          assert r7e_manifest.reality_validation_status == "Open"
+          assert r7e_manifest.device_write_allowed is False
+          assert r7e_example_payload().shadow_evidence is None
+          r7e = evaluate_run(validate_r7e_example_run_spec())
+          assert validate_run_bundle_integrity(r7e) == []
+          assert r7e.run.domain_pack_id == R7E_DOMAIN_PACK_ID
+          assert r7e.run.case_outcome.value == "Inconclusive"
+          r7e_claims = {claim.claim_definition_id: claim.status.value for claim in r7e.claims}
+          assert r7e_claims["control.beckhoff-shadow-contract-claim@1"] == "Supported"
+          assert r7e_claims["control.beckhoff-deployment-shadow-claim@1"] == "Inconclusive"
+          assert r7e_claims["control.beckhoff-deployment-reality-claim@2"] == "Inconclusive"
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(r7e_claims)
 
           f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
           assert validate_run_bundle_integrity(f2) == []
@@ -347,6 +380,28 @@ jobs:
           missing_context = evaluate_run(validate_r4_example_run_spec("missing-coordinate-context"))
           assert validate_run_bundle_integrity(missing_context) == []
           assert missing_context.run.case_outcome.value == "Inconclusive"
+
+          r41_manifest = build_r41_manifest()
+          assert r41_manifest.domain_pack_id == FIVE_AXIS_REALITY_DOMAIN_PACK_ID
+          assert r41_manifest.supported_platforms == ("Windows",)
+          assert r41_manifest.required_independent_runs == 2
+          assert r41_manifest.interpolation_allowed is False
+          assert r41_manifest.reality_validation_status == "Open"
+          assert r41_manifest.device_safety_status == "NotAssessed"
+          r41_example = r41_example_payload()
+          assert r41_example.calibration_pair is None
+          assert r41_example.validation_pair is None
+          r41 = evaluate_run(validate_r41_example_run_spec())
+          assert validate_run_bundle_integrity(r41) == []
+          assert r41.run.domain_pack_id == FIVE_AXIS_REALITY_DOMAIN_PACK_ID
+          assert r41.run.case_outcome.value == "Inconclusive"
+          r41_claims = {claim.claim_definition_id: claim.status.value for claim in r41.claims}
+          assert r41_claims["five-axis.physical-reality-contract-claim@1"] == "Supported"
+          assert r41_claims["five-axis.physical-model-reality-validated-claim@2"] == "Inconclusive"
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(r41_claims)
 
           intelligence_manifest = build_r5_manifest()
           assert intelligence_manifest["platform"] == "windows"
@@ -475,6 +530,14 @@ jobs:
             if ($physicalExample.runSpec.domainPackId -ne "five-axis.domain-pack@6") {
               throw "installed wheel did not expose the R4 example RunSpec"
             }
+            $r41Manifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/physical/r41/manifest
+            if ($r41Manifest.domainPackId -ne "five-axis.domain-pack@7" -or $r41Manifest.requiredIndependentRuns -ne 2 -or $r41Manifest.interpolationAllowed -or $r41Manifest.realityValidationStatus -ne "Open" -or $r41Manifest.deviceSafetyStatus -ne "NotAssessed") {
+              throw "installed wheel did not expose the R4.1 two-run reality boundary"
+            }
+            $r41Example = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/physical-r41?scenarioId=physical-reality-evidence-open"
+            if ($r41Example.runSpec.domainPackId -ne "five-axis.domain-pack@7" -or $null -ne $r41Example.calibrationPair -or $null -ne $r41Example.validationPair -or $r41Example.analysis.realityValidationStatus -ne "Open") {
+              throw "installed wheel did not preserve the R4.1 Open evidence boundary"
+            }
             $intelligenceManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/intelligence/r5/manifest
             if ($intelligenceManifest.stage -ne "R5-A" -or $intelligenceManifest.syntheticLearningContractStatus -ne "Passed" -or $intelligenceManifest.realWorldGeneralizationStatus -ne "Open") {
               throw "installed wheel did not expose the R5-A dual-gate contract"
@@ -531,9 +594,20 @@ jobs:
             if ($r7dExample.runSpec.domainPackId -ne "control.domain-pack@4" -or $null -ne $r7dExample.runtimeEvidence -or $r7dExample.profile.bindingStatus -ne "Open" -or $r7dExample.readinessAudit.vendorRuntimeStatus -ne "Open") {
               throw "installed wheel did not preserve the R7-D Open example boundary"
             }
+            $r7eManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/control/r7e/manifest
+            if ($r7eManifest.domainPackId -ne "control.domain-pack@5" -or $r7eManifest.capturePolicy -ne "sample-index-triggered-batch-read" -or $r7eManifest.deploymentShadowStatus -ne "Open" -or $r7eManifest.realityValidationStatus -ne "Open" -or $r7eManifest.deviceWriteAllowed) {
+              throw "installed wheel did not expose the R7-E sample-index witness boundary"
+            }
+            $r7eExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/control-r7e?scenarioId=beckhoff-shadow-witness-open"
+            if ($r7eExample.runSpec.domainPackId -ne "control.domain-pack@5" -or $null -ne $r7eExample.shadowEvidence -or $r7eExample.witnessProfile.bindingStatus -ne "Open" -or $r7eExample.readinessAudit.deploymentShadowStatus -ne "Open") {
+              throw "installed wheel did not preserve the R7-E Open evidence boundary"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R41ExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R41AssessmentRequest") {
+              throw "installed wheel did not expose the typed R4.1 OpenAPI contract"
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R5ExamplePayload") {
               throw "installed wheel did not expose the typed R5 OpenAPI contract"
@@ -555,6 +629,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7DExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7DAssessmentRequest") {
               throw "installed wheel did not expose the typed R7-D OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7EExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7EAssessmentRequest") {
+              throw "installed wheel did not expose the typed R7-E OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

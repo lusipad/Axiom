@@ -15,6 +15,7 @@ namespace Axiom.OpcUaShadow.Conformance;
 internal static class Program
 {
     private const string PasswordVariable = "AXIOM_OPCUA_SHADOW_TEST_PASSWORD";
+    private static readonly string[] ReadSubscribeOperations = ["read", "subscribe"];
 
     public static async Task<int> Main(string[] args)
     {
@@ -24,16 +25,17 @@ internal static class Program
             return 0;
         }
 
-        string? evidenceOutput;
+        (string? Evidence, string? Witness) outputs;
         try
         {
-            evidenceOutput = ParseEvidenceOutput(args);
+            outputs = ParseOutputs(args);
         }
         catch (ArgumentException exception)
         {
             Console.Error.WriteLine(exception.Message);
             Console.Error.WriteLine(
-                "Usage: Axiom.OpcUaShadow.Conformance [--evidence-output <path>]");
+                "Usage: Axiom.OpcUaShadow.Conformance [--evidence-output <path>] "
+                + "[--witness-evidence-output <path>]");
             return 2;
         }
 
@@ -46,16 +48,25 @@ internal static class Program
 
         try
         {
-            OpcUaTransportEvidence evidence = await RunAsync(
+            ConformanceResult result = await RunAsync(
                 workspace,
                 CancellationToken.None).ConfigureAwait(false);
-            if (evidenceOutput is not null)
+            if (outputs.Evidence is not null)
             {
                 await JsonSupport.WriteNewAsync(
-                    evidenceOutput,
-                    evidence,
+                    outputs.Evidence,
+                    result.Transport,
                     CancellationToken.None).ConfigureAwait(false);
-                Console.WriteLine($"Evidence: {Path.GetFullPath(evidenceOutput)}");
+                Console.WriteLine($"Evidence: {Path.GetFullPath(outputs.Evidence)}");
+            }
+            if (outputs.Witness is not null)
+            {
+                await JsonSupport.WriteNewAsync(
+                    outputs.Witness,
+                    result.Witness,
+                    CancellationToken.None).ConfigureAwait(false);
+                Console.WriteLine(
+                    $"Witness evidence: {Path.GetFullPath(outputs.Witness)}");
             }
             Directory.Delete(workspace, recursive: true);
             Console.WriteLine("PASS: Windows OPC UA secure read/subscription conformance");
@@ -73,7 +84,7 @@ internal static class Program
         }
     }
 
-    private static async Task<OpcUaTransportEvidence> RunAsync(
+    private static async Task<ConformanceResult> RunAsync(
         string workspace,
         CancellationToken cancellationToken)
     {
@@ -188,6 +199,93 @@ internal static class Program
                 cancellationToken).ConfigureAwait(false);
             Require(untrustedRejected, "server accepted an untrusted client application certificate");
 
+            ShadowWitnessCaptureInputs witnessInputs = CreateWitnessInputs(
+                config,
+                loaded,
+                serverCertificate);
+            BeckhoffShadowCaptureAuthorization expiredAuthorization =
+                witnessInputs.CaptureAuthorization with
+                {
+                    AuthorizedFrom = DateTimeOffset.UtcNow.AddMinutes(-10).ToString("O"),
+                    AuthorizedUntil = DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"),
+                    ContentHash = string.Empty
+                };
+            expiredAuthorization = expiredAuthorization with
+            {
+                ContentHash = JsonSupport.ComputeCanonicalHash(
+                    expiredAuthorization,
+                    "contentHash")
+            };
+            bool expiredAuthorizationRejected = false;
+            try
+            {
+                await BeckhoffShadowWitnessClient.CaptureAsync(
+                    loaded,
+                    witnessInputs with { CaptureAuthorization = expiredAuthorization },
+                    declaredReal: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (ShadowContractException)
+            {
+                expiredAuthorizationRejected = true;
+            }
+            Require(
+                expiredAuthorizationRejected,
+                "expired capture authorization was accepted");
+            using var cancelledCapture = new CancellationTokenSource();
+            cancelledCapture.Cancel();
+            bool cancellationObserved = false;
+            try
+            {
+                await BeckhoffShadowWitnessClient.CaptureAsync(
+                    loaded,
+                    witnessInputs,
+                    declaredReal: false,
+                    cancelledCapture.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cancellationObserved = true;
+            }
+            Require(cancellationObserved, "cancelled witness capture continued running");
+
+            ShadowAdapterConfig timeoutConfig = config with
+            {
+                ConfigId = "axiom.control.opcua-shadow.timeout-config@1",
+                EvidenceId = "axiom.control.opcua-shadow.timeout-evidence@1",
+                CaptureTimeoutMs = 2_000
+            };
+            string timeoutConfigPath = await WriteConfigAsync(
+                workspace,
+                "timeout-config.json",
+                timeoutConfig,
+                cancellationToken).ConfigureAwait(false);
+            LoadedShadowConfig timeoutLoaded = await JsonSupport.LoadConfigAsync(
+                timeoutConfigPath,
+                cancellationToken).ConfigureAwait(false);
+            bool timeoutObserved = false;
+            try
+            {
+                await BeckhoffShadowWitnessClient.CaptureAsync(
+                    timeoutLoaded,
+                    witnessInputs,
+                    declaredReal: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (ShadowContractException exception)
+                when (exception.Message.Contains("timed out", StringComparison.Ordinal))
+            {
+                timeoutObserved = true;
+            }
+            Require(timeoutObserved, "witness capture timeout was not enforced");
+            BeckhoffShadowRunEvidence witness =
+                await BeckhoffShadowWitnessClient.CaptureAsync(
+                    loaded,
+                    witnessInputs,
+                    declaredReal: false,
+                    cancellationToken).ConfigureAwait(false);
+            VerifyWitnessEvidence(witness, witnessInputs);
+
             Console.WriteLine($"Endpoint: {evidence.Endpoint.EndpointUrl}");
             Console.WriteLine($"Security: {evidence.Endpoint.MessageSecurityMode} / {evidence.Endpoint.SecurityPolicyUri}");
             Console.WriteLine($"Frames: {evidence.Receipt.ReceivedFrameCount}");
@@ -195,7 +293,13 @@ internal static class Program
             Console.WriteLine($"Writes issued by adapter: {evidence.Receipt.WriteOperationCount}");
             Console.WriteLine($"Independent write rejected: {writeRejected}");
             Console.WriteLine($"Untrusted certificate rejected: {untrustedRejected}");
-            return evidence;
+            Console.WriteLine(
+                $"Expired capture authorization rejected: {expiredAuthorizationRejected}");
+            Console.WriteLine($"Cancelled witness capture stopped: {cancellationObserved}");
+            Console.WriteLine($"Witness timeout enforced: {timeoutObserved}");
+            Console.WriteLine($"Witness frames: {witness.Receipt.ReceivedFrameCount}");
+            Console.WriteLine($"Witness writes issued: {witness.Receipt.WriteOperationCount}");
+            return new ConformanceResult(evidence, witness);
         }
         finally
         {
@@ -203,19 +307,36 @@ internal static class Program
         }
     }
 
-    private static string? ParseEvidenceOutput(string[] args)
+    private static (string? Evidence, string? Witness) ParseOutputs(string[] args)
     {
-        if (args.Length == 0)
+        if (args.Length % 2 != 0)
         {
-            return null;
+            throw new ArgumentException("invalid conformance arguments", nameof(args));
         }
-        if (args.Length == 2
-            && string.Equals(args[0], "--evidence-output", StringComparison.Ordinal)
-            && !string.IsNullOrWhiteSpace(args[1]))
+        string? evidence = null;
+        string? witness = null;
+        for (int index = 0; index < args.Length; index += 2)
         {
-            return args[1];
+            string name = args[index];
+            string value = args[index + 1];
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException("invalid conformance arguments", nameof(args));
+            }
+            if (name == "--evidence-output" && evidence is null)
+            {
+                evidence = value;
+            }
+            else if (name == "--witness-evidence-output" && witness is null)
+            {
+                witness = value;
+            }
+            else
+            {
+                throw new ArgumentException("invalid conformance arguments", nameof(args));
+            }
         }
-        throw new ArgumentException("invalid conformance arguments", nameof(args));
+        return (evidence, witness);
     }
 
     private static async Task<(ApplicationInstance, ApplicationConfiguration)>
@@ -302,6 +423,263 @@ internal static class Program
                 Unit = axis is "X" or "Y" or "Z" ? "mm" : "rad"
             }).ToArray()
         };
+    }
+
+    private static ShadowWitnessCaptureInputs CreateWitnessInputs(
+        ShadowAdapterConfig config,
+        LoadedShadowConfig loaded,
+        X509Certificate2 serverCertificate)
+    {
+        BeckhoffNodeBinding AxisBinding(string identifier) => new()
+        {
+            NamespaceUri = ShadowNodeManager.NamespaceUri,
+            Identifier = identifier,
+            ExpectedDataType = "Double",
+            RequiredAccessLevel = AccessLevels.CurrentRead,
+            RequiredUserAccessLevel = AccessLevels.CurrentRead
+        };
+        var vendor = new BeckhoffTwinCatProfile
+        {
+            SchemaId = BeckhoffContract.ProfileSchema,
+            ProfileId = "axiom.control.beckhoff.conformance-profile@1",
+            VendorId = "beckhoff",
+            VendorName = "Beckhoff Automation",
+            ControllerFamily = "TwinCAT 3",
+            MinimumTwinCatBuild = 4026,
+            OpcUaServerProduct = "TF6100 OPC UA Server",
+            RequiredLicenseId = "TF6100",
+            AcceptedRuntimeLicenseStates = ["Full", "Trial"],
+            DeploymentRequiredLicenseState = "Full",
+            RequiredPackages = ["TwinCAT.Standard.XAR", "TF6100.OpcUaServer.XAR"],
+            OptionalEngineeringPackage = "TF6100.OpcUaServer.XAE",
+            SupportedPlatforms = ["Windows"],
+            Protocol = "opc-ua",
+            DefaultEndpointUrl = "opc.tcp://localhost:4840",
+            MessageSecurityMode = "SignAndEncrypt",
+            IdentityType = "username",
+            AccessMode = "read-subscribe-only",
+            BindingStatus = "Bound",
+            ServerIdentity = new BeckhoffServerIdentityBinding
+            {
+                EndpointUrl = config.EndpointUrl,
+                ServerApplicationUri =
+                    "urn:localhost:axiom:control:opcua-shadow:virtual-server",
+                ServerCertificateSha256 =
+                    OpcUaShadowClient.CertificateSha256(serverCertificate),
+                ProductUri = "urn:beckhoff:TwinCAT:OPC-UA:Server",
+                ManufacturerName = "Beckhoff Automation",
+                ProductName = "TwinCAT OPC UA Server",
+                SoftwareVersion = "4.6.0",
+                BuildNumber = "4026"
+            },
+            LicenseBinding = new BeckhoffLicenseBinding
+            {
+                NamespaceUri = ShadowNodeManager.NamespaceUri,
+                ResultIdentifier = "License.Result",
+                ExpirationIdentifier = "License.Expiration",
+                ResultDataType = "Int32",
+                FullResultCodes = [0, 255],
+                TrialResultCodes = [254]
+            },
+            PermissionProbe = new BeckhoffPermissionProbe
+            {
+                Purpose = "non-actuating-readonly-permission-canary",
+                DeploymentOwnerAttestedNonActuating = true,
+                NodeBinding = AxisBinding("Axis.X.Position")
+            },
+            Channels = Contract.RequiredAxes.Select(axis => new BeckhoffAxisSignal
+            {
+                AxisId = axis,
+                CanonicalSignalId = $"machine.axis.{axis}.position",
+                Quantity = "axis-position",
+                Unit = axis is "X" or "Y" or "Z" ? "mm" : "rad",
+                NodeBinding = AxisBinding($"Axis.{axis}.Position")
+            }).ToArray(),
+            PermissionCeiling = "Shadow",
+            DeviceWriteAllowed = false,
+            ContentHash = string.Empty
+        };
+        vendor = vendor with
+        {
+            ContentHash = JsonSupport.ComputeCanonicalHash(vendor, "contentHash")
+        };
+        vendor.Validate();
+        var loadedVendor = new LoadedBeckhoffProfile(
+            vendor,
+            new string('a', 64),
+            "contract-fixture");
+
+        LoadedContentIdentity runtime = CreateIdentity(
+            "runtime",
+            new Dictionary<string, object?>
+            {
+                ["profileContentHash"] = vendor.ContentHash,
+                ["sourceKind"] = "vendor-runtime"
+            });
+        string commandHash = ShadowNodeManager.CommandContentHash;
+        var command = new M5CommandReference(
+            commandHash,
+            Enumerable.Range(0, 5).ToArray(),
+            "contract-fixture");
+        LoadedContentIdentity controller = CreateIdentity(
+            "controller",
+            new Dictionary<string, object?>
+            {
+                ["targetStatus"] = "Selected"
+            });
+        LoadedContentIdentity authority = CreateIdentity(
+            "authority",
+            new Dictionary<string, object?>
+            {
+                ["controllerProfileContentHash"] = controller.ContentHash,
+                ["verificationStatus"] = "Verified",
+                ["grantedOperations"] = ReadSubscribeOperations
+            });
+        var authorization = new BeckhoffShadowCaptureAuthorization
+        {
+            SchemaId = BeckhoffShadowWitnessContract.AuthorizationSchema,
+            AuthorizationId = "axiom.control.beckhoff.conformance-authorization@1",
+            DataOwnerId = "axiom-conformance-only",
+            ControllerProfileContentHash = controller.ContentHash,
+            CommandContentHash = commandHash,
+            AuthorizedFrom = DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"),
+            AuthorizedUntil = DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"),
+            AcquisitionPurpose = "deployment-shadow-validation",
+            CapturedOutsideRepository = true,
+            EvaluationAuthorized = true,
+            AttestationKind = "data-owner-attestation",
+            AttestationContentHash = new string('b', 64),
+            ContentHash = string.Empty
+        };
+        authorization = authorization with
+        {
+            ContentHash = JsonSupport.ComputeCanonicalHash(
+                authorization,
+                "contentHash")
+        };
+        authorization.Validate();
+
+        BeckhoffShadowWitnessNode[] nodes =
+        [
+            WitnessNode(
+                "command.content-hash",
+                "command-content-hash",
+                null,
+                "Command.ContentHash",
+                "String",
+                "sha256"),
+            WitnessNode(
+                "command.sample-index",
+                "sample-index",
+                null,
+                "Command.SampleIndex",
+                "UInt32",
+                "index"),
+            .. Contract.RequiredAxes.Select(axis => WitnessNode(
+                $"machine.axis.{axis}.position",
+                "axis-position",
+                axis,
+                $"Axis.{axis}.Position",
+                "Double",
+                axis is "X" or "Y" or "Z" ? "mm" : "rad"))
+        ];
+        var witness = new BeckhoffShadowWitnessProfile
+        {
+            SchemaId = BeckhoffShadowWitnessContract.ProfileSchema,
+            ProfileId = "axiom.control.beckhoff.conformance-witness@1",
+            VendorProfileContentHash = vendor.ContentHash,
+            RuntimeEvidenceContentHash = runtime.ContentHash,
+            ExpectedCommandContentHash = commandHash,
+            BindingStatus = "Bound",
+            Platform = "Windows",
+            Protocol = "opc-ua",
+            CapturePolicy = BeckhoffShadowWitnessContract.CapturePolicy,
+            IntervalPolicy = BeckhoffShadowWitnessContract.IntervalPolicy,
+            MaximumTimestampUncertaintyMs = 250.0,
+            MaximumSampleIndexGap = 0,
+            Nodes = nodes,
+            PermissionCeiling = "Shadow",
+            DeviceWriteAllowed = false,
+            MethodCallAllowed = false,
+            ContentHash = string.Empty
+        };
+        witness = witness with
+        {
+            ContentHash = JsonSupport.ComputeCanonicalHash(witness, "contentHash")
+        };
+        witness.Validate();
+        return new ShadowWitnessCaptureInputs(
+            loadedVendor,
+            runtime,
+            new LoadedBeckhoffShadowWitnessProfile(witness, "contract-fixture"),
+            controller,
+            authority,
+            authorization,
+            command,
+            "axiom.control.beckhoff.shadow-conformance@1");
+    }
+
+    private static BeckhoffShadowWitnessNode WitnessNode(
+        string canonicalSignalId,
+        string role,
+        string? axisId,
+        string identifier,
+        string dataType,
+        string unit)
+    {
+        return new BeckhoffShadowWitnessNode
+        {
+            CanonicalSignalId = canonicalSignalId,
+            Role = role,
+            AxisId = axisId,
+            NamespaceUri = ShadowNodeManager.NamespaceUri,
+            Identifier = identifier,
+            ExpectedDataType = dataType,
+            Unit = unit,
+            RequiredAccessLevel = AccessLevels.CurrentRead,
+            RequiredUserAccessLevel = AccessLevels.CurrentRead
+        };
+    }
+
+    private static LoadedContentIdentity CreateIdentity(
+        string name,
+        Dictionary<string, object?> payload)
+    {
+        string contentHash = JsonSupport.ComputeCanonicalHash(payload);
+        payload["contentHash"] = contentHash;
+        JsonElement root = JsonSerializer.SerializeToElement(payload, JsonSupport.Options);
+        return new LoadedContentIdentity(contentHash, name, root);
+    }
+
+    private static void VerifyWitnessEvidence(
+        BeckhoffShadowRunEvidence evidence,
+        ShadowWitnessCaptureInputs inputs)
+    {
+        Require(evidence.SchemaId == BeckhoffShadowWitnessContract.EvidenceSchema,
+            "wrong witness evidence schema");
+        Require(evidence.SourceKind == "contract-fixture" && !evidence.DeclaredReal,
+            "conformance witness claimed real controller provenance");
+        Require(!evidence.CountsTowardReality
+                && evidence.RealityValidationStatus == "Open",
+            "conformance witness promoted reality");
+        Require(evidence.CommandContentHash == inputs.Command.ContentId,
+            "witness command hash mismatch");
+        Require(evidence.Frames.Select(frame => checked((int)frame.ReadSampleIndex))
+                .SequenceEqual(inputs.Command.SampleIndexes),
+            "witness sample indexes are incomplete");
+        Require(evidence.Frames.All(frame => frame.NotifiedSampleIndex
+                == frame.ReadSampleIndex && frame.Samples.Length == 5),
+            "witness frame is incomplete");
+        Require(evidence.Receipt.ReadOperationCount == evidence.Frames.Length,
+            "witness did not batch-read each sample index");
+        Require(evidence.Receipt.SubscribeOperationCount == 1,
+            "witness must subscribe only to sample index");
+        Require(evidence.Receipt.WriteOperationCount == 0
+                && evidence.Receipt.MethodCallOperationCount == 0,
+            "witness issued a forbidden operation");
+        Require(evidence.ContentHash
+                == JsonSupport.ComputeCanonicalHash(evidence, "contentHash"),
+            "witness contentHash mismatch");
     }
 
     private static async Task<string> WriteConfigAsync(
@@ -475,4 +853,8 @@ internal static class Program
             throw new InvalidOperationException(message);
         }
     }
+
+    private sealed record ConformanceResult(
+        OpcUaTransportEvidence Transport,
+        BeckhoffShadowRunEvidence Witness);
 }

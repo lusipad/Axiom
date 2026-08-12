@@ -22,6 +22,10 @@ from .control import (
     R7DExamplePayload,
     R7DManifest,
     R7DScenarioSummary,
+    R7EAssessmentRequest,
+    R7EExamplePayload,
+    R7EManifest,
+    R7EScenarioSummary,
     R7ExamplePayload,
     R7Manifest,
     R7ReplayRequest,
@@ -78,6 +82,10 @@ from .physical import (
     PhysicalR4ExamplePayload,
     PhysicalR4Manifest,
     PhysicalR4ScenarioSummaryPayload,
+    R41AssessmentRequest,
+    R41ExamplePayload,
+    R41Manifest,
+    R41ScenarioSummary,
 )
 from .run import evaluate_run
 from .runtime import find_domain_runtime_binding
@@ -399,6 +407,43 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             ) from exc
 
     @app.get(
+        "/api/v1/physical/r41/manifest",
+        response_model=R41Manifest,
+        response_model_by_alias=True,
+    )
+    def physical_r41_manifest() -> R41Manifest:
+        return _load_physical_r4_api().build_r41_manifest()
+
+    @app.get(
+        "/api/v1/physical/r41/scenarios",
+        response_model=list[R41ScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def physical_r41_scenarios() -> list[R41ScenarioSummary]:
+        return list(_load_physical_r4_api().list_r41_scenarios())
+
+    @app.get(
+        "/api/v1/examples/physical-r41",
+        response_model=R41ExamplePayload,
+        response_model_by_alias=True,
+    )
+    def physical_r41_example(
+        scenarioId: str = "physical-reality-evidence-open",
+    ) -> R41ExamplePayload:
+        try:
+            return _load_physical_r4_api().r41_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/physical/r41/assess",
+        response_model=R41ExamplePayload,
+        response_model_by_alias=True,
+    )
+    def physical_r41_assess(request: R41AssessmentRequest) -> R41ExamplePayload:
+        return _load_physical_r4_api().assess_r41_payload(request)
+
+    @app.get(
         "/api/v1/intelligence/r5/manifest",
         response_model=R5Manifest,
         response_model_by_alias=True,
@@ -710,6 +755,43 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     )
     def control_r7d_assess(request: R7DAssessmentRequest) -> R7DExamplePayload:
         return _load_control_r7_api().assess_r7d_payload(request)
+
+    @app.get(
+        "/api/v1/control/r7e/manifest",
+        response_model=R7EManifest,
+        response_model_by_alias=True,
+    )
+    def control_r7e_manifest() -> R7EManifest:
+        return _load_control_r7_api().build_r7e_manifest()
+
+    @app.get(
+        "/api/v1/control/r7e/scenarios",
+        response_model=list[R7EScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def control_r7e_scenarios() -> list[R7EScenarioSummary]:
+        return list(_load_control_r7_api().list_r7e_scenarios())
+
+    @app.get(
+        "/api/v1/examples/control-r7e",
+        response_model=R7EExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7e_example(
+        scenarioId: str = "beckhoff-shadow-witness-open",
+    ) -> R7EExamplePayload:
+        try:
+            return _load_control_r7_api().r7e_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/r7e/assess",
+        response_model=R7EExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7e_assess(request: R7EAssessmentRequest) -> R7EExamplePayload:
+        return _load_control_r7_api().assess_r7e_payload(request)
 
     @app.post(
         "/api/v1/experiments/run",

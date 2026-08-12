@@ -10,11 +10,11 @@ import pytest
 
 from axiom.control import (
     BeckhoffRuntimeEvidence,
+    BeckhoffShadowRunEvidence,
     BeckhoffTwinCatVendorProfile,
     OpcUaTransportEvidence,
     assess_r7c_opcua_transport,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "adapters" / "opcua-shadow"
@@ -26,6 +26,7 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
     tmp_path: Path,
 ) -> None:
     evidence_path = tmp_path / "transport-evidence.json"
+    witness_path = tmp_path / "witness-evidence.json"
     completed = subprocess.run(
         [
             "dotnet",
@@ -42,6 +43,8 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
             "--",
             "--evidence-output",
             str(evidence_path),
+            "--witness-evidence-output",
+            str(witness_path),
         ],
         cwd=ROOT,
         capture_output=True,
@@ -53,6 +56,9 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
     assert completed.returncode == 0, completed.stderr
     assert "Independent write rejected: True" in completed.stdout
     assert "Untrusted certificate rejected: True" in completed.stdout
+    assert "Expired capture authorization rejected: True" in completed.stdout
+    assert "Cancelled witness capture stopped: True" in completed.stdout
+    assert "Witness timeout enforced: True" in completed.stdout
     evidence = OpcUaTransportEvidence.model_validate_json(
         evidence_path.read_text(encoding="utf-8")
     )
@@ -62,6 +68,23 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
     assert audit.vendor_adapter_status == "Open"
     assert audit.deployment_shadow_status == "Open"
     assert audit.reality_evidence_level == "None"
+    witness = BeckhoffShadowRunEvidence.model_validate_json(
+        witness_path.read_text(encoding="utf-8")
+    )
+
+    assert witness.source_kind == "contract-fixture"
+    assert witness.declared_real is False
+    assert tuple(frame.read_sample_index for frame in witness.frames) == tuple(range(5))
+    assert all(
+        frame.notified_sample_index == frame.read_sample_index
+        for frame in witness.frames
+    )
+    assert witness.receipt.subscribe_operation_count == 1
+    assert witness.receipt.read_operation_count == 5
+    assert witness.receipt.write_operation_count == 0
+    assert witness.receipt.method_call_operation_count == 0
+    assert witness.counts_toward_reality is False
+    assert witness.reality_validation_status == "Open"
 
 
 def test_production_adapter_has_no_write_or_method_call_surface() -> None:

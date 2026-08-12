@@ -51,7 +51,9 @@ internal sealed class ShadowServer : StandardServer
 internal sealed class ShadowNodeManager : CustomNodeManager2
 {
     public const string NamespaceUri = "urn:axiom:control:opcua-shadow:virtual-cnc";
+    public static readonly string CommandContentHash = new('c', 64);
     private readonly List<BaseDataVariableState> _axisVariables = [];
+    private BaseDataVariableState? _sampleIndexVariable;
     private Timer? _timer;
     private long _tick;
 
@@ -89,6 +91,50 @@ internal sealed class ShadowNodeManager : CustomNodeManager2
             root.AddReference(ReferenceTypes.Organizes, true, ObjectIds.ObjectsFolder);
             references.Add(new NodeStateReference(ReferenceTypes.Organizes, false, root.NodeId));
 
+            var commandHash = new BaseDataVariableState(root)
+            {
+                SymbolicName = "CommandContentHash",
+                ReferenceTypeId = ReferenceTypes.HasComponent,
+                TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
+                NodeId = new NodeId("Command.ContentHash", NamespaceIndex),
+                BrowseName = new QualifiedName("CommandContentHash", NamespaceIndex),
+                DisplayName = new LocalizedText("en", "command content hash"),
+                DataType = DataTypeIds.String,
+                ValueRank = ValueRanks.Scalar,
+                AccessLevel = AccessLevels.CurrentRead,
+                UserAccessLevel = AccessLevels.CurrentRead,
+                WriteMask = AttributeWriteMask.None,
+                UserWriteMask = AttributeWriteMask.None,
+                MinimumSamplingInterval = 10,
+                Historizing = false,
+                Value = CommandContentHash,
+                StatusCode = StatusCodes.Good,
+                Timestamp = DateTime.UtcNow
+            };
+            root.AddChild(commandHash);
+
+            _sampleIndexVariable = new BaseDataVariableState(root)
+            {
+                SymbolicName = "SampleIndex",
+                ReferenceTypeId = ReferenceTypes.HasComponent,
+                TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
+                NodeId = new NodeId("Command.SampleIndex", NamespaceIndex),
+                BrowseName = new QualifiedName("SampleIndex", NamespaceIndex),
+                DisplayName = new LocalizedText("en", "sample index"),
+                DataType = DataTypeIds.UInt32,
+                ValueRank = ValueRanks.Scalar,
+                AccessLevel = AccessLevels.CurrentRead,
+                UserAccessLevel = AccessLevels.CurrentRead,
+                WriteMask = AttributeWriteMask.None,
+                UserWriteMask = AttributeWriteMask.None,
+                MinimumSamplingInterval = 10,
+                Historizing = false,
+                Value = 0u,
+                StatusCode = StatusCodes.Good,
+                Timestamp = DateTime.UtcNow
+            };
+            root.AddChild(_sampleIndexVariable);
+
             foreach (string axis in Contract.RequiredAxes)
             {
                 var variable = new BaseDataVariableState(root)
@@ -116,7 +162,7 @@ internal sealed class ShadowNodeManager : CustomNodeManager2
             }
 
             AddPredefinedNode(SystemContext, root);
-            _timer = new Timer(UpdateAxes, null, 20, 20);
+            _timer = new Timer(UpdateAxes, null, 1_000, 1_000);
         }
     }
 
@@ -136,6 +182,13 @@ internal sealed class ShadowNodeManager : CustomNodeManager2
         {
             long tick = Interlocked.Increment(ref _tick);
             DateTime timestamp = DateTime.UtcNow;
+            if (_sampleIndexVariable is not null)
+            {
+                _sampleIndexVariable.Value = checked((uint)((tick - 1) % 5));
+                _sampleIndexVariable.StatusCode = StatusCodes.Good;
+                _sampleIndexVariable.Timestamp = timestamp;
+                _sampleIndexVariable.ClearChangeMasks(SystemContext, false);
+            }
             for (int index = 0; index < _axisVariables.Count; index++)
             {
                 BaseDataVariableState variable = _axisVariables[index];

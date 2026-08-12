@@ -2,6 +2,32 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.18.0 - 2026-08-13
+
+### Added
+
+- 增加 Windows-only R7-E Beckhoff Shadow Witness：`control.domain-pack@5`、sample-index-triggered 七节点 batch Read、带 UTC 有效时间窗的 typed 数据所有者采集授权、完整 M5 索引覆盖与零 Write/Call 收据。
+- `.NET` Adapter 新增 `beckhoff-shadow-capture`；localhost conformance 会生成 5 帧 contract-only witness 证据，并由 Python 重验 schema 与内容哈希。
+- 增加 R4.1 双运行现实验证器：`five-axis.domain-pack@7`、独立 calibration/validation pair、`five-axis.physical-model-definition@2`、exact-index 对齐、线性/旋转分组 improvement 和残差分解门。
+- 网页新增 Field Evidence R7-E/R4.1 工作台，把 Shadow receipt、校准运行、独立 holdout、reality gate 与永久安全边界放在一条证据链中。
+
+### Changed
+
+- 真实轴采集不再由 OPC UA publishing interval 推断 M5 覆盖；每个 controller sample index 必须触发一次 command hash、index、X/Y/Z/B/C batch Read，缺索引不插值。
+- 现实模型验证从 R4.0 synthetic SIL 的开放 Claim 扩展为可运行的双运行合同；同一 capture、同一授权、contract fixture、不同设备或不同采样周期都会 fail closed。
+- 发布目标继续只包含 Windows；Ubuntu/Linux/WSL 不进入本阶段支持矩阵。
+
+### Verification
+
+- `.NET 8.0.424` 解决方案无警告构建和 localhost conformance 通过；生产 Shadow Witness 5 个索引对应 5 次 batch Read，Write/Call 为 0。
+- Windows CPython 3.12.10 环境绑定套件 `732 passed`；网页 `45 passed`，TypeScript 与 Vite 生产构建通过，覆盖 R7-E/R4.1 的 Open、Unsupported、泄漏阻断、contract fixture 阻断和独立 holdout 数学路径。
+- Field Evidence 页面在 1280、768、375 像素宽度通过 `94/100` 视觉门，根页面无横向溢出或失败请求。
+
+### Boundary
+
+- 仓库没有真实 TwinCAT/TF6100 运行时或现场 capture；conformance 永久是 `contract-fixture`，不能关闭 deployment Shadow 或 reality gate。
+- 即使未来单设备单 Case 的 R4.1 reality Claim 通过，Controlled Trial、Closed Loop、DeviceSafe、ProcessSafe 和跨设备/工况泛化仍保持 Open/NotAssessed。
+
 ## 0.17.0 - 2026-08-13
 
 ### Added

@@ -218,6 +218,9 @@ def simulate_physical_response(
     *,
     response_trace_id: str,
 ) -> PhysicalResponseTrace:
+    from .applicability import require_physical_model_sample_period
+
+    require_physical_model_sample_period(model, command.sample_period)
     times = tuple(float(sample.t) for sample in command.samples)
     commands_by_axis = tuple(tuple(float(sample.q[index]) for sample in command.samples) for index in range(5))
     simulated_by_axis: list[tuple[float, ...]] = []

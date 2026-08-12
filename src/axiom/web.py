@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
+from .control import R7ExamplePayload, R7Manifest, R7ReplayRequest, R7ScenarioSummary
 from .domain import list_domain_packs
 from .experiment import contour_ab_example, run_experiment
 from .five_axis import (
@@ -106,6 +107,17 @@ def _load_optimization_r6_api() -> Any:
         raise HTTPException(
             status_code=503,
             detail="Optimization R6 API is unavailable.",
+        ) from exc
+
+
+def _load_control_r7_api() -> Any:
+    try:
+        return import_module("axiom.control")
+    except ModuleNotFoundError as exc:
+        if exc.name != "axiom.control":
+            raise
+        raise HTTPException(
+            status_code=503, detail="Control R7 API is unavailable."
         ) from exc
 
 
@@ -530,6 +542,46 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             recommendationSet=recommendations,
             runSpec=run_spec.model_dump(mode="json", by_alias=True, exclude_none=True),
         )
+
+    @app.get(
+        "/api/v1/control/r7/manifest",
+        response_model=R7Manifest,
+        response_model_by_alias=True,
+    )
+    def control_r7_manifest() -> R7Manifest:
+        return _load_control_r7_api().build_r7_manifest()
+
+    @app.get(
+        "/api/v1/control/r7/scenarios",
+        response_model=list[R7ScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def control_r7_scenarios() -> list[R7ScenarioSummary]:
+        return list(_load_control_r7_api().list_r7_scenarios())
+
+    @app.get(
+        "/api/v1/examples/control-r7",
+        response_model=R7ExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7_example(
+        scenarioId: str = "synthetic-shadow-nominal",
+    ) -> R7ExamplePayload:
+        try:
+            return _load_control_r7_api().r7_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/r7/replay",
+        response_model=R7ExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7_replay(request: R7ReplayRequest) -> R7ExamplePayload:
+        try:
+            return _load_control_r7_api().r7_example_payload(request.scenario_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post(
         "/api/v1/experiments/run",

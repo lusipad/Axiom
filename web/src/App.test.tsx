@@ -425,6 +425,27 @@ describe("Axiom workbench", () => {
     expect(screen.getByRole("button", { name: /Physical.*R4/i })).toBeInTheDocument();
   });
 
+  it("R7-A 顶栏保持 Shadow 权限和无设备授权边界", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.includes("/control/r7/") || url.includes("/examples/control-r7")) {
+        return Promise.resolve(jsonResponse({ detail: "R7 unavailable" }, 503));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Controlled.*R7-A/i }));
+
+    expect(screen.getByText("SHADOW ONLY · NO DEVICE AUTHORITY · DEPLOYMENT OPEN")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
+  });
+
   it("R5-B 入口保持 Windows 真实 holdout 边界且不暴露设备控制", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);

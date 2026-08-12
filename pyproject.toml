@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-evaluator"
-version = "0.10.1"
+version = "0.11.0"
 description = "A deterministic, domain-extensible industrial algorithm evaluation framework"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,6 +41,7 @@ axiom = [
   "machine/fixtures/captures/*.json",
   "physical/fixtures/*.json",
   "physical/fixtures/captures/*.json",
+  "intelligence/fixtures/*.json",
 ]
 
 [tool.pytest.ini_options]

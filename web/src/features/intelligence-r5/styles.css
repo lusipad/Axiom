@@ -1,0 +1,130 @@
+.intelligence-r5-workspace {
+  --r5-accent: #85f6bd;
+  --r5-warning: #ffc96b;
+}
+
+.intelligence-r5-banner {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.intelligence-r5-banner strong:first-child {
+  color: var(--r5-accent);
+}
+
+.intelligence-r5-banner strong:nth-child(2) {
+  color: var(--r5-warning);
+}
+
+.intelligence-r5-split-grid,
+.intelligence-r5-axis-grid,
+.intelligence-r5-gate-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.intelligence-r5-split-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.intelligence-r5-split-grid article,
+.intelligence-r5-axis-grid article {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.75rem;
+}
+
+.intelligence-r5-split-grid article {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.intelligence-r5-split-grid strong {
+  color: var(--r5-accent);
+  text-transform: uppercase;
+}
+
+.intelligence-r5-split-grid small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.intelligence-r5-analysis-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.intelligence-r5-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-color: color-mix(in srgb, var(--r5-accent) 45%, var(--line));
+}
+
+.intelligence-r5-hero > div {
+  text-align: right;
+}
+
+.intelligence-r5-hero > div > strong {
+  color: var(--r5-accent);
+  font-size: 2.8rem;
+}
+
+.intelligence-r5-hero h2 {
+  margin: 0.25rem 0;
+}
+
+.intelligence-r5-axis-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.intelligence-r5-axis-grid header {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: space-between;
+}
+
+.intelligence-r5-axis-grid header span {
+  font-size: 0.65rem;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.intelligence-r5-axis-grid p {
+  min-height: 2.4rem;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.intelligence-r5-gate-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.intelligence-r5-gate-grid article > strong {
+  display: block;
+  margin: 0.45rem 0;
+  color: var(--r5-accent);
+  font-family: var(--mono);
+  font-size: 1.7rem;
+}
+
+.intelligence-r5-bundle-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .intelligence-r5-axis-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .intelligence-r5-split-grid,
+  .intelligence-r5-axis-grid,
+  .intelligence-r5-gate-grid,
+  .intelligence-r5-bundle-list {
+    grid-template-columns: 1fr;
+  }
+}

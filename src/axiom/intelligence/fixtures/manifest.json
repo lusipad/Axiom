@@ -1,0 +1,33 @@
+{
+  "manifestId": "axiom.intelligence.r5-fixture-manifest@1",
+  "platform": "windows",
+  "scenarioId": "synthetic-residual-contract",
+  "sourceScenarios": {
+    "train": "canonical-dual-table-solver",
+    "validation": "canonical-head-table-solver",
+    "test": "canonical-dual-head-solver"
+  },
+  "expectedIdentities": {
+    "datasetContentHash": "b92c0874e4e34b9641639c0a4ea907bdca45cb412c4481d9128d96b1a7e04292",
+    "splitManifestContentHash": "83d94e1b4bfeee2de94c9ce249ffd681a4e8a222d9a10304eb6711f16a5091ec",
+    "trainingReceiptContentHash": "1a376ab1f097da4fcb2df23829b75d2345c183750ba09ed17804425ab1822c8f",
+    "modelBundleContentHash": "a44baf3866d600d26942e7f188fb927042a9b61c261b386bfc395a63b33f66f8",
+    "parityReceiptContentHash": "97eecfd6bde8e8f36452e3e1917613e6b6f9dab738b6dc9b40169768d9f0f27d"
+  },
+  "expectedGates": {
+    "syntheticLearningContractStatus": "Passed",
+    "realWorldGeneralizationStatus": "Open",
+    "xImprovementRatio": 0.5042675268412713,
+    "conformalCoverage": 0.8333333333333334,
+    "oodDetectionRate": 1.0,
+    "targetParityMaxAbsGap": 1.3877787807814457e-17
+  },
+  "axisDispositions": {
+    "X": "Validated",
+    "Y": "NoValidatedImprovement",
+    "Z": "NoValidatedImprovement",
+    "B": "InsufficientExcitation",
+    "C": "InsufficientExcitation"
+  },
+  "boundary": "SYNTHETIC INTELLIGENCE / NOT DEVICE SAFE"
+}

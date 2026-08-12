@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,18 @@ def _package_version() -> str:
         return version("axiom-evaluator")
     except PackageNotFoundError:
         return "0.0.0"
+
+
+def _load_physical_r4_api() -> Any:
+    try:
+        return import_module("axiom.physical")
+    except ModuleNotFoundError as exc:
+        if exc.name != "axiom.physical":
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="Physical R4 API is unavailable.",
+        ) from exc
 
 
 def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None) -> FastAPI:
@@ -259,6 +272,43 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             return machine_r3_example_payload(scenarioId)
         except (FileNotFoundError, KeyError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/physical/r4/manifest")
+    def physical_r4_manifest() -> Any:
+        physical_api = _load_physical_r4_api()
+        try:
+            return physical_api.load_r4_manifest()
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Physical R4 manifest loader is unavailable.",
+            ) from exc
+
+    @app.get("/api/v1/physical/r4/scenarios")
+    def physical_r4_scenarios() -> Any:
+        physical_api = _load_physical_r4_api()
+        try:
+            return physical_api.list_r4_scenarios()
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Physical R4 scenario catalog is unavailable.",
+            ) from exc
+
+    @app.get("/api/v1/examples/physical-r4")
+    def physical_r4_example(
+        scenarioId: str = "in-domain-synthetic-sil",
+    ) -> Any:
+        physical_api = _load_physical_r4_api()
+        try:
+            return physical_api.r4_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Physical R4 example payload loader is unavailable.",
+            ) from exc
 
     @app.post(
         "/api/v1/experiments/run",

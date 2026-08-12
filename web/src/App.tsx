@@ -10,6 +10,7 @@ import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
 import { F3Workbench } from "./features/five-axis-f3/F3Workbench";
 import { F4Workbench } from "./features/five-axis-f4/F4Workbench";
 import { MachineR3Workbench } from "./features/machine-r3/MachineR3Workbench";
+import { PhysicalR4Workbench } from "./features/physical-r4/PhysicalR4Workbench";
 import type {
   Catalog,
   ExperimentArmResult,
@@ -19,7 +20,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4";
 type PointView = "geometry" | "metrics";
 
 const futureLabs = ["Intelligence", "Optimization"];
@@ -237,6 +238,8 @@ export function App() {
           ? "Five-Axis Time & Sampling Lab"
           : activeLab === "five-axis-f4"
             ? "Five-Axis Gate Acceptance Lab"
+            : activeLab === "physical-r4"
+              ? "Physical R4 Validation Workbench"
             : "Machine Read-only Lab";
   const activeManifestId = activeLab === "point"
     ? spec?.experimentId ?? "loading"
@@ -248,6 +251,8 @@ export function App() {
           ? "five-axis.f3-math-stage-manifest@1"
           : activeLab === "five-axis-f4"
             ? "five-axis.f4-math-stage-manifest@1"
+            : activeLab === "physical-r4"
+              ? "physical.r4-manifest@1"
             : "machine.r3-manifest@1";
 
   const buildPointSpec = (): ExperimentSpec => {
@@ -351,7 +356,11 @@ export function App() {
             </>
           ) : (
             <span className="f1-top-boundary">
-              {activeLab === "machine-r3" ? "READ ONLY · NOT DEVICE SAFE" : "MATH ONLY · NOT DEVICE SAFE"}
+              {activeLab === "machine-r3"
+                ? "READ ONLY · NOT DEVICE SAFE"
+                : activeLab === "physical-r4"
+                  ? "MODEL VALIDATION · NOT DEVICE SAFE"
+                  : "MATH ONLY · NOT DEVICE SAFE"}
             </span>
           )}
         </div>
@@ -387,9 +396,12 @@ export function App() {
         <button className={`lab ${activeLab === "machine-r3" ? "active" : ""}`} type="button" onClick={() => setActiveLab("machine-r3")}>
           <span>06</span>Machine<small>R3</small>
         </button>
+        <button className={`lab ${activeLab === "physical-r4" ? "active" : ""}`} type="button" onClick={() => setActiveLab("physical-r4")}>
+          <span>07</span>Physical<small>R4</small>
+        </button>
         {futureLabs.map((lab, index) => (
           <button className="lab" type="button" disabled key={lab} title="领域包尚未接入">
-            <span>0{index + 7}</span>{lab}<small>planned</small>
+            <span>0{index + 8}</span>{lab}<small>planned</small>
           </button>
         ))}
       </div>
@@ -585,6 +597,8 @@ export function App() {
         <F3Workbench catalog={catalog} />
       ) : activeLab === "five-axis-f4" ? (
         <F4Workbench catalog={catalog} />
+      ) : activeLab === "physical-r4" ? (
+        <PhysicalR4Workbench catalog={catalog} />
       ) : (
         <MachineR3Workbench catalog={catalog} />
       )}

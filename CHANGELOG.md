@@ -2,6 +2,34 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.10.0 - 2026-08-12
+
+### Added
+
+- 增加 R4.0 Windows synthetic SIL 物理模型验证链：`five-axis.domain-pack@6`、轴空间一阶 lag + bias、exact-ZOH 仿真响应、确定性校准、独立 holdout 和残差分解。
+- 增加与候选模型结构不同的两级滞后 synthetic oracle，以及模型 mismatch、时间错位、校准/验证泄漏、轴激励不足和缺坐标上下文等可证伪场景。
+- 增加 `PhysicalResponseTrace`、有类型的模型/标定/对齐支持对象、R4 manifest/scenario/example API 和 Physical R4 网页工作台。
+- 增加[物理模型与现实对齐规范](物理模型与现实对齐规范.md)与 ADR-0015，冻结主 Artifact、单位隔离、校准/验证隔离和可信度边界。
+
+### Changed
+
+- 同一 R4 Case 现在可同时追溯 F4 数学指令、模型仿真响应和 R3-compatible raw observation；三类对象保留独立内容身份，R3 raw frame 不被派生值覆盖。
+- Windows 发布包纳入 R4 package fixtures 与网页资源，并在安装后重放正向 SIL Case 和反例。
+- Roadmap 明确区分 `syntheticContractStatus` 与 `realityValidationStatus`；R4.0 合同片通过不等于真实设备 reality gate 关闭。
+
+### Verification
+
+- 本地 Windows 候选验证为 Python 全量 `567 passed / 1 skipped`，R4 定向测试 `36 passed`，网页 `20 passed`，TypeScript 检查与生产构建通过。
+- `python -m build` 产出的 wheel 已包含 R4 package fixtures 与 Physical R4 workbench 静态资源；安装后 smoke 覆盖 F4、R3 与 R4 回放，结果通过。
+- Physical R4 workbench 视觉终审 `92/100`，桌面与窄屏视口均无横向溢出，且页面不暴露设备写控件。
+- 本地安装后 smoke 运行于 Windows + Python 3.14；阻断验收与 GitHub Release 仍以 `windows-latest + CPython 3.12.10` 工作流为准。
+
+### Boundary
+
+- 本版本只支持 Windows AMD64 + CPython 3.12.10 的阻断验收，不实现或验证 Ubuntu/Linux/WSL。
+- 所有内置 R4 telemetry 均为 `synthetic-replay`。它们能证明 SIL 合同、确定性和可证伪性，不能证明真实控制器兼容、真实设备效果或加工安全。
+- R4.0 不写设备、不应用参数、不启动加工，也不产生 `DeviceSafe`、`ProcessSafe`、`safe-to-run` 或上机许可。
+
 ## 0.9.0 - 2026-08-12
 
 ### Added

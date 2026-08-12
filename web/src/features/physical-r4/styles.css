@@ -1,0 +1,331 @@
+.workspace.physical-r4-workspace {
+  grid-template-columns: 320px minmax(520px, 1fr) 340px;
+}
+
+.analysis-panel.physical-r4-analysis {
+  grid-template-rows: 48px minmax(0, 1fr);
+}
+
+.physical-r4-workspace .analysis-heading {
+  min-width: 0;
+  gap: 16px;
+}
+
+.physical-r4-workspace .view-tabs {
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: #d2dde2;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.physical-r4-view-divider {
+  color: #4f626b;
+}
+
+.physical-r4-workspace .run-state {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.physical-r4-workspace .run-state span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physical-r4-analysis-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.physical-r4-banner-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.physical-r4-banner-stack strong + strong {
+  color: #6f9fbe;
+}
+
+.physical-r4-identity-grid,
+.physical-r4-metric-groups,
+.physical-r4-excitation-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.physical-r4-identity-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.physical-r4-metric-groups {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.physical-r4-excitation-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.physical-r4-identity-card,
+.physical-r4-excitation-card,
+.physical-r4-metric-card {
+  padding: 12px;
+  border: 1px solid #2b3a42;
+  background: #10181c;
+}
+
+.physical-r4-identity-card header,
+.physical-r4-excitation-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.physical-r4-identity-card h3,
+.physical-r4-excitation-card h3,
+.physical-r4-metric-card h3 {
+  margin: 0;
+  font-size: 11px;
+  color: #d9e4e9;
+}
+
+.physical-r4-identity-card p,
+.physical-r4-excitation-card p,
+.physical-r4-metric-card p {
+  margin: 8px 0 0;
+  color: #95a5ad;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.physical-r4-axis-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 10px;
+}
+
+.physical-r4-axis-button {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #304049;
+  background: #10181c;
+  color: #9fb0b8;
+  cursor: pointer;
+  text-align: left;
+}
+
+.physical-r4-axis-button.active {
+  border-color: var(--green);
+  color: #dfe8ec;
+  background: #162127;
+}
+
+.physical-r4-axis-button strong,
+.physical-r4-axis-button small {
+  display: block;
+}
+
+.physical-r4-axis-button small {
+  margin-top: 5px;
+  color: #aebdc4;
+  font: 500 9px var(--mono);
+}
+
+.physical-r4-signal-card {
+  padding: 12px;
+  border: 1px solid #2b3a42;
+  background: #10181c;
+}
+
+.physical-r4-signal-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.physical-r4-signal-card h3,
+.physical-r4-metric-group h3 {
+  margin: 0;
+  font-size: 11px;
+  color: #d9e4e9;
+}
+
+.physical-r4-signal-card code,
+.physical-r4-metric-card code,
+.physical-r4-residual-table code {
+  font: 8px var(--mono);
+}
+
+.physical-r4-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.physical-r4-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.physical-r4-legend i {
+  width: 14px;
+  height: 2px;
+  display: inline-block;
+}
+
+.physical-r4-legend .command { background: #8aa0aa; }
+.physical-r4-legend .simulation { background: #58c58a; }
+.physical-r4-legend .observation { background: #e78359; }
+
+.physical-r4-plot {
+  width: 100%;
+  min-height: 260px;
+  background: radial-gradient(circle at 50% 50%, rgba(56, 76, 87, 0.16), transparent 65%);
+}
+
+.physical-r4-plot text {
+  fill: #71838c;
+  font: 9px var(--mono);
+}
+
+.physical-r4-grid-line {
+  stroke: #233038;
+  stroke-width: 1;
+}
+
+.physical-r4-axis-line {
+  stroke: #38474f;
+  stroke-width: 1;
+}
+
+.physical-r4-series {
+  fill: none;
+  stroke-width: 2.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.physical-r4-series.command { stroke: #8aa0aa; }
+.physical-r4-series.simulation { stroke: #58c58a; }
+.physical-r4-series.observation { stroke: #e78359; }
+
+.physical-r4-metric-group {
+  padding: 12px;
+  border: 1px solid #2b3a42;
+  background: #10181c;
+}
+
+.physical-r4-metric-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.physical-r4-metric-card strong {
+  display: block;
+  margin-top: 6px;
+  font: 600 14px var(--mono);
+  color: #dfe8ec;
+}
+
+.physical-r4-metric-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font: 8px var(--mono);
+}
+
+.physical-r4-residual-table td:last-child,
+.physical-r4-residual-table th:last-child {
+  text-transform: uppercase;
+}
+
+@media (max-width: 1440px) {
+  .workspace.physical-r4-workspace {
+    grid-template-columns: 300px minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .physical-r4-metric-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .physical-r4-workspace > .evidence-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .physical-r4-workspace > .evidence-panel .panel-heading {
+    grid-column: 1 / -1;
+  }
+
+  .physical-r4-workspace > .evidence-panel .verdict-card {
+    align-self: start;
+  }
+
+  .physical-r4-workspace > .evidence-panel .evidence-section {
+    border-left: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace.physical-r4-workspace {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .physical-r4-identity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-panel.physical-r4-analysis {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .physical-r4-workspace .analysis-heading {
+    min-height: 48px;
+    padding: 8px 10px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .physical-r4-workspace .view-tabs {
+    min-height: 28px;
+  }
+
+  .physical-r4-workspace .run-state {
+    width: 100%;
+  }
+
+  .physical-r4-axis-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .physical-r4-analysis-body {
+    padding: 18px;
+  }
+
+  .physical-r4-workspace > .evidence-panel {
+    display: block;
+  }
+
+  .physical-r4-workspace > .evidence-panel .evidence-section {
+    border-left: 0;
+  }
+}

@@ -5,11 +5,14 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
 from .control import (
+    BECKHOFF_WITNESS_PLC_TEMPLATE_FILE,
+    BeckhoffWitnessDeploymentReport,
+    BeckhoffWitnessDeploymentRequest,
     R7BAssessmentRequest,
     R7BExamplePayload,
     R7BManifest,
@@ -30,6 +33,9 @@ from .control import (
     R7Manifest,
     R7ReplayRequest,
     R7ScenarioSummary,
+    assess_beckhoff_witness_deployment,
+    build_default_beckhoff_witness_deployment_request,
+    read_beckhoff_witness_plc_template,
 )
 from .domain import list_domain_packs
 from .experiment import contour_ab_example, run_experiment
@@ -797,6 +803,40 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     )
     def control_r7e_assess(request: R7EAssessmentRequest) -> R7EExamplePayload:
         return _load_control_r7_api().assess_r7e_payload(request)
+
+    @app.get(
+        "/api/v1/examples/control-r7e/deployment",
+        response_model=BeckhoffWitnessDeploymentReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def control_r7e_deployment_example() -> BeckhoffWitnessDeploymentReport:
+        return assess_beckhoff_witness_deployment(
+            build_default_beckhoff_witness_deployment_request()
+        )
+
+    @app.post(
+        "/api/v1/control/r7e/deployment/assess",
+        response_model=BeckhoffWitnessDeploymentReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def control_r7e_deployment_assess(
+        request: BeckhoffWitnessDeploymentRequest,
+    ) -> BeckhoffWitnessDeploymentReport:
+        return assess_beckhoff_witness_deployment(request)
+
+    @app.get("/api/v1/control/r7e/deployment/template")
+    def control_r7e_deployment_template() -> Response:
+        return Response(
+            content=read_beckhoff_witness_plc_template(),
+            media_type="application/xml",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{BECKHOFF_WITNESS_PLC_TEMPLATE_FILE}"'
+                )
+            },
+        )
 
     @app.post(
         "/api/v1/field-evidence/assess",

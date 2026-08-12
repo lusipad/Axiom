@@ -3,12 +3,54 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FieldEvidenceWorkbench } from "./FieldEvidenceWorkbench";
 import type {
+  BeckhoffWitnessDeploymentReport,
+  BeckhoffWitnessDeploymentRequest,
   FieldEvidenceAssessmentReport,
   R41ExamplePayload,
   R41Manifest,
   R7EExamplePayload,
   R7EManifest,
 } from "./types";
+
+const deploymentRequest: BeckhoffWitnessDeploymentRequest = {
+  schemaId: "axiom.control.beckhoff-shadow-witness-deployment-request@1",
+  schemaVersion: 1,
+  assessmentId: "axiom.control.beckhoff-shadow-witness-deployment.open@1",
+  caseId: "site.part-family-17@1",
+  profileId: "site.beckhoff-shadow-witness@1",
+  maximumTimestampUncertaintyMs: 20,
+  nodes: [],
+};
+
+const deploymentReport: BeckhoffWitnessDeploymentReport = {
+  schemaId: "axiom.control.beckhoff-shadow-witness-deployment-report@1",
+  schemaVersion: 1,
+  assessmentId: deploymentRequest.assessmentId,
+  caseId: deploymentRequest.caseId,
+  requestContentHash: "e".repeat(64),
+  template: {
+    templateId: "axiom.control.beckhoff-shadow-witness-plc-template@1",
+    fileName: "FB_AxiomShadowWitness.TcPOU",
+    sourceSha256: "f".repeat(64),
+    symbolCount: 7,
+    snapshotPolicy: "sample-index-published-last",
+    templateValidationStatus: "ContractChecked",
+    twinCatCompileStatus: "NotAssessed",
+    contentHash: "1".repeat(64),
+  },
+  checks: [],
+  profileBindingStatus: "Open",
+  runtimePreconditionStatus: "Open",
+  capturePreparationStatus: "Open",
+  captureAuthorizationStatus: "Open",
+  deploymentShadowStatus: "Open",
+  realityValidationStatus: "Open",
+  controlledTrialStatus: "Open",
+  closedLoopStatus: "Open",
+  deviceSafetyStatus: "NotAssessed",
+  processSafetyStatus: "NotAssessed",
+  contentHash: "2".repeat(64),
+};
 
 const r7eManifest: R7EManifest = {
   manifestId: "control.r7e-manifest@1",
@@ -150,10 +192,39 @@ describe("FieldEvidenceWorkbench", () => {
     expect(screen.getByRole("note")).toHaveTextContent("READ / SUBSCRIBE ONLY · NOT DEVICE SAFE");
     expect(screen.getByRole("button", { name: "导入校准 Shadow 包" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导入验证 Shadow 包" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "⇩ 下载 TwinCAT 见证模板" })).toHaveAttribute("download", "FB_AxiomShadowWitness.TcPOU");
+    expect(screen.getByRole("button", { name: "校验部署绑定 JSON" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "运行双证据验收" })).toBeInTheDocument();
     expect(screen.getByText("Write / Call").nextElementSibling).toHaveTextContent("0 / 0");
     expect(screen.getByText("NOT DEVICE SAFE")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /写入|启动|下发|闭环/i })).not.toBeInTheDocument();
+  });
+
+  it("部署请求只做离线预检并保持 Shadow 与 Reality 开放", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/control/r7e/manifest")) return Promise.resolve(response(r7eManifest));
+      if (url.endsWith("/examples/control-r7e")) return Promise.resolve(response(r7ePayload));
+      if (url.endsWith("/physical/r41/manifest")) return Promise.resolve(response(r41Manifest));
+      if (url.endsWith("/examples/physical-r41")) return Promise.resolve(response(r41Payload));
+      if (url.endsWith("/control/r7e/deployment/assess") && init?.method === "POST") return Promise.resolve(response(deploymentReport));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FieldEvidenceWorkbench catalog={null} />);
+    await screen.findByText("从两次真实只读轨迹，到一项受限的现实声明");
+    const file = new File([JSON.stringify(deploymentRequest)], "deployment.json", { type: "application/json" });
+    fireEvent.change(screen.getByLabelText("导入 Beckhoff 见证部署请求 JSON"), { target: { files: [file] } });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    expect(screen.getAllByText("ContractChecked").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("NotAssessed").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Open").length).toBeGreaterThan(0);
+    const call = fetchMock.mock.calls.at(-1);
+    expect(String(call?.[0])).toContain("/control/r7e/deployment/assess");
+    expect(JSON.parse(String(call?.[1]?.body)).schemaId).toBe(deploymentRequest.schemaId);
+    expect(screen.queryByRole("button", { name: /连接|写入|启动|下发|闭环/i })).not.toBeInTheDocument();
   });
 
   it("把两个同 Case 的 R7-E 结果交给现场证据评估端点", async () => {

@@ -127,6 +127,21 @@ from .r7e_models import (
     R7EManifest,
     R7EScenarioSummary,
 )
+from .r7e_deployment import (
+    BECKHOFF_WITNESS_DEPLOYMENT_REPORT_SCHEMA_ID,
+    BECKHOFF_WITNESS_DEPLOYMENT_REQUEST_SCHEMA_ID,
+    BECKHOFF_WITNESS_PLC_TEMPLATE_FILE,
+    BECKHOFF_WITNESS_PLC_TEMPLATE_ID,
+    BeckhoffWitnessDeploymentCheck,
+    BeckhoffWitnessDeploymentNodeBinding,
+    BeckhoffWitnessDeploymentReport,
+    BeckhoffWitnessDeploymentRequest,
+    BeckhoffWitnessPlcTemplate,
+    assess_beckhoff_witness_deployment,
+    build_default_beckhoff_witness_deployment_request,
+    load_beckhoff_witness_plc_template,
+    read_beckhoff_witness_plc_template,
+)
 from .r7e_runtime import (
     R7E_DOMAIN_PACK,
     R7E_RUNTIME_BINDING,
@@ -155,6 +170,15 @@ from .scenarios import (
 )
 
 __all__ = [
+    "BECKHOFF_WITNESS_DEPLOYMENT_REPORT_SCHEMA_ID",
+    "BECKHOFF_WITNESS_DEPLOYMENT_REQUEST_SCHEMA_ID",
+    "BECKHOFF_WITNESS_PLC_TEMPLATE_FILE",
+    "BECKHOFF_WITNESS_PLC_TEMPLATE_ID",
+    "BeckhoffWitnessDeploymentCheck",
+    "BeckhoffWitnessDeploymentNodeBinding",
+    "BeckhoffWitnessDeploymentReport",
+    "BeckhoffWitnessDeploymentRequest",
+    "BeckhoffWitnessPlcTemplate",
     "BeckhoffShadowAxisSample",
     "BeckhoffShadowCaptureAuthorization",
     "BeckhoffShadowCaptureReceipt",
@@ -245,8 +269,10 @@ __all__ = [
     "assess_r7d_payload",
     "assess_r7e_payload",
     "assess_r7e_shadow",
+    "assess_beckhoff_witness_deployment",
     "build_default_beckhoff_profile",
     "build_default_beckhoff_shadow_witness_profile",
+    "build_default_beckhoff_witness_deployment_request",
     "build_control_envelope",
     "build_r7_manifest",
     "build_r7b_manifest",
@@ -258,6 +284,8 @@ __all__ = [
     "evaluate_r7c_opcua_transport",
     "evaluate_r7d_beckhoff",
     "evaluate_r7e_shadow",
+    "load_beckhoff_witness_plc_template",
+    "read_beckhoff_witness_plc_template",
     "list_r7_scenarios",
     "list_r7b_scenarios",
     "list_r7c_scenarios",

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_AxiomShadowWitness" Id="{791cd82e-4dd0-4bd9-8459-03e67ad51d27}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_AxiomShadowWitness
+VAR_INPUT
+    bPublishEnabled : BOOL;
+    sCommandContentHash : STRING(64);
+    nSampleIndex : UDINT;
+    fAxisX : LREAL;
+    fAxisY : LREAL;
+    fAxisZ : LREAL;
+    fAxisB : LREAL;
+    fAxisC : LREAL;
+END_VAR
+VAR_OUTPUT
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    sWitnessCommandContentHash : STRING(64);
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    nWitnessSampleIndex : UDINT := 16#FFFFFFFF;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    fWitnessAxisX : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    fWitnessAxisY : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    fWitnessAxisZ : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    fWitnessAxisB : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    fWitnessAxisC : LREAL;
+END_VAR
+VAR
+    bPublishedAtLeastOnce : BOOL;
+    nLastPublishedSampleIndex : UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF bPublishEnabled AND
+   ((NOT bPublishedAtLeastOnce) OR (nSampleIndex <> nLastPublishedSampleIndex)) THEN
+    sWitnessCommandContentHash := sCommandContentHash;
+    fWitnessAxisX := fAxisX;
+    fWitnessAxisY := fAxisY;
+    fWitnessAxisZ := fAxisZ;
+    fWitnessAxisB := fAxisB;
+    fWitnessAxisC := fAxisC;
+
+    (* Publish the trigger only after the complete witness snapshot is latched. *)
+    nWitnessSampleIndex := nSampleIndex;
+    nLastPublishedSampleIndex := nSampleIndex;
+    bPublishedAtLeastOnce := TRUE;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

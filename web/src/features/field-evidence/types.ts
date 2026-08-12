@@ -1,5 +1,54 @@
 export type GateStatus = "Passed" | "Open" | "Refuted" | "Blocked";
 
+export interface BeckhoffWitnessDeploymentRequest {
+  schemaId: "axiom.control.beckhoff-shadow-witness-deployment-request@1";
+  schemaVersion: 1;
+  assessmentId: string;
+  caseId: string;
+  profileId: string;
+  maximumTimestampUncertaintyMs: number;
+  vendorProfile?: Record<string, unknown> | null;
+  runtimeEvidence?: Record<string, unknown> | null;
+  command?: Record<string, unknown> | null;
+  nodes?: Array<{
+    canonicalSignalId: string;
+    namespaceUri: string;
+    identifier: string;
+  }>;
+}
+
+export interface BeckhoffWitnessDeploymentReport {
+  schemaId: "axiom.control.beckhoff-shadow-witness-deployment-report@1";
+  schemaVersion: 1;
+  assessmentId: string;
+  caseId: string;
+  requestContentHash: string;
+  template: {
+    templateId: string;
+    fileName: "FB_AxiomShadowWitness.TcPOU";
+    sourceSha256: string;
+    symbolCount: 7;
+    snapshotPolicy: "sample-index-published-last";
+    templateValidationStatus: "ContractChecked";
+    twinCatCompileStatus: "NotAssessed";
+    contentHash: string;
+  };
+  checks: ReadinessCheck[];
+  profileBindingStatus: "Open" | "Bound" | "Blocked";
+  runtimePreconditionStatus: "Open" | "Passed" | "Blocked";
+  capturePreparationStatus: "Open" | "Passed" | "Blocked";
+  witnessProfile?: Record<string, unknown> | null;
+  assessmentRequest?: R7EAssessmentRequest | null;
+  captureAuthorizationStatus: "Open";
+  deploymentShadowStatus: "Open";
+  realityValidationStatus: "Open";
+  controlledTrialStatus: "Open";
+  closedLoopStatus: "Open";
+  deviceSafetyStatus: "NotAssessed";
+  processSafetyStatus: "NotAssessed";
+  contentHash: string;
+}
+
 export interface R7EManifest {
   manifestId: "control.r7e-manifest@1";
   domainPackId: "control.domain-pack@5";

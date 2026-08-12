@@ -1,4 +1,6 @@
 import type {
+  BeckhoffWitnessDeploymentReport,
+  BeckhoffWitnessDeploymentRequest,
   FieldEvidenceAssessmentReport,
   FieldEvidenceAssessmentRequest,
   R41AssessmentRequest,
@@ -29,6 +31,16 @@ export function loadR7EExample(): Promise<R7EExamplePayload> {
 
 export function assessR7E(request: R7EAssessmentRequest): Promise<R7EExamplePayload> {
   return requestJson<R7EExamplePayload>("/api/v1/control/r7e/assess", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
+
+export function assessBeckhoffWitnessDeployment(
+  request: BeckhoffWitnessDeploymentRequest,
+): Promise<BeckhoffWitnessDeploymentReport> {
+  return requestJson<BeckhoffWitnessDeploymentReport>("/api/v1/control/r7e/deployment/assess", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),

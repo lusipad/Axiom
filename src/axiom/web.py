@@ -41,6 +41,7 @@ from .machine import (
     load_machine_r3_manifest,
     machine_r3_example_payload,
 )
+from .intelligence import R5ExamplePayload, R5Manifest, R5ScenarioSummary
 from .physical import (
     PhysicalR4ExamplePayload,
     PhysicalR4Manifest,
@@ -68,6 +69,18 @@ def _load_physical_r4_api() -> Any:
         raise HTTPException(
             status_code=503,
             detail="Physical R4 API is unavailable.",
+        ) from exc
+
+
+def _load_intelligence_r5_api() -> Any:
+    try:
+        return import_module("axiom.intelligence")
+    except ModuleNotFoundError as exc:
+        if exc.name != "axiom.intelligence":
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="Intelligence R5 API is unavailable.",
         ) from exc
 
 
@@ -329,6 +342,59 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             raise HTTPException(
                 status_code=503,
                 detail="Physical R4 example payload loader is unavailable.",
+            ) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5/manifest",
+        response_model=R5Manifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5_manifest() -> R5Manifest:
+        intelligence_api = _load_intelligence_r5_api()
+        try:
+            return R5Manifest.model_validate(intelligence_api.build_r5_manifest())
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Intelligence R5 manifest loader is unavailable.",
+            ) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5/scenarios",
+        response_model=list[R5ScenarioSummary],
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5_scenarios() -> list[R5ScenarioSummary]:
+        intelligence_api = _load_intelligence_r5_api()
+        try:
+            return list(intelligence_api.list_r5_scenarios())
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Intelligence R5 scenario catalog is unavailable.",
+            ) from exc
+
+    @app.get(
+        "/api/v1/examples/intelligence-r5",
+        response_model=R5ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def intelligence_r5_example(
+        scenarioId: str = "synthetic-residual-contract",
+    ) -> R5ExamplePayload:
+        intelligence_api = _load_intelligence_r5_api()
+        try:
+            return R5ExamplePayload.model_validate(intelligence_api.r5_example_payload(scenarioId))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Intelligence R5 example payload loader is unavailable.",
             ) from exc
 
     @app.post(

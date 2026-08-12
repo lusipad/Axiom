@@ -91,6 +91,98 @@ internal static class JsonSupport
         return receipt;
     }
 
+    public static async Task<LoadedBeckhoffShadowWitnessProfile>
+        LoadBeckhoffShadowWitnessProfileAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        BeckhoffShadowWitnessProfile profile =
+            JsonSerializer.Deserialize<BeckhoffShadowWitnessProfile>(payload, Options)
+            ?? throw new ShadowContractException("witness profile JSON is empty");
+        profile.Validate();
+        return new LoadedBeckhoffShadowWitnessProfile(profile, fullPath);
+    }
+
+    public static async Task<BeckhoffShadowCaptureAuthorization>
+        LoadBeckhoffShadowCaptureAuthorizationAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        byte[] payload = await File.ReadAllBytesAsync(
+            Path.GetFullPath(path),
+            cancellationToken).ConfigureAwait(false);
+        BeckhoffShadowCaptureAuthorization authorization =
+            JsonSerializer.Deserialize<BeckhoffShadowCaptureAuthorization>(payload, Options)
+            ?? throw new ShadowContractException("capture authorization JSON is empty");
+        authorization.Validate();
+        return authorization;
+    }
+
+    public static async Task<LoadedContentIdentity> LoadContentIdentityAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(payload);
+        JsonElement root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("contentHash", out JsonElement property)
+            || property.ValueKind != JsonValueKind.String)
+        {
+            throw new ShadowContractException("support JSON must contain contentHash");
+        }
+        string contentHash = property.GetString() ?? string.Empty;
+        if (!Contract.Sha256Pattern().IsMatch(contentHash)
+            || contentHash != ComputeCanonicalHash(root, "contentHash"))
+        {
+            throw new ShadowContractException("support contentHash is invalid");
+        }
+        return new LoadedContentIdentity(contentHash, fullPath, root.Clone());
+    }
+
+    public static async Task<M5CommandReference> LoadM5CommandReferenceAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(payload);
+        JsonElement root = document.RootElement;
+        string artifactType = RequireStringProperty(root, "artifactType");
+        string schemaId = RequireStringProperty(root, "schemaId");
+        string contentId = RequireStringProperty(root, "contentId");
+        if (artifactType != "five-axis.m5-discrete-command"
+            || schemaId != "five-axis.m5-discrete-command@1"
+            || !Contract.Sha256Pattern().IsMatch(contentId)
+            || !root.TryGetProperty("samples", out JsonElement samples)
+            || samples.ValueKind != JsonValueKind.Array)
+        {
+            throw new ShadowContractException("M5 command identity is invalid");
+        }
+        int[] indexes = samples.EnumerateArray().Select((sample, expected) =>
+        {
+            if (!sample.TryGetProperty("sampleIndex", out JsonElement index)
+                || !index.TryGetInt32(out int value)
+                || value != expected)
+            {
+                throw new ShadowContractException(
+                    "M5 command sampleIndex values must be contiguous from zero");
+            }
+            return value;
+        }).ToArray();
+        if (indexes.Length == 0)
+        {
+            throw new ShadowContractException("M5 command must contain samples");
+        }
+        return new M5CommandReference(contentId, indexes, fullPath);
+    }
+
     internal static void ValidateWriteReceipt(BeckhoffWriteRejectionReceipt receipt)
     {
         if (receipt.VerifierId != BeckhoffContract.WriteVerifierId
@@ -147,6 +239,18 @@ internal static class JsonSupport
     private static string ResolvePath(string basePath, string value)
     {
         return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(basePath, value));
+    }
+
+    private static string RequireStringProperty(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty(name, out JsonElement property)
+            || property.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            throw new ShadowContractException($"support JSON property '{name}' is missing");
+        }
+        return property.GetString()!;
     }
 
     public static string ToLowerHex(byte[] value)

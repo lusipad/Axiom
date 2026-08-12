@@ -85,3 +85,34 @@ Profile 中由部署责任人确认不驱动执行机构的专用 canary，先�
 不要对轴位置、控制信号或未经设备责任人授权的节点运行该命令。只有
 `BadNotWritable` / `BadUserAccessDenied` 且前后值哈希相同才算拒写通过；这仍不关闭
 deployment reality 或设备安全 gate。
+
+## Beckhoff Shadow Witness（R7-E）
+
+R7-E 不把 OPC UA publishing interval 当作 M5 覆盖证明。Bound Witness Profile 必须
+额外映射只读 command content hash、`UInt32` sample index 和 X/Y/Z/B/C；Adapter 只订阅
+sample index，每个新索引触发一次七节点 batch Read。索引必须从 0 开始并与 M5 完全一致，
+缺失索引不会被插值。
+
+真实采集还需绑定 Vendor Profile、R7-D runtime evidence、Controller Profile、已验证的
+只读 authority 和数据所有者 capture authorization。authorization 必须包含带 UTC offset 的
+`authorizedFrom` / `authorizedUntil`，且 capture receipt 的打开、关闭与 `capturedAt` 均须落在
+该时间窗内：
+
+```powershell
+axiom-opcua-shadow beckhoff-shadow-capture `
+  --config opcua-shadow.json `
+  --vendor-profile beckhoff-bound-profile.json `
+  --runtime-evidence beckhoff-runtime-evidence.json `
+  --witness-profile beckhoff-shadow-witness-profile.json `
+  --controller-profile controller-profile.json `
+  --authority readonly-authority.json `
+  --capture-authorization capture-authorization.json `
+  --command m5-command.json `
+  --evidence-id beckhoff.shadow.calibration@1 `
+  --output beckhoff-shadow-calibration.json
+```
+
+输出使用 CreateNew 语义且生产路径仍为零 Write/Call。仓库 conformance 的 witness 输出
+固定 `sourceKind=contract-fixture`、`declaredReal=false`，只用于跨语言合同验收；它不能计入
+deployment Shadow 或 R4.1 reality gate。真实 R4.1 验证必须另采 calibration 与 validation
+两次运行，并使用不同 capture authorization 和时间窗。

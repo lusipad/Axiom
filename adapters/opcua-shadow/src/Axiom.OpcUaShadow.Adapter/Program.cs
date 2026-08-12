@@ -81,6 +81,62 @@ internal static class Program
                 Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
                 return 0;
             }
+            if (args.Length >= 21 && args[0] == "beckhoff-shadow-capture")
+            {
+                Dictionary<string, string> options = ParseNamedOptions(args, 1);
+                string configPath = RequireOption(options, "--config");
+                string vendorProfilePath = RequireOption(options, "--vendor-profile");
+                string runtimeEvidencePath = RequireOption(options, "--runtime-evidence");
+                string witnessProfilePath = RequireOption(options, "--witness-profile");
+                string controllerProfilePath = RequireOption(options, "--controller-profile");
+                string authorityPath = RequireOption(options, "--authority");
+                string captureAuthorizationPath = RequireOption(
+                    options,
+                    "--capture-authorization");
+                string commandPath = RequireOption(options, "--command");
+                string evidenceId = RequireOption(options, "--evidence-id");
+                string outputPath = RequireOption(options, "--output");
+                using var witnessCancellation = new CancellationTokenSource();
+                LoadedShadowConfig transport = await JsonSupport.LoadConfigAsync(
+                    configPath,
+                    witnessCancellation.Token).ConfigureAwait(false);
+                var inputs = new ShadowWitnessCaptureInputs(
+                    await JsonSupport.LoadBeckhoffProfileAsync(
+                        vendorProfilePath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadContentIdentityAsync(
+                        runtimeEvidencePath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadBeckhoffShadowWitnessProfileAsync(
+                        witnessProfilePath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadContentIdentityAsync(
+                        controllerProfilePath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadContentIdentityAsync(
+                        authorityPath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadBeckhoffShadowCaptureAuthorizationAsync(
+                        captureAuthorizationPath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadM5CommandReferenceAsync(
+                        commandPath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    evidenceId);
+                BeckhoffShadowRunEvidence evidence =
+                    await BeckhoffShadowWitnessClient.CaptureAsync(
+                        transport,
+                        inputs,
+                        declaredReal: true,
+                        witnessCancellation.Token).ConfigureAwait(false);
+                await JsonSupport.WriteNewAsync(
+                    outputPath,
+                    evidence,
+                    witnessCancellation.Token).ConfigureAwait(false);
+                Console.WriteLine($"Beckhoff Shadow evidence: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
+                return 0;
+            }
             if (args.Length < 3 || args[1] != "--config")
             {
                 PrintUsage();
@@ -145,6 +201,8 @@ internal static class Program
             "  axiom-opcua-shadow beckhoff-preflight --profile <profile.json> --output <evidence.json>");
         Console.Error.WriteLine(
             "  axiom-opcua-shadow beckhoff-inspect --profile <bound-profile.json> --config <config.json> [--transport <capture.json>] [--write-receipt <receipt.json>] --output <evidence.json>");
+        Console.Error.WriteLine(
+            "  axiom-opcua-shadow beckhoff-shadow-capture --config <config.json> --vendor-profile <bound-profile.json> --runtime-evidence <runtime.json> --witness-profile <witness.json> --controller-profile <controller.json> --authority <authority.json> --capture-authorization <authorization.json> --command <m5.json> --evidence-id <id@1> --output <evidence.json>");
     }
 
     private static Dictionary<string, string> ParseNamedOptions(
@@ -161,7 +219,19 @@ internal static class Program
             string name = args[index];
             string value = args[index + 1];
             if (name is not (
-                "--profile" or "--config" or "--transport" or "--write-receipt" or "--output")
+                "--profile"
+                or "--config"
+                or "--transport"
+                or "--write-receipt"
+                or "--vendor-profile"
+                or "--runtime-evidence"
+                or "--witness-profile"
+                or "--controller-profile"
+                or "--authority"
+                or "--capture-authorization"
+                or "--command"
+                or "--evidence-id"
+                or "--output")
                 || string.IsNullOrWhiteSpace(value)
                 || !options.TryAdd(name, value))
             {

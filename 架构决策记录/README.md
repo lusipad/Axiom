@@ -28,6 +28,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0016](ADR-0016-R5可审计数据集与端侧模型边界.md) | R5 使用可审计数据集快照、split/governance/lineage 和 Windows-only 端侧模型边界 | Accepted |
 | [ADR-0017](ADR-0017-R5B-Windows真实holdout就绪门边界.md) | R5-B 使用 Windows 真实 holdout 就绪门、case-scoped reality exit 和外部真实 capture 边界 | Accepted |
 | [ADR-0018](ADR-0018-R6多目标离线推荐与权限边界.md) | R6 使用无权重多目标 Offline Recommendation，并保持零设备写入与零自动接受 | Accepted |
+| [ADR-0019](ADR-0019-R7A-Shadow受控运行与设备安全边界.md) | R7-A 先闭合 Windows Synthetic Shadow 合同，并保持真实设备写入、受控试验和安全声明为 Open | Accepted |
 
 ## 生命周期规则
 

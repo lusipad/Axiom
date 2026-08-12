@@ -89,6 +89,7 @@ class DomainPack(FrozenDomainModel):
     evaluator_version: str = Field(alias="evaluatorVersion")
     runner_id: str = Field(alias="runnerId")
     runner_ids: tuple[str, ...] = Field(default_factory=tuple, alias="runnerIds")
+    import_runner_ids: tuple[str, ...] = Field(default_factory=tuple, alias="importRunnerIds")
     capability_ids: tuple[str, ...] = Field(default_factory=tuple, alias="capabilityIds")
     metric_definitions: tuple[MetricDefinition, ...] = Field(default_factory=tuple, alias="metricDefinitions")
     claim_definition_ids: tuple[str, ...] = Field(default_factory=tuple, alias="claimDefinitionIds")
@@ -183,6 +184,12 @@ class DomainPack(FrozenDomainModel):
         if undeclared_claim_definition_ids:
             ids = ", ".join(sorted(undeclared_claim_definition_ids))
             raise ValueError(f"DomainPack metricDefinitions reference undeclared claimDefinitionIds: {ids}")
+        unsupported_import_runner_ids = {
+            runner_id for runner_id in self.import_runner_ids if not self.supports_runner(runner_id)
+        }
+        if unsupported_import_runner_ids:
+            ids = ", ".join(sorted(unsupported_import_runner_ids))
+            raise ValueError(f"DomainPack importRunnerIds must be declared runnerIds: {ids}")
         return self
 
     def metric_definition(self, metric_id: str) -> MetricDefinition:
@@ -357,6 +364,7 @@ ORDERED_POINT_DOMAIN_PACK = register_domain_pack(
         evaluator_version=ORDERED_POINT_EVALUATOR_ID,
         runner_id=ARTIFACT_IMPORT_RUNNER_ID,
         runner_ids=[ARTIFACT_IMPORT_RUNNER_ID, PYTHON_CALL_RUNNER_ID],
+        import_runner_ids=[ARTIFACT_IMPORT_RUNNER_ID],
         capability_ids=sorted(
             {
                 _CAP_PARSED,

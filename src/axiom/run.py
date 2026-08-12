@@ -302,7 +302,10 @@ def _preflight_metric_result(metric_id: str, status: MetricStatus, pack: Any) ->
 
 def _build_observation(spec: RunSpec) -> Observation:
     artifact_hash = _content_hash(spec.request.artifact)
-    source = "ImportedArtifact" if spec.runner_id == ARTIFACT_IMPORT_RUNNER_ID else "ExecutedSubject"
+    pack = find_domain_pack(spec.domain_pack_id)
+    import_runner_ids = pack.import_runner_ids if pack is not None else ()
+    is_import = spec.runner_id == ARTIFACT_IMPORT_RUNNER_ID or spec.runner_id in import_runner_ids
+    source = "ImportedArtifact" if is_import else "ExecutedSubject"
     payload = {
         "subjectId": spec.subject_id,
         "artifact": spec.request.artifact.model_dump(mode="json", by_alias=True, exclude_unset=True),

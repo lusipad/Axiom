@@ -1,0 +1,72 @@
+{
+  "manifestId": "machine.r3-manifest@1",
+  "schemaId": "machine.r3-manifest@1",
+  "schemaVersion": 1,
+  "stage": "R3",
+  "readOnly": true,
+  "safetyBanner": "READ ONLY / NOT DEVICE SAFE",
+  "suiteId": "machine-r3-fixtures@1",
+  "artifactDescriptors": [
+    {
+      "artifactType": "machine.telemetry-trace",
+      "schemaVersion": 1,
+      "role": "run-input"
+    }
+  ],
+  "capabilityIds": [
+    "machine-observation.trace.raw@1",
+    "machine-observation.capture.read-only@1",
+    "machine-observation.lineage.bound@1",
+    "machine-observation.clock.mapping.bound@1",
+    "machine-observation.coordinate.context.bound@1"
+  ],
+  "claimDefinitionIds": [
+    "machine-observation.raw-integrity-claim@1",
+    "machine-observation.read-only-capture-claim@1",
+    "machine-observation.lineage-complete-claim@1",
+    "machine-observation.clock-aligned-claim@1",
+    "machine-observation.coordinate-context-claim@1"
+  ],
+  "forbiddenClaims": [
+    "DeviceSafe",
+    "ProcessSafe",
+    "safe-to-run"
+  ],
+  "cases": [
+    {
+      "id": "read-only-paired-pass",
+      "title": "只读配对基线导入",
+      "description": "冻结 F4 基线、命令身份和七项上游 claim 的只读历史导入。",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed"
+    },
+    {
+      "id": "read-only-unpaired-pass",
+      "title": "只读未配对历史导入",
+      "description": "未绑定数学基线，但保留原始观测与设备上下文。",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Passed"
+    },
+    {
+      "id": "missing-clock-alignment",
+      "title": "缺失时钟映射",
+      "description": "原始 trace 完整，但未提供 device-host 时钟映射。",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Inconclusive"
+    },
+    {
+      "id": "out-of-order-gap",
+      "title": "帧序列断裂",
+      "description": "traceContentHash 正确，但 sequenceId 存在缺口，不允许插值。",
+      "expectedExecutionStatus": "Succeeded",
+      "expectedCaseOutcome": "Failed"
+    },
+    {
+      "id": "forbidden-write-operation",
+      "title": "非法写操作回放",
+      "description": "captureReceipt 标记为写设备行为，必须在 request 校验阶段拒绝。",
+      "expectedExecutionStatus": "Skipped",
+      "expectedCaseOutcome": "Invalid"
+    }
+  ]
+}

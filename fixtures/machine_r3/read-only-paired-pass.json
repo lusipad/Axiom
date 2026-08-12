@@ -1,0 +1,106 @@
+{
+  "scenario": {
+    "scenarioId": "read-only-paired-pass",
+    "title": "只读配对基线导入",
+    "description": "冻结 F4 基线、命令身份和七项上游 claim 的只读历史导入。",
+    "expectedExecutionStatus": "Succeeded",
+    "expectedCaseOutcome": "Passed"
+  },
+  "artifactFile": "captures/read-only-paired-pass.trace.json",
+  "subjectId": "machine-r3-sim@paired",
+  "deviceProfile": {
+    "profileId": "device-profile.sim-840d@1",
+    "deviceId": "sim-840d",
+    "manufacturer": "Axiom Simulation",
+    "machineModel": "vmc-5x-sim",
+    "controllerFamily": "siemens-840d",
+    "firmwareVersion": "sim-fw-1.0",
+    "exportVersion": "windows-file-json@1",
+    "allowedReadOnlyOperations": [
+      "file-import"
+    ],
+    "calibrationId": "calibration.sim-840d@1",
+    "channels": [
+      {
+        "channelId": "pos.work",
+        "kind": "position-vector",
+        "unit": "mm",
+        "coordinateFrame": "workpiece"
+      },
+      {
+        "channelId": "feed.actual",
+        "kind": "scalar",
+        "unit": "mm/min"
+      }
+    ]
+  },
+  "clockMapping": {
+    "mappingId": "clock-map.sim-840d@1",
+    "deviceId": "sim-840d",
+    "mappingMethod": "fixed-offset",
+    "deviceReferenceTimestamp": "2026-08-11T09:29:58.000Z",
+    "hostReferenceTimestamp": "2026-08-11T17:29:58.010Z",
+    "offsetMilliseconds": 10,
+    "driftBoundMilliseconds": 2
+  },
+  "coordinateAlignment": {
+    "alignmentId": "alignment.sim-840d@1",
+    "deviceId": "sim-840d",
+    "machineCoordinateFrame": "machine",
+    "workCoordinateFrame": "workpiece",
+    "sourceKind": "synthetic-reference",
+    "effectiveAt": "2026-08-11T00:00:00Z",
+    "calibrationStatus": "calibrated",
+    "calibrationId": "calibration.sim-840d@1",
+    "channelIds": [
+      "pos.work"
+    ]
+  },
+  "lineage": {
+    "machineRunId": "machine-run:paired-pass",
+    "pairingStatus": "paired",
+    "baselineKind": "reference",
+    "baselineRunBundleHash": "beec29557d6bf8c22363616c65a73f4394e484c9b516478898e9c4039bc44d79",
+    "sourceCommandContentHash": "085ab2047f6089fb3fa681c7a83ee3aa63c9d379b55529bbbabbd0411874d218",
+    "upstreamClaims": [
+      {
+        "claimDefinitionId": "five-axis.geometry-valid-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.task-geometry-collision-free-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.kinematically-feasible-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.configuration-collision-free-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.continuously-feasible-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.interval-certified-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.model-collision-free-claim@1",
+        "status": "Supported"
+      }
+    ]
+  },
+  "case": {
+    "caseId": "machine-r3-paired-pass@1",
+    "requiredMetrics": [
+      "machine-observation.raw-integrity@1",
+      "machine-observation.read-only-capture@1",
+      "machine-observation.lineage-complete@1",
+      "machine-observation.clock-aligned@1",
+      "machine-observation.coordinate-context@1"
+    ]
+  }
+}

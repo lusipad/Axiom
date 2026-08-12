@@ -90,6 +90,19 @@ def _scalar_descriptor_domain_pack(
     )
 
 
+def test_domain_pack_rejects_import_runner_that_is_not_supported() -> None:
+    with pytest.raises(ValueError, match="importRunnerIds must be declared runnerIds"):
+        DomainPack(
+            domainPackId="vendor.invalid-import-runner@1",
+            artifactType="scalar-sample",
+            artifactSchemaVersions=[1],
+            evaluatorVersion="vendor.scalar-evaluator@1",
+            runnerId=ARTIFACT_IMPORT_RUNNER_ID,
+            runnerIds=[ARTIFACT_IMPORT_RUNNER_ID],
+            importRunnerIds=["vendor.unregistered-import@1"],
+        )
+
+
 def _scalar_request(values: Any, *, reference_binding: dict[str, Any] | None = None) -> dict[str, Any]:
     request: dict[str, Any] = {
         "artifact": {
@@ -380,6 +393,7 @@ def test_registered_runtime_binding_executes_a_second_domain_without_run_py_spec
         {"capabilityId": "vendor.scalar.parsed@1", "source": "Adapter"}
     ]
     assert bundle["report"]["metricResults"][0]["value"] == 3
+    assert bundle["observation"]["source"] == "ImportedArtifact"
     assert bundle["observation"]["artifact"] == {
         "artifactType": "scalar-sample",
         "schemaVersion": 1,

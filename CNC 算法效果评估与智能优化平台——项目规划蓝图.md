@@ -2,7 +2,7 @@
 
 > 文档类型：产品总纲与 Roadmap  
 > 状态：Draft / 方向重整与契约闭合版 v0.9.0
-> 当前阶段：R3 Windows 只读参考链已闭合 / 下一阶段 R4 物理模型与现实对齐
+> 当前阶段：R4.0 Windows synthetic SIL 合同片已实现 / 真实设备 reality gate 保持 Open
 > 更新日期：2026-08-12
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)
@@ -427,9 +427,12 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 - R1：有序离散点最小闭环，以及本地 Point Lab 工作台；
 - R2：已完成 Math F0–F4 的五轴数学领域包闭环，Reference Solver / SUT 验收现在是已关闭的数学门禁，不再新增驱动器写入或控制器上机许可；
 - R3：已完成 Windows JSON capture 的只读参考链，冻结 Device/Profile、raw telemetry、时钟/坐标上下文、paired/unpaired MachineRun lineage、五类 `Observed` 数据 Claim 和 Machine Lab；它不代表真实控制器协议或写能力已经实现；
-- R4–R7：保持物理模型、数据集、学习和受约束推荐的阶段门清晰，不提前锁定具体驱动器、数据库、训练框架或优化算法。
+- R4：首片冻结 Windows 轴空间一阶响应模型、独立 synthetic SIL oracle、校准/holdout 隔离、显式时间/通道对齐和单位分组残差；这只闭合合同片，不能把真实设备 reality gate 标为完成；
+- R5–R7：保持数据集、学习和受约束推荐的阶段门清晰，不提前锁定具体驱动器、数据库、训练框架或优化算法。
 
-R4–R7 当前只定义依赖、输出和阶段门，不提前锁定具体驱动器、数据库、训练框架或优化算法。新增真实设备 source 时仍须独立冻结厂商协议、许可、最小权限和环境验收，不从文件回放结果外推。
+R4 的首个具体合同见[物理模型与现实对齐规范](物理模型与现实对齐规范.md)：`PhysicalResponseTrace` 是模型执行主 Artifact，数学命令、物理模型、标定、R3 raw observation 与对齐记录保持独立内容身份。首个参考数据来自结构不同于候选模型的 synthetic SIL oracle；阶段报告必须把 `syntheticContractStatus` 与 `realityValidationStatus` 分开。新增真实设备 source 时仍须独立冻结厂商协议、许可、最小权限和环境验收，不从文件回放结果外推。
+
+R5–R7 当前仍只定义依赖、输出和阶段门，不提前锁定数据库、训练框架或优化算法。
 
 ### 10.2 依赖原则
 

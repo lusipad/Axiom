@@ -81,6 +81,8 @@ jobs:
               "axiom/five_axis/fixtures/sampled_cartesian_view.json",
               "axiom/machine/fixtures/manifest.json",
               "axiom/machine/fixtures/captures/read-only-paired-pass.trace.json",
+              "axiom/physical/fixtures/manifest.json",
+              "axiom/physical/fixtures/captures/in-domain-synthetic-sil.response.json",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -115,9 +117,18 @@ jobs:
               machine_r3_example_run_spec,
               load_machine_r3_manifest,
           )
+          from axiom.physical import (
+              FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID,
+              PhysicalModelValidationRequest,
+              analyze_physical_validation,
+              load_r4_manifest,
+              r4_example_payload,
+              validate_r4_example_run_spec,
+          )
+          from axiom.physical.runtime import REALITY_VALIDATED_CLAIM_ID
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.9.0"
+          assert version("axiom-evaluator") == "0.10.1"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -191,6 +202,36 @@ jobs:
           assert validate_run_bundle_integrity(forbidden) == []
           assert forbidden.run.execution_status.value == "Skipped"
           assert forbidden.run.case_outcome.value == "Invalid"
+
+          physical_manifest = load_r4_manifest()
+          assert physical_manifest["platform"] == "windows"
+          assert physical_manifest["safetyBanner"] == "MODEL VALIDATION / NOT DEVICE SAFE"
+          assert physical_manifest["realityValidationStatus"] == "Open"
+          physical_spec = validate_r4_example_run_spec("in-domain-synthetic-sil")
+          physical_request = PhysicalModelValidationRequest.model_validate(
+              physical_spec.request.model_dump(
+                  mode="json", by_alias=True, exclude_unset=True, exclude_none=True
+              )
+          )
+          physical_analysis = analyze_physical_validation(physical_request)
+          physical_example = r4_example_payload("in-domain-synthetic-sil")
+          assert physical_example["analysis"]["analysisContentHash"] == physical_analysis.content_hash
+          physical = evaluate_run(physical_spec)
+          assert validate_run_bundle_integrity(physical) == []
+          assert physical.run.domain_pack_id == FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID
+          assert physical.run.case_outcome.value == "Passed"
+          physical_claims = {claim.claim_definition_id: claim.status.value for claim in physical.claims}
+          assert physical_claims[REALITY_VALIDATED_CLAIM_ID] == "Inconclusive"
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(physical_claims)
+          mismatch = evaluate_run(validate_r4_example_run_spec("model-mismatch-detected"))
+          assert validate_run_bundle_integrity(mismatch) == []
+          assert mismatch.run.case_outcome.value == "Failed"
+          missing_context = evaluate_run(validate_r4_example_run_spec("missing-coordinate-context"))
+          assert validate_run_bundle_integrity(missing_context) == []
+          assert missing_context.run.case_outcome.value == "Inconclusive"
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `
@@ -226,6 +267,18 @@ jobs:
             $machineExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/machine-r3?scenarioId=read-only-paired-pass"
             if ($machineExample.runSpec.domainPackId -ne "machine-observation.domain-pack@1") {
               throw "installed wheel did not expose the R3 example RunSpec"
+            }
+            $physicalManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/physical/r4/manifest
+            if ($physicalManifest.domainPackId -ne "five-axis.domain-pack@6" -or $physicalManifest.realityValidationStatus -ne "Open") {
+              throw "installed wheel did not expose the R4 Windows contract"
+            }
+            $physicalExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/physical-r4?scenarioId=in-domain-synthetic-sil"
+            if ($physicalExample.runSpec.domainPackId -ne "five-axis.domain-pack@6") {
+              throw "installed wheel did not expose the R4 example RunSpec"
+            }
+            $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
+              throw "installed wheel did not expose the typed R4 OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

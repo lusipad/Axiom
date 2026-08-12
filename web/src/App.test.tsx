@@ -44,6 +44,7 @@ const catalog: Catalog = {
     { domainPackId: "ordered-point.domain-pack@1", comparisonPolicyIds: [], runnerIds: [], runtimeBound: true },
     { domainPackId: "five-axis.domain-pack@2", comparisonPolicyIds: [], runnerIds: ["artifact-import@1"], runtimeBound: true },
     { domainPackId: "machine-observation.domain-pack@1", comparisonPolicyIds: [], runnerIds: ["machine-trace-import@1"], runtimeBound: true },
+    { domainPackId: "five-axis.domain-pack@6", comparisonPolicyIds: [], runnerIds: ["windows-file-import@1"], runtimeBound: true },
   ],
   artifactAdapters: [],
 };
@@ -403,6 +404,26 @@ describe("Axiom workbench", () => {
     expect(screen.getByRole("button", { name: /Five-Axis.*F4/i })).toBeInTheDocument();
   });
 
+  it("Physical R4 入口失败时仍保留导航并显示 API 错误", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.includes("/physical/r4/") || url.includes("/examples/physical-r4")) {
+        return Promise.resolve(jsonResponse({ detail: "R4 unavailable" }, 503));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Physical.*R4/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
+    expect(screen.getByRole("button", { name: /Physical.*R4/i })).toBeInTheDocument();
+  });
+
   it("Machine R3 入口展示只读边界而不暴露写入控件", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -591,6 +612,197 @@ describe("Axiom workbench", () => {
     expect(screen.getByText("READ ONLY · NOT DEVICE SAFE")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导入观测并评估" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /写入|启动|下发/i })).not.toBeInTheDocument();
+  });
+
+  it("Physical R4 入口展示模型验证边界与开放现实验证状态", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.endsWith("/physical/r4/manifest")) {
+        return Promise.resolve(jsonResponse({
+          manifestId: "physical.r4-manifest@1",
+          schemaId: "physical.r4-manifest@1",
+          schemaVersion: 1,
+          stage: "R4",
+          domainPackId: "five-axis.domain-pack@6",
+          platform: "windows",
+          safetyBanner: "MODEL VALIDATION / NOT DEVICE SAFE",
+          validationBanner: "SYNTHETIC SIL / REALITY VALIDATION OPEN",
+          model: {
+            equations: ["x[k+1] = Ad x[k] + Bd u[k]"],
+            stateIds: ["x_pos"],
+            inputIds: ["u_cmd"],
+            outputIds: ["y_axis"],
+            discretization: "exact-zoh",
+            supportedDevices: ["sim-840d"],
+            operatingConditions: ["warm spindle"],
+            unmodeledFactors: ["thermal drift"],
+          },
+        }));
+      }
+      if (url.endsWith("/physical/r4/scenarios")) {
+        return Promise.resolve(jsonResponse([{
+          scenarioId: "in-domain-synthetic-sil",
+          title: "In-Domain Synthetic SIL",
+          description: "Held-out validation split with open rotary reality validation.",
+          axisIds: ["X", "B", "C"],
+        }]));
+      }
+      if (url.includes("/examples/physical-r4")) {
+        return Promise.resolve(jsonResponse({
+          manifest: {
+            manifestId: "physical.r4-manifest@1",
+            schemaId: "physical.r4-manifest@1",
+            schemaVersion: 1,
+            stage: "R4",
+            domainPackId: "five-axis.domain-pack@6",
+            platform: "windows",
+            safetyBanner: "MODEL VALIDATION / NOT DEVICE SAFE",
+            validationBanner: "SYNTHETIC SIL / REALITY VALIDATION OPEN",
+            model: {
+              equations: ["x[k+1] = Ad x[k] + Bd u[k]"],
+              stateIds: ["x_pos"],
+              inputIds: ["u_cmd"],
+              outputIds: ["y_axis"],
+              discretization: "exact-zoh",
+              supportedDevices: ["sim-840d"],
+              operatingConditions: ["warm spindle"],
+              unmodeledFactors: ["thermal drift"],
+            },
+          },
+          scenario: {
+            scenarioId: "in-domain-synthetic-sil",
+            title: "In-Domain Synthetic SIL",
+            description: "Held-out validation split with open rotary reality validation.",
+            axisIds: ["X", "B", "C"],
+          },
+          model: {
+            equations: ["x[k+1] = Ad x[k] + Bd u[k]"],
+            stateIds: ["x_pos"],
+            inputIds: ["u_cmd"],
+            outputIds: ["y_axis"],
+            discretization: "exact-zoh",
+            supportedDevices: ["sim-840d"],
+            operatingConditions: ["warm spindle"],
+            unmodeledFactors: ["thermal drift"],
+          },
+          calibration: {
+            datasetId: "cal-set@1",
+            traceId: "trace-cal",
+            scenarioRole: "calibration",
+            sourceId: "axiom.windows-file-telemetry-source@1",
+            capturedAt: "2026-08-11T09:30:00Z",
+            contentHash: "a".repeat(64),
+          },
+          validation: {
+            datasetId: "val-set@1",
+            traceId: "trace-val",
+            scenarioRole: "validation",
+            sourceId: "axiom.windows-file-telemetry-source@1",
+            capturedAt: "2026-08-11T10:00:00Z",
+            contentHash: "b".repeat(64),
+            leakageGuards: [
+              { checkId: "split-by-run", status: "pass", message: "Calibration and validation runs are disjoint." },
+            ],
+          },
+          analysis: {
+            traceArtifactType: "PhysicalResponseTrace",
+            axes: [
+              {
+                axisId: "X",
+                family: "linear-mm",
+                unit: "mm",
+                excitationStatus: "excited",
+                series: {
+                  command: [{ time: 0, value: 0 }, { time: 1, value: 10 }],
+                  simulation: [{ time: 0, value: 0 }, { time: 1, value: 9.8 }],
+                  observation: [{ time: 0, value: 0.1 }, { time: 1, value: 10.2 }],
+                },
+                metrics: [{ metricId: "x.max", label: "X max residual", group: "linear-mm", value: 0.2, unit: "mm" }],
+                residualDecomposition: [{ componentId: "fit", label: "fit residual", value: 0.12, unit: "mm", source: "simulation-observation" }],
+              },
+              {
+                axisId: "B",
+                family: "rotary-rad",
+                unit: "rad",
+                excitationStatus: "insufficient",
+                series: {
+                  command: [{ time: 0, value: 0 }, { time: 1, value: 0.02 }],
+                  simulation: [{ time: 0, value: 0 }, { time: 1, value: 0.02 }],
+                  observation: [{ time: 0, value: 0 }, { time: 1, value: 0.01 }],
+                },
+                metrics: [],
+                residualDecomposition: [],
+              },
+              {
+                axisId: "C",
+                family: "rotary-rad",
+                unit: "rad",
+                excitationStatus: "insufficient",
+                series: {
+                  command: [{ time: 0, value: 0 }, { time: 1, value: 0.03 }],
+                  simulation: [{ time: 0, value: 0 }, { time: 1, value: 0.03 }],
+                  observation: [{ time: 0, value: 0 }, { time: 1, value: 0.01 }],
+                },
+                metrics: [],
+                residualDecomposition: [],
+              },
+            ],
+            metrics: [
+              { metricId: "linear.max", label: "Linear max abs residual", group: "linear-mm", value: 0.2, unit: "mm" },
+              { metricId: "rotary.max", label: "Rotary max abs residual", group: "rotary-rad", value: 0.01, unit: "rad" },
+            ],
+            claims: [
+              {
+                claimId: "r4.validation-window",
+                title: "Held-out validation stays bounded",
+                status: "Supported",
+                statement: "Residual remains inside the validation envelope.",
+                evidenceIds: ["fit-report"],
+              },
+              {
+                claimId: "r4.rotary-coverage",
+                title: "Rotary validation coverage remains open",
+                status: "Inconclusive",
+                statement: "B/C axis excitation is insufficient for a closed validation claim.",
+                evidenceIds: ["coverage-note"],
+              },
+            ],
+            evidence: [
+              {
+                evidenceId: "fit-report",
+                kind: "fit",
+                title: "Validation fit report",
+                summary: "Exact-ZOH replay stays within threshold.",
+                contentHash: "c".repeat(64),
+              },
+              {
+                evidenceId: "coverage-note",
+                kind: "validation",
+                title: "Rotary coverage note",
+                summary: "Reality validation remains open for B/C axes.",
+                contentHash: "d".repeat(64),
+              },
+            ],
+          },
+        }));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Physical.*R4/i }));
+    expect(await screen.findByText("MODEL VALIDATION / NOT DEVICE SAFE")).toBeInTheDocument();
+    expect(screen.getByText("SYNTHETIC SIL / REALITY VALIDATION OPEN")).toBeInTheDocument();
+    expect(screen.getByText("MODEL VALIDATION · NOT DEVICE SAFE")).toBeInTheDocument();
+    expect(screen.getByText("PhysicalResponseTrace")).toBeInTheDocument();
+    expect(screen.getAllByText("insufficient").length).toBeGreaterThan(0);
+    expect(screen.getByText("Rotary validation coverage remains open")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /写入|控制|应用/i })).not.toBeInTheDocument();
   });
 
   it("运行工程化 F1 场景并在碰撞场景中拒绝标准声明", async () => {

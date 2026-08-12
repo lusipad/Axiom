@@ -50,6 +50,12 @@ from .machine import (
     machine_r3_example_payload,
 )
 from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
+from .optimization import (
+    OptimizationSearchRequest,
+    R6ExamplePayload,
+    R6Manifest,
+    R6ScenarioSummary,
+)
 from .physical import (
     PhysicalR4ExamplePayload,
     PhysicalR4Manifest,
@@ -88,6 +94,18 @@ def _load_intelligence_r5_api() -> Any:
         raise HTTPException(
             status_code=503,
             detail="Intelligence R5 API is unavailable.",
+        ) from exc
+
+
+def _load_optimization_r6_api() -> Any:
+    try:
+        return import_module("axiom.optimization")
+    except ModuleNotFoundError as exc:
+        if exc.name != "axiom.optimization":
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="Optimization R6 API is unavailable.",
         ) from exc
 
 
@@ -456,6 +474,62 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
                 status_code=503,
                 detail="Intelligence R5-B example payload loader is unavailable.",
             ) from exc
+
+    @app.get(
+        "/api/v1/optimization/r6/manifest",
+        response_model=R6Manifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def optimization_r6_manifest() -> R6Manifest:
+        optimization_api = _load_optimization_r6_api()
+        return optimization_api.build_r6_manifest()
+
+    @app.get(
+        "/api/v1/optimization/r6/scenarios",
+        response_model=list[R6ScenarioSummary],
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def optimization_r6_scenarios() -> list[R6ScenarioSummary]:
+        optimization_api = _load_optimization_r6_api()
+        return list(optimization_api.list_r6_scenarios())
+
+    @app.get(
+        "/api/v1/examples/optimization-r6",
+        response_model=R6ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def optimization_r6_example(
+        scenarioId: str = "canonical-head-table-offline-pareto",
+    ) -> R6ExamplePayload:
+        optimization_api = _load_optimization_r6_api()
+        try:
+            return optimization_api.r6_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/optimization/r6/search",
+        response_model=R6ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def optimization_r6_search(search_request: OptimizationSearchRequest) -> R6ExamplePayload:
+        optimization_api = _load_optimization_r6_api()
+        recommendations = optimization_api.search_recommendations(search_request)
+        scenario = optimization_api.list_r6_scenarios()[0]
+        run_spec = optimization_api.build_r6_run_spec(search_request)
+        return R6ExamplePayload(
+            manifest=optimization_api.build_r6_manifest(),
+            scenario=scenario,
+            searchRequest=search_request,
+            recommendationSet=recommendations,
+            runSpec=run_spec.model_dump(mode="json", by_alias=True, exclude_none=True),
+        )
 
     @app.post(
         "/api/v1/experiments/run",

@@ -1,0 +1,54 @@
+.control-r7d-workspace { grid-template-columns: minmax(350px, 420px) minmax(0, 1fr); }
+.control-r7d-config { overflow-y: auto; }
+.control-r7d-boundary { border-left: 3px solid #d99054; background: color-mix(in srgb, var(--panel, #151b22) 86%, #d99054 14%); }
+.control-r7d-boundary strong { color: #f4ae73; font: 700 10px var(--mono); letter-spacing: .08em; }
+.control-r7d-boundary p, .control-r7d-help { color: #8799a2; line-height: 1.55; }
+.control-r7d-action { width: 100%; justify-content: center; margin-top: 8px; }
+.control-r7d-downloads { display: flex; gap: 8px; margin-top: 12px; }
+.control-r7d-downloads .icon-button { width: auto; padding: 0 10px; color: #93a6ad; font: 700 9px var(--mono); }
+.control-r7d-analysis { min-width: 0; overflow: hidden; }
+.control-r7d-body { min-height: 0; height: 100%; overflow-y: auto; padding: 18px; display: grid; gap: 14px; align-content: start; }
+.control-r7d-hero { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 24px; align-items: center; border-top: 2px solid #d99054; }
+.control-r7d-hero h2 { margin: 6px 0 8px; color: #d7e3e6; font-size: 21px; }
+.control-r7d-hero p { max-width: 780px; margin: 0; color: #83959d; line-height: 1.55; }
+.control-r7d-verdict { min-height: 104px; display: grid; place-items: center; align-content: center; border: 1px solid var(--line); background: #11191d; }
+.control-r7d-verdict strong { font: 700 25px var(--mono); }
+.control-r7d-verdict span { margin-top: 4px; color: #b7c6cb; font: 700 10px var(--mono); text-transform: uppercase; }
+.control-r7d-verdict small { margin-top: 8px; color: #60737b; font: 8px var(--mono); }
+.control-r7d-checks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.control-r7d-checks article { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px; border: 1px solid var(--line); background: #11191d; }
+.control-r7d-checks article b { color: #50646d; font: 700 9px var(--mono); }
+.control-r7d-checks article div { min-width: 0; }
+.control-r7d-checks article strong, .control-r7d-checks article small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.control-r7d-checks article strong { color: #b8c7cc; font-size: 9px; }
+.control-r7d-checks article small { margin-top: 3px; color: #61747c; font: 8px var(--mono); }
+.control-r7d-checks article > span { font: 700 8px var(--mono); text-transform: uppercase; }
+.control-r7d-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.control-r7d-channels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.control-r7d-channels article { min-width: 0; padding: 12px; border: 1px solid var(--line); background: #11191d; }
+.control-r7d-channels strong { display: block; color: #e1a367; font: 700 20px var(--mono); }
+.control-r7d-channels span { color: #91a5ad; font: 8px var(--mono); }
+.control-r7d-channels small, .control-r7d-channels b { display: block; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; font: 8px var(--mono); white-space: nowrap; }
+.control-r7d-channels small { color: #60737b; }
+.control-r7d-permission-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.control-r7d-permission-grid article { min-height: 72px; padding: 10px; display: grid; align-content: start; gap: 8px; border-top: 2px solid #3a4c53; background: #11191d; }
+.control-r7d-permission-grid strong { color: #8ea1a9; font-size: 9px; }
+.control-r7d-permission-grid span { font: 700 9px var(--mono); }
+.control-r7d-permission-grid small { color: #60737b; font: 8px var(--mono); line-height: 1.4; }
+.control-r7d-statusbar { flex: 0 0 auto; }
+
+@media (max-width: 1100px) {
+  .control-r7d-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .control-r7d-permission-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 960px) {
+  .control-r7d-workspace { grid-template-columns: 1fr; overflow: visible; }
+  .control-r7d-config, .control-r7d-analysis, .control-r7d-body { overflow: visible; height: auto; }
+  .control-r7d-grid, .control-r7d-hero { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .control-r7d-checks, .control-r7d-permission-grid { grid-template-columns: 1fr; }
+  .control-r7d-channels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

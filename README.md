@@ -1,7 +1,7 @@
 # Axiom 文档入口
 
-> 状态：v0.16.0 Windows 发布版本；R0–R2 已闭合，R3–R5 的参考合同片、R6 Offline Recommendation、R7-A/R7-B 与 R7-C Windows 虚拟 OPC UA 传输验收已实现；真实厂商部署/受控闭环保持 Open
-> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL` + Intelligence `R5-A` / `R5-B` + Optimization `R6 v1` + Controlled Runtime `R7-A` / `R7-B` / `R7-C`
+> 状态：v0.17.0 Windows 发布版本；R0–R2 已闭合，R3–R5 的参考合同片、R6 Offline Recommendation、R7-A/R7-B/R7-C 与 R7-D Beckhoff 厂商验收合同已实现；真实部署/受控闭环保持 Open
+> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL` + Intelligence `R5-A` / `R5-B` + Optimization `R6 v1` + Controlled Runtime `R7-A` / `R7-B` / `R7-C` / `R7-D`
 > 更新日期：2026-08-13
 
 Axiom 的目标不是做一个只理解 CNC 术语的“语义化评分器”，而是建立一套可逐级定义、可扩展到真实设备、可沉淀训练数据，并最终支持受约束参数优化的工业评估、实验与证据框架。
@@ -31,7 +31,7 @@ flowchart LR
 | [设备接入与物理闭环规范](设备接入与物理闭环规范.md) | R3 只读设备观测、时间/坐标上下文、MachineRun 谱系和安全边界 | R3 v1 / Windows reference implemented |
 | [物理模型与现实对齐规范](物理模型与现实对齐规范.md) | R4 物理响应、校准/holdout、数值对齐、残差与可信度边界 | R4.0 / Windows synthetic SIL implemented; reality validation open |
 | [数据集与学习模型规范](数据集与学习模型规范.md) | R5 数据集快照、split/governance/lineage、OOD、ModelBundle、R5-B real holdout readiness 和端侧解释器边界 | R5-A / R5-B Windows contract implemented; real generalization open |
-| [受约束优化与安全闭环规范](受约束优化与安全闭环规范.md) | R6 参数域/Recommendation，R7-A Shadow 状态机、R7-B 只读部署证据门，以及 R7-C OPC UA 传输合同 | R6 v1 + R7-A/R7-B/R7-C Windows contracts implemented; vendor/reality gates open |
+| [受约束优化与安全闭环规范](受约束优化与安全闭环规范.md) | R6 参数域/Recommendation，R7-A Shadow 状态机、R7-B/R7-C 只读部署与传输门，以及 R7-D Beckhoff 厂商验收 | R6 v1 + R7-A/R7-B/R7-C/R7-D Windows contracts implemented; runtime/reality gates open |
 | [ADR 索引](架构决策记录/README.md) | 长期架构决策、替代方案与后果的审计历史 | Active |
 | 本文档 | 总入口、阅读路径与文档治理 | Active |
 
@@ -46,7 +46,7 @@ flowchart LR
 - 研究物理模型与现实对齐：项目规划蓝图 R4 → 物理模型与现实对齐规范 → 设备接入与物理闭环规范 → ADR-0015。
 - 研究机器学习：项目规划蓝图 R5 → 数据集与学习模型规范 → ADR-0016 / ADR-0017。
 - 研究受约束推荐：项目规划蓝图 R6 → 受约束优化与安全闭环规范 → ADR-0018 → 通用评估框架规范的角色与安全边界。
-- 研究真实控制器前置接入：项目规划蓝图 R7 → 受约束优化与安全闭环规范 R7-B/R7-C → ADR-0020 / ADR-0021 → 设备接入与物理闭环规范。
+- 研究真实控制器前置接入：项目规划蓝图 R7 → 受约束优化与安全闭环规范 R7-B–R7-D → ADR-0020 / ADR-0021 / ADR-0022 → 设备接入与物理闭环规范。
 - 了解为何选择当前契约：对应规范 → ADR 索引 → 具体 ADR。
 - 查看版本变化与升级边界：[CHANGELOG](CHANGELOG.md)。
 
@@ -92,11 +92,13 @@ R7-B 使用独立 `control.domain-pack@2` 冻结真实 deployment shadow 的前�
 
 R7-C 新增隔离的 Windows `.NET 8` OPC UA Shadow Adapter 和 `control.domain-pack@3`：生产 Adapter 只建立证书固定的 `SignAndEncrypt` 会话，以非匿名只读主体订阅 X/Y/Z/B/C 五轴位置，不包含 OPC UA Write 或 Method Call 路径。独立 localhost 虚拟服务端验收会验证应用证书互信、未知客户端证书拒绝、只读节点拒绝写入、通知序号/时间/丢包和跨语言内容哈希。该结果最多把 `virtualTransportStatus` 标为 `Passed`；`vendorAdapterStatus` 与 `realityValidationStatus` 永远保持 `Open`，设备/工艺安全保持 `NotAssessed`。详细边界见[ADR-0021](架构决策记录/ADR-0021-R7C-Windows虚拟OPC-UA传输验收边界.md)。
 
-## v0.16.0 快速开始
+R7-D 选择 Beckhoff TwinCAT 3 Build 4026+ / TF6100 作为首个具体厂商路径，并新增 `control.domain-pack@4`、版本化 Vendor Profile、Windows `tcpkg`/二进制预检、标准 BuildInfo、TF6100 许可证结果、五轴节点访问级别与独立非执行 canary 拒写证据。生产 Adapter 继续零 Write/Call；权限验证器是单独程序集，只有部署责任人明确授权专用 canary 时才允许执行一次同值 Write。当前开发机没有 TwinCAT/TF6100，因此默认只证明 Profile 合同并返回 `vendorRuntimeStatus=Open`；现实与安全 gate 不升级。详细边界见[ADR-0022](架构决策记录/ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md)。
 
-v0.16.0 保留既有实验室，并新增 OPC UA R7-C。它展示证书固定、加密会话、五轴订阅、通知完整性与零写操作证据；页面只允许导入 `.NET` 传输证据并下载审计，不提供任何设备操作入口。
+## v0.17.0 快速开始
 
-v0.16.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
+v0.17.0 保留既有实验室，并新增 Beckhoff R7-D。它展示 TwinCAT/TF6100 Profile、软件包、许可证、BuildInfo、五轴只读节点、独立拒写收据和现实门；页面只允许导入 JSON 证据并下载 Profile/审计，不提供安装、连接、写入或控制入口。
+
+v0.17.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 F4 最短用法是先取场景 payload，再把 `runSpec` 送回公共执行接口。下面这个例子会返回 `Passed`，并保留 7 个数学 gate claims：
 
@@ -293,6 +295,45 @@ R7-C 的查询和证据校验面为：
 - `POST /api/v1/control/r7c/assess`
 - `POST /api/v1/runs/evaluate`
 
+R7-D 默认 Profile 位于 [`beckhoff-twincat-profile.windows.json`](examples/beckhoff-twincat-profile.windows.json)。它故意不包含部署 node id 或服务器身份。本机只读预检不会安装 TwinCAT，也不会连接设备：
+
+```powershell
+dotnet run --project adapters\opcua-shadow\src\Axiom.OpcUaShadow.Adapter `
+  -c Release --no-build -- `
+  beckhoff-preflight `
+  --profile examples\beckhoff-twincat-profile.windows.json `
+  --output beckhoff-runtime-evidence.json
+```
+
+没有 `tcpkg` 时，输出会明确记录 `TwinCatPackageManagerMissing`，`vendorRuntimeStatus` 仍为 `Open`。在真实环境中，部署管理员必须先建立带精确服务端证书/BuildInfo、TF6100 `FB_CheckLicense` 结果节点、X/Y/Z/B/C 节点和专用非执行 canary 的 `Bound` Profile，再运行只读检查：
+
+```powershell
+axiom-opcua-shadow beckhoff-inspect `
+  --profile .\beckhoff-bound-profile.json `
+  --config .\opcua-shadow.json `
+  --transport .\transport-evidence.json `
+  --write-receipt .\write-rejection-receipt.json `
+  --output .\beckhoff-runtime-evidence.json
+```
+
+独立权限 verifier 会对 Profile 中专用 canary 发起恰好一次同值 Write。只有设备责任人已确认该节点不驱动执行机构并明确授权此次验收时才运行；不得把轴位置或控制信号配置为 canary：
+
+```powershell
+.\permission-verifier\Axiom.OpcUaShadow.BeckhoffPermissionVerifier.exe `
+  --profile .\beckhoff-bound-profile.json `
+  --config .\opcua-shadow.json `
+  --output .\write-rejection-receipt.json `
+  --acknowledge-non-actuating-probe
+```
+
+R7-D 的查询和证据校验面为：
+
+- `GET /api/v1/control/r7d/manifest`
+- `GET /api/v1/control/r7d/scenarios`
+- `GET /api/v1/examples/control-r7d?scenarioId=beckhoff-twincat-runtime-open`
+- `POST /api/v1/control/r7d/assess`
+- `POST /api/v1/runs/evaluate`
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade -c constraints\acceptance.txt pip
@@ -306,7 +347,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1–F4、Machine R3、Physical R4、Intelligence R5-A / R5-B、Optimization R6、Controlled Runtime R7-A、Deployment R7-B 与 OPC UA R7-C 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F2 机床/碰撞参考见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)，F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)，F4 三拓扑、Adapter 反例、区间内部碰撞和 Windows 环境金值见 [`fixtures/five_axis_f4`](fixtures/five_axis_f4)，R3 Windows 文件导入与反例见 [`fixtures/machine_r3`](fixtures/machine_r3)，R4 物理响应、内容身份和六类 SIL 场景金值见 [`fixtures/physical_r4`](fixtures/physical_r4)，R5-A portable 数据/模型身份与门禁金值见 [`src/axiom/intelligence/fixtures/manifest.json`](src/axiom/intelligence/fixtures/manifest.json)。安装发布包后，可由 F1–F4/R3–R7 示例 API 获取完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
+启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1–F4、Machine R3、Physical R4、Intelligence R5-A / R5-B、Optimization R6、Controlled Runtime R7-A、Deployment R7-B、OPC UA R7-C 与 Beckhoff R7-D 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F2 机床/碰撞参考见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)，F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)，F4 三拓扑、Adapter 反例、区间内部碰撞和 Windows 环境金值见 [`fixtures/five_axis_f4`](fixtures/five_axis_f4)，R3 Windows 文件导入与反例见 [`fixtures/machine_r3`](fixtures/machine_r3)，R4 物理响应、内容身份和六类 SIL 场景金值见 [`fixtures/physical_r4`](fixtures/physical_r4)，R5-A portable 数据/模型身份与门禁金值见 [`src/axiom/intelligence/fixtures/manifest.json`](src/axiom/intelligence/fixtures/manifest.json)。安装发布包后，可由 F1–F4/R3–R7 示例 API 获取完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
 
 Python 中可直接执行内建 F0 示例：
 
@@ -387,8 +428,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.16.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；R6 v1 固定为六点完全枚举，R7-A 固定为五个 bounded synthetic shadow 场景，R7-B 固定为两个只读就绪性场景，R7-C 固定为一个开放基线与 Windows localhost 网络验收。超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
+v0.17.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；R6 v1 固定为六点完全枚举，R7-A 固定为五个 bounded synthetic shadow 场景，R7-B 固定为两个只读就绪性场景，R7-C 固定为一个开放基线与 Windows localhost 网络验收，R7-D 固定为一个 Beckhoff 开放基线和外部证据导入。超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.16.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B 只验证导入证据；R7-C 的独立 `.NET` 程序只有在部署者显式运行时才建立 OPC UA read/subscribe 网络会话，生产源码没有设备写或方法调用路径。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、厂商 verifier、真实控制器证据验收、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。
+v0.17.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B/R7-D 只验证导入证据；R7-C/R7-D 的独立 `.NET` 生产程序只有在部署者显式运行时才建立 OPC UA read/subscribe 网络会话，生产源码没有设备写或方法调用路径。R7-D 权限 verifier 仅用于经部署责任人授权的专用非执行 canary，并与生产 Adapter 隔离。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、真实控制器独立 capture、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。

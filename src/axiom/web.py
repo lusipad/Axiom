@@ -18,6 +18,10 @@ from .control import (
     R7CExamplePayload,
     R7CManifest,
     R7CScenarioSummary,
+    R7DAssessmentRequest,
+    R7DExamplePayload,
+    R7DManifest,
+    R7DScenarioSummary,
     R7ExamplePayload,
     R7Manifest,
     R7ReplayRequest,
@@ -669,6 +673,43 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     )
     def control_r7c_assess(request: R7CAssessmentRequest) -> R7CExamplePayload:
         return _load_control_r7_api().assess_r7c_payload(request)
+
+    @app.get(
+        "/api/v1/control/r7d/manifest",
+        response_model=R7DManifest,
+        response_model_by_alias=True,
+    )
+    def control_r7d_manifest() -> R7DManifest:
+        return _load_control_r7_api().build_r7d_manifest()
+
+    @app.get(
+        "/api/v1/control/r7d/scenarios",
+        response_model=list[R7DScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def control_r7d_scenarios() -> list[R7DScenarioSummary]:
+        return list(_load_control_r7_api().list_r7d_scenarios())
+
+    @app.get(
+        "/api/v1/examples/control-r7d",
+        response_model=R7DExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7d_example(
+        scenarioId: str = "beckhoff-twincat-runtime-open",
+    ) -> R7DExamplePayload:
+        try:
+            return _load_control_r7_api().r7d_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/r7d/assess",
+        response_model=R7DExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7d_assess(request: R7DAssessmentRequest) -> R7DExamplePayload:
+        return _load_control_r7_api().assess_r7d_payload(request)
 
     @app.post(
         "/api/v1/experiments/run",

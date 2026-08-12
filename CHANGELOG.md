@@ -2,6 +2,30 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.17.0 - 2026-08-13
+
+### Added
+
+- 你现在可以在 Windows 上用版本化 Vendor Profile 和九项审计检查验收 Beckhoff TwinCAT 3 Build 4026+ / TF6100；结果通过 `control.domain-pack@4`、typed API 和公共 Run 语义留证。
+- 可先运行 `.NET` `beckhoff-preflight` / `beckhoff-inspect`，只读核验 `tcpkg`、XAR 软件包、Build、服务端二进制、标准 BuildInfo、TF6100 许可证结果与 X/Y/Z/B/C 节点访问级别。
+- 需要验证权限边界时，可使用隔离的 Beckhoff 权限 verifier；它只接受部署责任人确认的非执行 canary，并以恰好一次同值 Write 冻结拒写收据。
+- 网页新增 Beckhoff R7-D 工作台和默认开放 Profile；`win-x64` 发布包同时包含只读生产 Adapter 与独立权限 verifier，ADR-0022 记录了两者的责任边界。
+
+### Changed
+
+- R7 现在从厂商无关虚拟 OPC UA 合同推进到首个具体厂商 Profile；Profile、厂商运行时、真实 deployment Shadow 与 reality validation 分别判定，不再互相替代。
+- 发布与 CI 会同时构建生产零写 Adapter 和独立权限 verifier；静态检查锁定前者没有 OPC UA session Write/Call，后者恰好只有一次 Write。
+
+### Verification
+
+- Windows `.NET 8.0.424` locked restore 和解决方案无警告构建通过；默认 Profile 的 `.NET → Python` 预检证据完成跨语言哈希重验。
+- Windows CPython 3.12.10 环境绑定套件 `696/696` 通过；前端 `43/43`、TypeScript 与 Vite 生产构建通过。实页视觉门 `95/100`，桌面与 390px 窄屏控制台均为 0 错误。
+
+### Boundary
+
+- 当前开发机没有 TwinCAT/TF6100，预检如实返回 `TwinCatPackageManagerMissing` / `vendorRuntimeStatus=Open`；没有生成厂商运行时正例。
+- 独立权限 verifier 未在真实设备运行；`deploymentShadowStatus`、`realityValidationStatus`、Controlled Trial 与 Closed Loop 保持 Open，DeviceSafe/ProcessSafe 保持 NotAssessed。
+
 ## 0.16.0 - 2026-08-13
 
 ### Added

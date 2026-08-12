@@ -42,6 +42,73 @@ internal static class JsonSupport
             fullPath);
     }
 
+    public static async Task<LoadedBeckhoffProfile> LoadBeckhoffProfileAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        BeckhoffTwinCatProfile profile = JsonSerializer.Deserialize<BeckhoffTwinCatProfile>(
+            payload,
+            Options) ?? throw new ShadowContractException("Beckhoff profile JSON is empty");
+        profile.Validate();
+        return new LoadedBeckhoffProfile(
+            profile,
+            ToLowerHex(SHA256.HashData(payload)),
+            fullPath);
+    }
+
+    public static async Task<OpcUaTransportEvidence> LoadTransportEvidenceAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        byte[] payload = await File.ReadAllBytesAsync(
+            Path.GetFullPath(path),
+            cancellationToken).ConfigureAwait(false);
+        OpcUaTransportEvidence evidence = JsonSerializer.Deserialize<OpcUaTransportEvidence>(
+            payload,
+            Options) ?? throw new ShadowContractException("transport evidence JSON is empty");
+        if (evidence.SchemaId != Contract.EvidenceSchema
+            || evidence.ContentHash != ComputeCanonicalHash(evidence, "contentHash"))
+        {
+            throw new ShadowContractException("transport evidence content identity is invalid");
+        }
+        return evidence;
+    }
+
+    public static async Task<BeckhoffWriteRejectionReceipt> LoadWriteReceiptAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        byte[] payload = await File.ReadAllBytesAsync(
+            Path.GetFullPath(path),
+            cancellationToken).ConfigureAwait(false);
+        BeckhoffWriteRejectionReceipt receipt =
+            JsonSerializer.Deserialize<BeckhoffWriteRejectionReceipt>(payload, Options)
+            ?? throw new ShadowContractException("write rejection receipt JSON is empty");
+        ValidateWriteReceipt(receipt);
+        return receipt;
+    }
+
+    internal static void ValidateWriteReceipt(BeckhoffWriteRejectionReceipt receipt)
+    {
+        if (receipt.VerifierId != BeckhoffContract.WriteVerifierId
+            || receipt.Status != "Rejected"
+            || receipt.OperationCount != 1
+            || receipt.ProbeNamespaceUri is null
+            || receipt.ProbeIdentifier is null
+            || receipt.ValueHashBefore is null
+            || receipt.ValueHashAfter != receipt.ValueHashBefore
+            || receipt.StatusCode is not ("BadNotWritable" or "BadUserAccessDenied")
+            || receipt.ServerValueUnchanged is not true
+            || receipt.ReceiptSha256 is null
+            || receipt.ReceiptSha256 != ComputeCanonicalHash(receipt, "receiptSha256"))
+        {
+            throw new ShadowContractException("write rejection receipt is invalid");
+        }
+    }
+
     public static string ComputeCanonicalHash<T>(T value, string? excludedRootProperty = null)
     {
         JsonElement root = JsonSerializer.SerializeToElement(value, Options);

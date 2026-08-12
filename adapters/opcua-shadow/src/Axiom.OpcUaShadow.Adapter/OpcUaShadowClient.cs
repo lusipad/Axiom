@@ -21,6 +21,28 @@ internal sealed record ClientContext(
     X509Certificate2 ApplicationCertificate,
     ITelemetryContext Telemetry);
 
+internal sealed record OpenedShadowSession(
+    ISession Session,
+    EndpointDescription Endpoint,
+    ClientContext Context,
+    X509Certificate2 ServerCertificate) : IAsyncDisposable
+{
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Session.CloseAsync(5_000, closeChannel: true, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Session.Dispose();
+            ServerCertificate.Dispose();
+            Context.ApplicationCertificate.Dispose();
+        }
+    }
+}
+
 internal static class OpcUaShadowClient
 {
     public static async Task<ClientInitializationResult> InitializeAsync(
@@ -268,7 +290,69 @@ internal static class OpcUaShadowClient
         return new ClientContext(application, certificate, telemetry);
     }
 
-    private static async Task<X509Certificate2> LoadPinnedServerCertificateAsync(
+    internal static async Task<OpenedShadowSession> OpenReadSessionAsync(
+        LoadedShadowConfig loaded,
+        string sessionName,
+        CancellationToken cancellationToken)
+    {
+        ShadowAdapterConfig config = loaded.Config;
+        string? password = Environment.GetEnvironmentVariable(
+            config.Identity.PasswordEnvironmentVariable);
+        if (string.IsNullOrEmpty(password))
+        {
+            throw new ShadowContractException(
+                $"password environment variable '{config.Identity.PasswordEnvironmentVariable}' is missing");
+        }
+        ClientContext context = await BuildConfigurationAsync(config, cancellationToken)
+            .ConfigureAwait(false);
+        X509Certificate2 trustedServerCertificate = await LoadPinnedServerCertificateAsync(
+            config,
+            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await TrustCertificateAsync(
+                context.Configuration.SecurityConfiguration.TrustedPeerCertificates,
+                trustedServerCertificate,
+                context.Telemetry).ConfigureAwait(false);
+            EndpointDescription endpointDescription = await SelectPinnedEndpointAsync(
+                context.Configuration,
+                config,
+                cancellationToken).ConfigureAwait(false);
+            VerifyEndpointCertificate(endpointDescription, trustedServerCertificate, config);
+            var endpoint = new ConfiguredEndpoint(
+                null,
+                endpointDescription,
+                EndpointConfiguration.Create(context.Configuration));
+            using var userIdentity = new UserIdentity(
+                config.Identity.Username,
+                Encoding.UTF8.GetBytes(password));
+            ISession session = await new DefaultSessionFactory(context.Telemetry)
+                .CreateAsync(
+                    context.Configuration,
+                    endpoint,
+                    updateBeforeConnect: false,
+                    checkDomain: true,
+                    sessionName,
+                    sessionTimeout: 30_000,
+                    identity: userIdentity,
+                    preferredLocales: ["en-US"],
+                    ct: cancellationToken)
+                .ConfigureAwait(false);
+            return new OpenedShadowSession(
+                session,
+                endpointDescription,
+                context,
+                trustedServerCertificate);
+        }
+        catch
+        {
+            trustedServerCertificate.Dispose();
+            context.ApplicationCertificate.Dispose();
+            throw;
+        }
+    }
+
+    internal static async Task<X509Certificate2> LoadPinnedServerCertificateAsync(
         ShadowAdapterConfig config,
         CancellationToken cancellationToken)
     {
@@ -288,7 +372,7 @@ internal static class OpcUaShadowClient
         return certificate;
     }
 
-    private static async Task TrustCertificateAsync(
+    internal static async Task TrustCertificateAsync(
         CertificateTrustList trustList,
         X509Certificate2 certificate,
         ITelemetryContext telemetry)
@@ -302,7 +386,7 @@ internal static class OpcUaShadowClient
         }
     }
 
-    private static async Task<EndpointDescription> SelectPinnedEndpointAsync(
+    internal static async Task<EndpointDescription> SelectPinnedEndpointAsync(
         ApplicationConfiguration application,
         ShadowAdapterConfig config,
         CancellationToken cancellationToken)
@@ -330,7 +414,7 @@ internal static class OpcUaShadowClient
             ?? throw new ShadowContractException("configured secure endpoint is not advertised by server");
     }
 
-    private static void VerifyEndpointCertificate(
+    internal static void VerifyEndpointCertificate(
         EndpointDescription endpoint,
         X509Certificate2 pinnedCertificate,
         ShadowAdapterConfig config)

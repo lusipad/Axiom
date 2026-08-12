@@ -79,8 +79,23 @@ jobs:
             -p:PublishSingleFile=true `
             -p:RestoreLockedMode=true `
             -o dist/opcua-shadow-win-x64
+          dotnet publish adapters/opcua-shadow/tools/Axiom.OpcUaShadow.BeckhoffPermissionVerifier `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:RestoreLockedMode=true `
+            -o dist/opcua-shadow-win-x64/permission-verifier
+          Remove-Item -LiteralPath `
+            dist/opcua-shadow-win-x64/permission-verifier/axiom-opcua-shadow.exe, `
+            dist/opcua-shadow-win-x64/permission-verifier/axiom-opcua-shadow.runtimeconfig.json, `
+            dist/opcua-shadow-win-x64/permission-verifier/axiom-opcua-shadow.pdb `
+            -ErrorAction SilentlyContinue
+          & dist/opcua-shadow-win-x64/axiom-opcua-shadow.exe --help
+          & dist/opcua-shadow-win-x64/permission-verifier/Axiom.OpcUaShadow.BeckhoffPermissionVerifier.exe --help
           Copy-Item adapters/opcua-shadow/README.md dist/opcua-shadow-win-x64/README.md
           Copy-Item examples/opcua-shadow.windows.example.json dist/opcua-shadow-win-x64/opcua-shadow.windows.example.json
+          Copy-Item examples/beckhoff-twincat-profile.windows.json dist/opcua-shadow-win-x64/beckhoff-twincat-profile.windows.json
           Compress-Archive `
             -Path dist/opcua-shadow-win-x64/* `
             -DestinationPath "dist/axiom-opcua-shadow-$env:GITHUB_REF_NAME-win-x64.zip"
@@ -109,6 +124,7 @@ jobs:
               "axiom/optimization/search.py",
               "axiom/control/models.py",
               "axiom/control/r7c_models.py",
+              "axiom/control/r7d_models.py",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -176,19 +192,23 @@ jobs:
               R7_DOMAIN_PACK_ID,
               R7B_DOMAIN_PACK_ID,
               R7C_DOMAIN_PACK_ID,
+              R7D_DOMAIN_PACK_ID,
               build_r7_manifest,
               build_r7b_manifest,
               build_r7c_manifest,
+              build_r7d_manifest,
               r7_example_payload,
               r7b_example_payload,
               r7c_example_payload,
+              r7d_example_payload,
               validate_r7_example_run_spec,
               validate_r7b_example_run_spec,
               validate_r7c_example_run_spec,
+              validate_r7d_example_run_spec,
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.16.0"
+          assert version("axiom-evaluator") == "0.17.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -221,6 +241,21 @@ jobs:
           r7c = evaluate_run(validate_r7c_example_run_spec())
           assert validate_run_bundle_integrity(r7c) == []
           assert r7c.run.case_outcome.value == "Inconclusive"
+
+          r7d_manifest = build_r7d_manifest()
+          assert r7d_manifest.domain_pack_id == R7D_DOMAIN_PACK_ID
+          assert r7d_manifest.target_vendor == "Beckhoff Automation"
+          assert r7d_manifest.target_controller_family == "TwinCAT 3"
+          assert r7d_manifest.minimum_twincat_build == 4026
+          assert r7d_manifest.target_interface == "TF6100 OPC UA Server"
+          assert r7d_manifest.vendor_profile_status == "Passed"
+          assert r7d_manifest.vendor_runtime_status == "Open"
+          assert r7d_manifest.reality_validation_status == "Open"
+          assert r7d_manifest.device_write_allowed is False
+          assert r7d_example_payload().readiness_audit.vendor_runtime_status == "Open"
+          r7d = evaluate_run(validate_r7d_example_run_spec())
+          assert validate_run_bundle_integrity(r7d) == []
+          assert r7d.run.case_outcome.value == "Inconclusive"
 
           f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
           assert validate_run_bundle_integrity(f2) == []
@@ -488,6 +523,14 @@ jobs:
             if ($r7cExample.runSpec.domainPackId -ne "control.domain-pack@3" -or $null -ne $r7cExample.transportEvidence -or $r7cExample.readinessAudit.virtualTransportStatus -ne "Open") {
               throw "installed wheel did not preserve the R7-C Open example boundary"
             }
+            $r7dManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/control/r7d/manifest
+            if ($r7dManifest.domainPackId -ne "control.domain-pack@4" -or $r7dManifest.targetVendor -ne "Beckhoff Automation" -or $r7dManifest.minimumTwinCatBuild -ne 4026 -or $r7dManifest.vendorProfileStatus -ne "Passed" -or $r7dManifest.vendorRuntimeStatus -ne "Open" -or $r7dManifest.realityValidationStatus -ne "Open" -or $r7dManifest.deviceWriteAllowed) {
+              throw "installed wheel did not expose the R7-D Beckhoff vendor boundary"
+            }
+            $r7dExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/control-r7d?scenarioId=beckhoff-twincat-runtime-open"
+            if ($r7dExample.runSpec.domainPackId -ne "control.domain-pack@4" -or $null -ne $r7dExample.runtimeEvidence -or $r7dExample.profile.bindingStatus -ne "Open" -or $r7dExample.readinessAudit.vendorRuntimeStatus -ne "Open") {
+              throw "installed wheel did not preserve the R7-D Open example boundary"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
@@ -509,6 +552,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7CExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7CAssessmentRequest") {
               throw "installed wheel did not expose the typed R7-C OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7DExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7DAssessmentRequest") {
+              throw "installed wheel did not expose the typed R7-D OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

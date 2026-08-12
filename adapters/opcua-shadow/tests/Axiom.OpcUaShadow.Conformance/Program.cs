@@ -77,6 +77,39 @@ internal static class Program
         string workspace,
         CancellationToken cancellationToken)
     {
+        Require(
+            BeckhoffTwinCatVerifier.ExtractInstalledPackageVersion(
+                "TwinCAT Package Manager 1.2.3\nTwinCAT.Standard.XAR 4026.23.1",
+                "TwinCAT.Standard.XAR") == "4026.23.1",
+            "Beckhoff package parsing must ignore the package-manager version banner");
+        var forgedWriteReceipt = new BeckhoffWriteRejectionReceipt(
+            BeckhoffContract.WriteVerifierId,
+            "Rejected",
+            1,
+            "urn:axiom:test",
+            "ReadOnlyCanary",
+            new string('a', 64),
+            new string('a', 64),
+            "Good",
+            true,
+            null);
+        forgedWriteReceipt = forgedWriteReceipt with
+        {
+            ReceiptSha256 = JsonSupport.ComputeCanonicalHash(
+                forgedWriteReceipt,
+                "receiptSha256")
+        };
+        bool forgedReceiptRejected = false;
+        try
+        {
+            JsonSupport.ValidateWriteReceipt(forgedWriteReceipt);
+        }
+        catch (ShadowContractException)
+        {
+            forgedReceiptRejected = true;
+        }
+        Require(forgedReceiptRejected,
+            "a successful write must not be accepted as a rejection receipt");
         int port = GetAvailablePort();
         string endpointUrl = $"opc.tcp://localhost:{port}/axiom-opcua-shadow";
         ITelemetryContext telemetry = DefaultTelemetry.Create(

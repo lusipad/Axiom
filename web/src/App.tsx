@@ -5,6 +5,7 @@ import {
   loadCatalog,
   loadContourExample,
 } from "./api";
+import { ControlR7Workbench } from "./features/control-r7/ControlR7Workbench";
 import { F1Workbench } from "./features/five-axis-f1/F1Workbench";
 import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
 import { F3Workbench } from "./features/five-axis-f3/F3Workbench";
@@ -23,7 +24,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7";
 type PointView = "geometry" | "metrics";
 
 function clone<T>(value: T): T {
@@ -247,6 +248,8 @@ export function App() {
               ? "Physical R4 Validation Workbench"
             : activeLab === "optimization-r6"
               ? "Optimization R6 Recommendation Lab"
+            : activeLab === "control-r7"
+              ? "Controlled Runtime R7-A"
             : "Machine Read-only Lab";
   const activeManifestId = activeLab === "point"
     ? spec?.experimentId ?? "loading"
@@ -266,6 +269,8 @@ export function App() {
               ? "physical.r4-manifest@1"
             : activeLab === "optimization-r6"
               ? "optimization.r6-manifest@1"
+            : activeLab === "control-r7"
+              ? "control.r7-manifest@1"
             : "machine.r3-manifest@1";
 
   const buildPointSpec = (): ExperimentSpec => {
@@ -379,6 +384,8 @@ export function App() {
                   ? "MODEL VALIDATION · NOT DEVICE SAFE"
                 : activeLab === "optimization-r6"
                   ? "OFFLINE RECOMMENDATION · NO DEVICE WRITE · REALITY OPEN"
+                : activeLab === "control-r7"
+                  ? "SHADOW ONLY · NO DEVICE AUTHORITY · DEPLOYMENT OPEN"
                   : "MATH ONLY · NOT DEVICE SAFE"}
             </span>
           )}
@@ -426,6 +433,9 @@ export function App() {
         </button>
         <button className={`lab ${activeLab === "optimization-r6" ? "active" : ""}`} type="button" onClick={() => setActiveLab("optimization-r6")}>
           <span>10</span>Optimization<small>R6</small>
+        </button>
+        <button className={`lab ${activeLab === "control-r7" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7")}>
+          <span>11</span>Controlled<small>R7-A</small>
         </button>
       </div>
 
@@ -628,6 +638,8 @@ export function App() {
         <PhysicalR4Workbench catalog={catalog} />
       ) : activeLab === "optimization-r6" ? (
         <OptimizationR6Workbench catalog={catalog} />
+      ) : activeLab === "control-r7" ? (
+        <ControlR7Workbench catalog={catalog} />
       ) : (
         <MachineR3Workbench catalog={catalog} />
       )}

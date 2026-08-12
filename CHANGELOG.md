@@ -2,6 +2,34 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.11.0 - 2026-08-12
+
+### Added
+
+- 增加 Windows-only R5-A synthetic learning 合同：不可变 `DatasetSnapshot`、按 trajectory/task/device-batch/pair/time 隔离的 split manifest、数据许可/保留治理和逐样本上游内容身份。
+- 增加 X-only ridge residual head、训练域 envelope OOD 弃权、split conformal 区间，以及 15 位权重导出的 JSON `ModelBundle` 与独立纯 Python 目标解释器。
+- 增加 `intelligence.domain-pack@1`、有类型 manifest/scenario/example API、Intelligence R5-A 工作台，以及 group leak、时间逆序、bundle 篡改和 parity 篡改四类反例。
+- 增加[数据集与学习模型规范](数据集与学习模型规范.md)与 ADR-0016，冻结 R5-A 的数据、学习、目标端和安全声明边界。
+
+### Changed
+
+- 发布矩阵继续只包含 Windows AMD64 + CPython 3.12.10；R5 runtime 在非 Windows 环境返回 `Skipped + UnsupportedRuntimePlatform`。
+- R5 阶段拆为 `syntheticLearningContractStatus=Passed` 与 `realWorldGeneralizationStatus=Open`，合成学习合同不再被包装成真实跨设备泛化。
+- 反例页面只展示预期 `Skipped / Invalid` 与零正向 Claim，不再继承基准场景的通过分数和 Evidence。
+
+### Verification
+
+- 本地 Windows 全量验证：Python `592 passed / 1 skipped`，网页 `22 passed`，TypeScript 检查、生产构建和本次差异内 Python 静态检查通过。
+- R5-A 定向 Python/API 验收 `23 passed`；固定结果为 X 轴 RMSE 改善 `50.43%`、OOD 检出率 `100%`、conformal coverage `83.33%`、目标解释器最大差 `1.39e-17`。
+- 三档响应式网页实测通过，结构化视觉终审 `95/100`，无控制台错误、无设备写入或在线学习控件。
+- 发布工作流会在冻结的 Windows 3.12.10 环境中重跑全量测试，并对安装后的 wheel 执行 CLI/API/UI 与 R5-A 内容身份 smoke。
+
+### Boundary
+
+- R5-A 的全部训练/验证/测试数据仍来自 synthetic SIL；没有真实 paired controller/device holdout，因此不能声明现实验证、跨设备/工况泛化或控制器兼容。
+- Y/Z 轴保持 `NoValidatedImprovement`，B/C 轴保持 `InsufficientExcitation`；不把不同轴或 `mm/rad` 混成统一总分。
+- 本版本不实现 Ubuntu/Linux/WSL、设备写回、在线学习、自动部署、`DeviceSafe`、`ProcessSafe`、`safe-to-run` 或上机许可。
+
 ## 0.10.1 - 2026-08-12
 
 ### Fixed

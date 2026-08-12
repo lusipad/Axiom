@@ -83,6 +83,7 @@ jobs:
               "axiom/machine/fixtures/captures/read-only-paired-pass.trace.json",
               "axiom/physical/fixtures/manifest.json",
               "axiom/physical/fixtures/captures/in-domain-synthetic-sil.response.json",
+              "axiom/intelligence/fixtures/manifest.json",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -93,7 +94,7 @@ jobs:
           python -m venv release-smoke
           $wheel = (Get-ChildItem -Path dist -Filter *.whl -File | Select-Object -First 1).FullName
           & .\release-smoke\Scripts\python.exe -m pip install --upgrade -c constraints/acceptance.txt pip
-          & .\release-smoke\Scripts\python.exe -m pip install $wheel
+          & .\release-smoke\Scripts\python.exe -m pip install -c constraints/acceptance.txt $wheel
           & .\release-smoke\Scripts\axiom.exe --help
           @'
           from importlib.metadata import version
@@ -117,6 +118,13 @@ jobs:
               machine_r3_example_run_spec,
               load_machine_r3_manifest,
           )
+          from axiom.intelligence import (
+              R5_DOMAIN_PACK_ID,
+              build_r5_manifest,
+              load_r5_fixture_manifest,
+              r5_example_payload,
+              validate_r5_example_run_spec,
+          )
           from axiom.physical import (
               FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID,
               PhysicalModelValidationRequest,
@@ -128,7 +136,7 @@ jobs:
           from axiom.physical.runtime import REALITY_VALIDATED_CLAIM_ID
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.10.1"
+          assert version("axiom-evaluator") == "0.11.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -232,6 +240,34 @@ jobs:
           missing_context = evaluate_run(validate_r4_example_run_spec("missing-coordinate-context"))
           assert validate_run_bundle_integrity(missing_context) == []
           assert missing_context.run.case_outcome.value == "Inconclusive"
+
+          intelligence_manifest = build_r5_manifest()
+          assert intelligence_manifest["platform"] == "windows"
+          assert intelligence_manifest["stage"] == "R5-A"
+          assert intelligence_manifest["syntheticLearningContractStatus"] == "Passed"
+          assert intelligence_manifest["realWorldGeneralizationStatus"] == "Open"
+          intelligence_example = r5_example_payload("synthetic-residual-contract")
+          assert intelligence_example["evaluation"]["oodDetectionRate"] == 1.0
+          assert intelligence_example["evaluation"]["conformalCoverage"] >= 0.80
+          assert intelligence_example["evaluation"]["targetParityMaxAbsGap"] <= 1e-12
+          intelligence = evaluate_run(validate_r5_example_run_spec("synthetic-residual-contract"))
+          assert validate_run_bundle_integrity(intelligence) == []
+          assert intelligence.run.domain_pack_id == R5_DOMAIN_PACK_ID
+          assert intelligence.run.case_outcome.value == "Passed"
+          intelligence_claims = {
+              claim.claim_definition_id: claim.status.value for claim in intelligence.claims
+          }
+          assert intelligence_claims["intelligence.synthetic-learning-contract-claim@1"] == "Supported"
+          assert intelligence_claims["intelligence.real-world-generalization-claim@1"] == "Inconclusive"
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(intelligence_claims)
+          fixture_manifest = load_r5_fixture_manifest()
+          assert (
+              fixture_manifest["expectedIdentities"]["modelBundleContentHash"]
+              == intelligence_example["modelBundle"]["contentHash"]
+          )
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `
@@ -276,9 +312,20 @@ jobs:
             if ($physicalExample.runSpec.domainPackId -ne "five-axis.domain-pack@6") {
               throw "installed wheel did not expose the R4 example RunSpec"
             }
+            $intelligenceManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/intelligence/r5/manifest
+            if ($intelligenceManifest.stage -ne "R5-A" -or $intelligenceManifest.syntheticLearningContractStatus -ne "Passed" -or $intelligenceManifest.realWorldGeneralizationStatus -ne "Open") {
+              throw "installed wheel did not expose the R5-A dual-gate contract"
+            }
+            $intelligenceExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/intelligence-r5?scenarioId=synthetic-residual-contract"
+            if ($intelligenceExample.runSpec.domainPackId -ne "intelligence.domain-pack@1" -or $intelligenceExample.evaluation.oodDetectionRate -ne 1) {
+              throw "installed wheel did not expose the R5-A example contract"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R5ExamplePayload") {
+              throw "installed wheel did not expose the typed R5 OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

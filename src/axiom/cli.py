@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from .comparison import compare
 from .evaluator import evaluate
 from .experiment import run_experiment
+from .field_evidence import FieldEvidenceAssessmentRequest, assess_field_evidence
 from .models import CaseOutcome, ExecutionStatus
 from .run import evaluate_run
 
@@ -18,6 +19,7 @@ from .run import evaluate_run
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
 MAX_COMPARISON_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_EXPERIMENT_BYTES = 2 * MAX_REQUEST_BYTES
+MAX_FIELD_EVIDENCE_BYTES = 2 * MAX_REQUEST_BYTES
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -34,6 +36,15 @@ def _parser() -> argparse.ArgumentParser:
     compare_command.add_argument("comparison", type=Path, help="path to a comparison-spec@1 JSON file")
     experiment_command = commands.add_parser("experiment", help="execute and compare two local Subjects")
     experiment_command.add_argument("experiment", type=Path, help="path to an experiment-spec@1 JSON file")
+    field_evidence_command = commands.add_parser(
+        "field-evidence",
+        help="assess two Windows R7-E captures as one case-scoped R4.1 evidence set",
+    )
+    field_evidence_command.add_argument(
+        "request",
+        type=Path,
+        help="path to an axiom.field-evidence-assessment-request@1 JSON file",
+    )
     serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
     serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
@@ -56,6 +67,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         path, label, limit = args.run_spec, "运行请求", MAX_REQUEST_BYTES
     elif args.command == "compare":
         path, label, limit = args.comparison, "比较请求", MAX_COMPARISON_BYTES
+    elif args.command == "field-evidence":
+        path, label, limit = args.request, "现场证据请求", MAX_FIELD_EVIDENCE_BYTES
     else:
         path, label, limit = args.experiment, "实验请求", MAX_EXPERIMENT_BYTES
     try:
@@ -75,6 +88,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         if any(issue.code == "MalformedComparisonSpec" for issue in report.compatibility.issues):
             return 2
         return 0 if report.compatibility.compatible else 1
+
+    if args.command == "field-evidence":
+        try:
+            request = FieldEvidenceAssessmentRequest.model_validate(payload)
+        except ValidationError as exc:
+            errors = exc.errors(
+                include_url=False, include_context=False, include_input=False
+            )
+            print(
+                json.dumps(
+                    {
+                        "code": "MalformedFieldEvidenceAssessmentRequest",
+                        "path": (
+                            ".".join(str(part) for part in errors[0]["loc"])
+                            if errors
+                            else None
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        report = assess_field_evidence(request)
+        print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        return 0 if report.overall_status == "Passed" else 1
 
     if args.command == "experiment":
         try:

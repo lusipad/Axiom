@@ -21,6 +21,7 @@ R7E_DOMAIN_PACK_ID = "control.domain-pack@5"
 R7E_EVALUATOR_ID = "control-beckhoff-shadow-run-evaluator@1"
 R7E_RUNNER_ID = "control-beckhoff-shadow-evidence-import@1"
 R7E_DEFAULT_SCENARIO_ID = "beckhoff-shadow-witness-open"
+R7E_DEFAULT_CASE_ID = "control.r7e.beckhoff-shadow-run.case@1"
 R7E_SCENARIO_IDS = (R7E_DEFAULT_SCENARIO_ID,)
 
 _HASH_PATTERN = r"^[0-9a-f]{64}$"
@@ -578,6 +579,7 @@ class R7EExamplePayload(AxiomModel):
 
 
 class R7EAssessmentRequest(AxiomModel):
+    case_id: str | None = Field(default=None, alias="caseId", min_length=1)
     vendor_profile: BeckhoffTwinCatVendorProfile | None = Field(
         default=None, alias="vendorProfile"
     )
@@ -599,6 +601,17 @@ class R7EAssessmentRequest(AxiomModel):
         default=None, alias="shadowEvidence"
     )
 
+    @model_validator(mode="after")
+    def require_case_for_pairable_evidence(self) -> R7EAssessmentRequest:
+        if (
+            self.case_id is None
+            and (self.command is not None or self.shadow_evidence is not None)
+        ):
+            raise ValueError(
+                "caseId is required when command or Shadow evidence is supplied"
+            )
+        return self
+
 
 @dataclass(frozen=True, slots=True)
 class R7EScenario:
@@ -617,6 +630,7 @@ class R7EScenario:
 
 __all__ = [
     "R7E_DEFAULT_SCENARIO_ID",
+    "R7E_DEFAULT_CASE_ID",
     "R7E_DOMAIN_PACK_ID",
     "R7E_EVALUATOR_ID",
     "R7E_RUNNER_ID",

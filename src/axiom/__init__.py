@@ -237,6 +237,13 @@ from .control import (
     validate_r7c_example_run_spec,
     validate_r7d_example_run_spec,
 )
+from .field_evidence import (
+    FIELD_EVIDENCE_REPORT_SCHEMA_ID,
+    FIELD_EVIDENCE_REQUEST_SCHEMA_ID,
+    FieldEvidenceAssessmentReport,
+    FieldEvidenceAssessmentRequest,
+    assess_field_evidence,
+)
 from .adapters import (
     ArtifactAdapter,
     ArtifactAdapterProvenance,
@@ -271,6 +278,8 @@ __all__ = [
     "ExperimentReport",
     "ExperimentSpec",
     "ExecutionStatus",
+    "FIELD_EVIDENCE_REPORT_SCHEMA_ID",
+    "FIELD_EVIDENCE_REQUEST_SCHEMA_ID",
     "F1MathStageManifest",
     "F1ExamplePayload",
     "F1ScenarioSummary",
@@ -302,6 +311,8 @@ __all__ = [
     "FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID",
     "FIVE_AXIS_PHYSICAL_RUNTIME_BINDING",
     "FIVE_AXIS_SAMPLED_CARTESIAN_TO_ORDERED_POINT_ADAPTER",
+    "FieldEvidenceAssessmentReport",
+    "FieldEvidenceAssessmentRequest",
     "M1ReferencePath",
     "M2CandidateTaskGeometry",
     "M3CandidateAxisPath",
@@ -332,6 +343,7 @@ __all__ = [
     "build_f3_manifest",
     "build_r4_manifest",
     "build_r5b_manifest",
+    "assess_field_evidence",
     "compare",
     "compare_runs",
     "contour_ab_example",

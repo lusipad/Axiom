@@ -37,6 +37,20 @@ def test_r7e_http_empty_assessment_keeps_deployment_and_reality_open() -> None:
     assert audit["countsTowardReality"] is False
 
 
+def test_r7e_http_assessment_preserves_explicit_case_identity() -> None:
+    client = TestClient(create_app(serve_frontend=False))
+
+    response = client.post(
+        "/api/v1/control/r7e/assess",
+        json={"caseId": "site.part-family-17@1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["runSpec"]["request"]["case"]["caseId"] == (
+        "site.part-family-17@1"
+    )
+
+
 def test_r7e_http_rejects_unknown_scenario() -> None:
     client = TestClient(create_app(serve_frontend=False))
 

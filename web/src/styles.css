@@ -270,9 +270,11 @@ select { height: 30px; padding: 0 6px; font-size: 10px; }
 }
 
 @media (max-width: 430px) {
-  .brand-lockup span, .topbar-context code { display: none; }
-  .brand-lockup { min-width: 0; }
-  .topbar-actions { justify-content: flex-end; }
+  .topbar { grid-template-columns: 30px minmax(0, 1fr); }
+  .brand-lockup > div:last-child, .topbar-context code { display: none; }
+  .brand-lockup { width: 30px; min-width: 30px; }
+  .topbar-actions { min-width: 0; width: 100%; justify-content: flex-end; }
+  .topbar-actions .f1-top-boundary { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lab { min-width: 110px; }
   .run-state span:first-child { display: none; }
   .plot-toolbar code { display: none; }

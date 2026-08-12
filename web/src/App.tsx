@@ -9,6 +9,7 @@ import { F1Workbench } from "./features/five-axis-f1/F1Workbench";
 import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
 import { F3Workbench } from "./features/five-axis-f3/F3Workbench";
 import { F4Workbench } from "./features/five-axis-f4/F4Workbench";
+import { IntelligenceR5BWorkbench } from "./features/intelligence-r5b/IntelligenceR5BWorkbench";
 import { IntelligenceR5Workbench } from "./features/intelligence-r5/IntelligenceR5Workbench";
 import { MachineR3Workbench } from "./features/machine-r3/MachineR3Workbench";
 import { PhysicalR4Workbench } from "./features/physical-r4/PhysicalR4Workbench";
@@ -21,7 +22,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b";
 type PointView = "geometry" | "metrics";
 
 const futureLabs = ["Optimization"];
@@ -241,6 +242,8 @@ export function App() {
             ? "Five-Axis Gate Acceptance Lab"
             : activeLab === "intelligence-r5"
               ? "Intelligence R5 Evidence Lab"
+            : activeLab === "intelligence-r5b"
+              ? "Intelligence R5-B Reality Gate"
             : activeLab === "physical-r4"
               ? "Physical R4 Validation Workbench"
             : "Machine Read-only Lab";
@@ -256,6 +259,8 @@ export function App() {
             ? "five-axis.f4-math-stage-manifest@1"
             : activeLab === "intelligence-r5"
               ? "intelligence.r5-manifest@1"
+            : activeLab === "intelligence-r5b"
+              ? "intelligence.r5b-manifest@1"
             : activeLab === "physical-r4"
               ? "physical.r4-manifest@1"
             : "machine.r3-manifest@1";
@@ -365,6 +370,8 @@ export function App() {
                 ? "READ ONLY · NOT DEVICE SAFE"
                 : activeLab === "intelligence-r5"
                   ? "SYNTHETIC LEARNING · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
+                : activeLab === "intelligence-r5b"
+                  ? "REAL HOLDOUT VALIDATION · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
                 : activeLab === "physical-r4"
                   ? "MODEL VALIDATION · NOT DEVICE SAFE"
                   : "MATH ONLY · NOT DEVICE SAFE"}
@@ -409,9 +416,12 @@ export function App() {
         <button className={`lab ${activeLab === "intelligence-r5" ? "active" : ""}`} type="button" onClick={() => setActiveLab("intelligence-r5")}>
           <span>08</span>Intelligence<small>R5-A</small>
         </button>
+        <button className={`lab ${activeLab === "intelligence-r5b" ? "active" : ""}`} type="button" onClick={() => setActiveLab("intelligence-r5b")}>
+          <span>09</span>Intelligence<small>R5-B</small>
+        </button>
         {futureLabs.map((lab, index) => (
           <button className="lab" type="button" disabled key={lab} title="领域包尚未接入">
-            <span>0{index + 9}</span>{lab}<small>planned</small>
+            <span>{String(index + 10).padStart(2, "0")}</span>{lab}<small>planned</small>
           </button>
         ))}
       </div>
@@ -609,6 +619,8 @@ export function App() {
         <F4Workbench catalog={catalog} />
       ) : activeLab === "intelligence-r5" ? (
         <IntelligenceR5Workbench catalog={catalog} />
+      ) : activeLab === "intelligence-r5b" ? (
+        <IntelligenceR5BWorkbench catalog={catalog} />
       ) : activeLab === "physical-r4" ? (
         <PhysicalR4Workbench catalog={catalog} />
       ) : (

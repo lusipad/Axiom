@@ -2,6 +2,29 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.12.0 - 2026-08-12
+
+### Added
+
+- 增加 Windows-only R5-B real holdout readiness 合同：`intelligence.domain-pack@2`、`RealPairedHoldoutSet`、`RealHoldoutGovernance`、`RealHoldoutSelectionReceipt`、case-scoped `RealHoldoutCaseEvidence`，以及外部真实 holdout 的治理、选择和证据输入边界。
+- 增加 R5-B manifest / scenarios / example API 与网页工作台入口；默认示例只提供 `real-holdout-readiness-open` 就绪场景，不内置 bundled real capture，也不伪造真实正例。
+- 增加 R5-B 的程序化就绪门：Windows 上对缺失 real holdout 返回 `Succeeded + Inconclusive + RealPairedHoldoutMissing`，非 Windows 继续返回 `Skipped + UnsupportedRuntimePlatform`。
+
+### Changed
+
+- R5 从单一 synthetic learning 合同扩展为 `R5-A` / `R5-B` 两层：`R5-A` 继续冻结合成学习合同，`realWorldGeneralizationStatus` 仍保持 Open；`R5-B` 只负责把真实 holdout 的就绪门拆开，不把“可以接外部真实数据”误写成“真实泛化已经通过”。
+- 文档入口、蓝图与快速开始都改为公开 R5-B 就绪门、上传入口和 Windows-only 支持边界；网页实验室列表现在包含 Intelligence R5-B。
+
+### Verification
+
+- 本次发布笔记已同步 README、蓝图和 Changelog 的版本标识、R5-B 路径与支持边界。
+- R5-B 的接口和默认示例与现有 Windows 测试预期保持一致：`/api/v1/intelligence/r5b/manifest`、`/api/v1/intelligence/r5b/scenarios`、`/api/v1/examples/intelligence-r5b`、`POST /api/v1/runs/evaluate`。
+
+### Boundary
+
+- 仓库不内置真实 holdout 正例；R5-B 只提供就绪门、验证器和上传入口，不能把 `realWorldGeneralizationStatus=Open` 解释成已经完成现实泛化。
+- 仍不支持 Ubuntu/Linux/WSL；R5-Runtime 在非 Windows 上继续返回结构化 Unsupported。
+
 ## 0.11.0 - 2026-08-12
 
 ### Added

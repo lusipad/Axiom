@@ -120,10 +120,14 @@ jobs:
           )
           from axiom.intelligence import (
               R5_DOMAIN_PACK_ID,
+              R5B_DOMAIN_PACK_ID,
               build_r5_manifest,
+              build_r5b_manifest,
               load_r5_fixture_manifest,
               r5_example_payload,
+              r5b_example_payload,
               validate_r5_example_run_spec,
+              validate_r5b_example_run_spec,
           )
           from axiom.physical import (
               FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID,
@@ -136,7 +140,7 @@ jobs:
           from axiom.physical.runtime import REALITY_VALIDATED_CLAIM_ID
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.11.0"
+          assert version("axiom-evaluator") == "0.12.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -268,6 +272,28 @@ jobs:
               fixture_manifest["expectedIdentities"]["modelBundleContentHash"]
               == intelligence_example["modelBundle"]["contentHash"]
           )
+
+          r5b_manifest = build_r5b_manifest()
+          assert r5b_manifest["platform"] == "windows"
+          assert r5b_manifest["stage"] == "R5-B"
+          assert r5b_manifest["contractReadinessStatus"] == "Passed"
+          assert r5b_manifest["realWorldGeneralizationStatus"] == "Open"
+          assert r5b_manifest["safetyBanner"] == "REAL HOLDOUT VALIDATION / NOT DEVICE SAFE"
+          r5b_example = r5b_example_payload("real-holdout-readiness-open")
+          assert r5b_example["realHoldoutSet"] is None
+          r5b = evaluate_run(validate_r5b_example_run_spec("real-holdout-readiness-open"))
+          assert validate_run_bundle_integrity(r5b) == []
+          assert r5b.run.domain_pack_id == R5B_DOMAIN_PACK_ID
+          assert r5b.run.execution_status.value == "Succeeded"
+          assert r5b.run.case_outcome.value == "Inconclusive"
+          r5b_claims = {
+              claim.claim_definition_id: claim.status.value for claim in r5b.claims
+          }
+          assert r5b_claims["intelligence.real-world-generalization-claim@1"] == "Inconclusive"
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(r5b_claims)
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `
@@ -320,12 +346,23 @@ jobs:
             if ($intelligenceExample.runSpec.domainPackId -ne "intelligence.domain-pack@1" -or $intelligenceExample.evaluation.oodDetectionRate -ne 1) {
               throw "installed wheel did not expose the R5-A example contract"
             }
+            $r5bManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/intelligence/r5b/manifest
+            if ($r5bManifest.stage -ne "R5-B" -or $r5bManifest.contractReadinessStatus -ne "Passed" -or $r5bManifest.realWorldGeneralizationStatus -ne "Open") {
+              throw "installed wheel did not expose the R5-B readiness contract"
+            }
+            $r5bExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/intelligence-r5b?scenarioId=real-holdout-readiness-open"
+            if ($r5bExample.runSpec.domainPackId -ne "intelligence.domain-pack@2" -or $null -ne $r5bExample.realHoldoutSet) {
+              throw "installed wheel did not preserve the R5-B Open example boundary"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R5ExamplePayload") {
               throw "installed wheel did not expose the typed R5 OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R5BExamplePayload") {
+              throw "installed wheel did not expose the typed R5-B OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

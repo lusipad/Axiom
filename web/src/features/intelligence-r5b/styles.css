@@ -1,0 +1,224 @@
+.workspace.intelligence-r5b-workspace {
+  --r5b-accent: #9de4ff;
+  --r5b-warning: #ffd18a;
+  grid-template-columns: 332px minmax(560px, 1fr);
+}
+
+.intelligence-r5b-banner {
+  display: grid;
+  gap: 0.45rem;
+  border-left-color: #4aa6d1;
+}
+
+.intelligence-r5b-banner strong:first-child {
+  color: var(--r5b-accent);
+}
+
+.intelligence-r5b-banner strong:nth-child(2) {
+  color: var(--r5b-warning);
+}
+
+.analysis-panel.intelligence-r5b-analysis {
+  grid-template-rows: 48px minmax(0, 1fr);
+}
+
+.intelligence-r5b-analysis .view-tabs {
+  align-items: center;
+  gap: 16px;
+}
+
+.intelligence-r5b-analysis .view-tabs span {
+  color: var(--muted);
+  font: 10px var(--mono);
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.intelligence-r5b-analysis-body,
+.intelligence-r5b-threshold-grid,
+.intelligence-r5b-run-grid,
+.intelligence-r5b-metric-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.intelligence-r5b-analysis-body {
+  padding: 1rem;
+  overflow: auto;
+}
+
+.intelligence-r5b-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-color: color-mix(in srgb, var(--r5b-accent) 40%, var(--line));
+}
+
+.intelligence-r5b-hero > div {
+  text-align: right;
+}
+
+.intelligence-r5b-hero > div > strong {
+  color: var(--r5b-accent);
+  font-size: 2.8rem;
+  text-transform: uppercase;
+}
+
+.intelligence-r5b-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.intelligence-r5b-checks li {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.intelligence-r5b-checks li.done {
+  border-color: color-mix(in srgb, var(--r5b-accent) 40%, var(--line));
+}
+
+.intelligence-r5b-checks code,
+.intelligence-r5b-evidence-list code {
+  width: fit-content;
+}
+
+.intelligence-r5b-checks small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.intelligence-r5b-threshold-grid,
+.intelligence-r5b-run-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.intelligence-r5b-threshold-grid article,
+.intelligence-r5b-run-grid article,
+.intelligence-r5b-metric-grid article {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.intelligence-r5b-threshold-grid span,
+.intelligence-r5b-run-grid header span,
+.intelligence-r5b-metric-grid header span {
+  font: 10px var(--mono);
+  text-transform: uppercase;
+}
+
+.intelligence-r5b-threshold-grid strong {
+  display: block;
+  margin: 0.45rem 0;
+  color: var(--r5b-accent);
+  font-family: var(--mono);
+  font-size: 1.7rem;
+}
+
+.intelligence-r5b-threshold-grid small,
+.intelligence-r5b-run-grid p,
+.intelligence-r5b-metric-grid small {
+  color: var(--muted);
+}
+
+.intelligence-r5b-run-grid header,
+.intelligence-r5b-metric-grid header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.intelligence-r5b-run-grid header strong {
+  white-space: nowrap;
+}
+
+.intelligence-r5b-run-grid p,
+.intelligence-r5b-metric-grid p {
+  min-height: 2.2rem;
+  overflow-wrap: anywhere;
+}
+
+.intelligence-r5b-metric-grid header span {
+  display: block;
+  margin-top: 0.35rem;
+  white-space: nowrap;
+}
+
+.intelligence-r5b-metric-grid header {
+  display: block;
+}
+
+.intelligence-r5b-metric-grid small {
+  display: block;
+  min-height: 2.5em;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.intelligence-r5b-metric-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.intelligence-r5b-metric-grid p {
+  color: var(--r5b-accent);
+  font-size: 1.25rem;
+  margin: 0.55rem 0 0.35rem;
+}
+
+.intelligence-r5b-evidence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.intelligence-r5b-import-summary {
+  margin: 0.85rem 0;
+}
+
+.intelligence-r5b-import-summary dd {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 1180px) {
+  .workspace.intelligence-r5b-workspace {
+    grid-template-columns: 292px minmax(420px, 1fr);
+  }
+
+  .intelligence-r5b-metric-grid,
+  .intelligence-r5b-threshold-grid,
+  .intelligence-r5b-run-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace.intelligence-r5b-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .intelligence-r5b-threshold-grid,
+  .intelligence-r5b-run-grid,
+  .intelligence-r5b-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .intelligence-r5b-hero {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .intelligence-r5b-hero > div {
+    text-align: left;
+  }
+}

@@ -36,18 +36,25 @@ from .five_axis import (
     list_f4_scenarios,
     load_f0_manifest,
 )
+from .intelligence import (
+    R5BExamplePayload,
+    R5BManifest,
+    R5BScenarioSummary,
+    R5ExamplePayload,
+    R5Manifest,
+    R5ScenarioSummary,
+)
 from .machine import (
     list_machine_r3_scenarios,
     load_machine_r3_manifest,
     machine_r3_example_payload,
 )
-from .intelligence import R5ExamplePayload, R5Manifest, R5ScenarioSummary
+from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
 from .physical import (
     PhysicalR4ExamplePayload,
     PhysicalR4Manifest,
     PhysicalR4ScenarioSummaryPayload,
 )
-from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
 from .run import evaluate_run
 from .runtime import find_domain_runtime_binding
 from .subjects import list_subjects
@@ -395,6 +402,59 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             raise HTTPException(
                 status_code=503,
                 detail="Intelligence R5 example payload loader is unavailable.",
+            ) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5b/manifest",
+        response_model=R5BManifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5b_manifest() -> R5BManifest:
+        intelligence_api = _load_intelligence_r5_api()
+        try:
+            return R5BManifest.model_validate(intelligence_api.build_r5b_manifest())
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Intelligence R5-B manifest loader is unavailable.",
+            ) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5b/scenarios",
+        response_model=list[R5BScenarioSummary],
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5b_scenarios() -> list[R5BScenarioSummary]:
+        intelligence_api = _load_intelligence_r5_api()
+        try:
+            return list(intelligence_api.list_r5b_scenarios())
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Intelligence R5-B scenario catalog is unavailable.",
+            ) from exc
+
+    @app.get(
+        "/api/v1/examples/intelligence-r5b",
+        response_model=R5BExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def intelligence_r5b_example(
+        scenarioId: str = "real-holdout-readiness-open",
+    ) -> R5BExamplePayload:
+        intelligence_api = _load_intelligence_r5_api()
+        try:
+            return R5BExamplePayload.model_validate(intelligence_api.r5b_example_payload(scenarioId))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AttributeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Intelligence R5-B example payload loader is unavailable.",
             ) from exc
 
     @app.post(

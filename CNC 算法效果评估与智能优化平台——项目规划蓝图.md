@@ -1,8 +1,8 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.11.0
-> 当前阶段：R5-A Windows synthetic learning 合同片已实现 / 真实泛化 gate 保持 Open
+> 状态：Draft / 方向重整与契约闭合版 v0.12.0
+> 当前阶段：R5-A Windows synthetic learning 合同片与 R5-B real holdout readiness 合同片已实现 / 真实泛化 gate 保持 Open
 > 更新日期：2026-08-12
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)
@@ -340,7 +340,9 @@ PhysicalModel 可以覆盖驱动、伺服、机构、切削或过程、传感与
 
 ### 8.3 数据集是版本化产品
 
-R5-A 当前工作面只先闭合数据集合同片，完整 R5 泛化门仍然保持 Open；权威规范见[数据集与学习模型规范](数据集与学习模型规范.md)与[ADR-0016](架构决策记录/ADR-0016-R5可审计数据集与端侧模型边界.md)。
+R5-A 当前工作面先闭合数据集合同片，完整 R5 泛化门仍然保持 Open；R5-B 则把真实 holdout 的就绪门独立出来，默认示例只提供 Open readiness 场景，不内置真实正例。权威规范见[数据集与学习模型规范](数据集与学习模型规范.md)与[ADR-0016](架构决策记录/ADR-0016-R5可审计数据集与端侧模型边界.md)。
+
+R5-B 不把“可以评估真实 holdout”误写成“真实泛化已经通过”。它把外部 controller-export / device-read、owner attestation、评估许可、R3 paired lineage、时钟 / 坐标对齐、`PhysicalResponseTrace`、至少 2 个 in-domain case 跨 2 台 device 和 2 个 condition、再加 1 个 OOD probe，明确拆成可上传、可验证、可拒绝的就绪门；当前仓库只冻结阈值与接口，不冻结真实正例数据。
 
 每个 DatasetSnapshot 至少绑定：
 
@@ -417,7 +419,7 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 | **R2 五轴数学领域包** | 接入完备数学模型 | M0–M5、PathProgress、对应/重建策略、模型碰撞验证、参考求解器、证书和测试族 | 通过数学规范 Math F0–F4；R2 已闭合，面向下游的候选具备完整标准 Claim 且无 `CollisionUnchecked`；无需改写 Core |
 | **R3 设备只读接入** | 建立可信数据采集链 | Device/Profile、遥测、时钟或坐标对齐、MachineRun lineage | 数学、算法和设备 Run 可追溯；零自动写入 |
 | **R4 物理模型与现实对齐** | 解释模型—设备差异 | PhysicalModel、标定、仿真、残差分解、SIL/HIL 或等价验证 | 同一 Case 可比较数学、仿真和设备证据 |
-| **R5 数据集与学习模型** | 形成可信预测能力 | DatasetSnapshot、异常检测、残差或条件效果模型、不确定性、端侧 ModelBundle 候选 | R5-A 可先闭合 syntheticLearningContractStatus；realWorldGeneralizationStatus 保持 Open，直至跨设备/跨工况 holdout 与治理条件到位 |
+| **R5 数据集与学习模型** | 形成可信预测能力 | DatasetSnapshot、异常检测、残差或条件效果模型、不确定性、端侧 ModelBundle 候选、R5-B real holdout readiness | R5-A 可先闭合 syntheticLearningContractStatus；R5-B 先闭合 real holdout readiness；realWorldGeneralizationStatus 保持 Open，直至跨设备/跨工况 holdout 与治理条件到位 |
 | **R6 受约束参数推荐** | 反向寻找候选参数 | 目标或约束、代理辅助搜索、Recommendation、离线与 shadow gate | 候选不违反硬约束，建议可解释、可复验、不可自动写入 |
 | **R7 受控闭环** | 在控制包线内自动调整 | 权限、限幅、停止、回滚、审计、在线监控 | 安全论证、责任边界和运行证据满足具体部署要求 |
 
@@ -430,7 +432,7 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 - R2：已完成 Math F0–F4 的五轴数学领域包闭环，Reference Solver / SUT 验收现在是已关闭的数学门禁，不再新增驱动器写入或控制器上机许可；
 - R3：已完成 Windows JSON capture 的只读参考链，冻结 Device/Profile、raw telemetry、时钟/坐标上下文、paired/unpaired MachineRun lineage、五类 `Observed` 数据 Claim 和 Machine Lab；它不代表真实控制器协议或写能力已经实现；
 - R4：首片冻结 Windows 轴空间一阶响应模型、独立 synthetic SIL oracle、校准/holdout 隔离、显式时间/通道对齐和单位分组残差；这只闭合合同片，不能把真实设备 reality gate 标为完成；
-- R5：R5-A Windows synthetic learning 合同片已实现，已冻结 DatasetSnapshot、split/lineage/governance、X-only 残差、split conformal 不确定性、JSON ModelBundle、typed API/UI 和禁语边界；这只闭合合同片，不能把真实跨设备泛化门标为完成；
+- R5：R5-A Windows synthetic learning 合同片已实现，已冻结 DatasetSnapshot、split/lineage/governance、X-only 残差、split conformal 不确定性、JSON ModelBundle、typed API/UI 和禁语边界；R5-B Windows real holdout readiness 合同片已实现，已冻结 RealPairedHoldoutSet、RealHoldoutGovernance、RealHoldoutSelectionReceipt、case-scoped Evidence、外部上传入口和就绪阈值，但仍不能把真实跨设备泛化门标为完成；
 - R6–R7：保持受约束推荐和受控闭环的阶段门清晰，不提前锁定具体驱动器、数据库、训练框架或优化算法。
 
 R4 的首个具体合同见[物理模型与现实对齐规范](物理模型与现实对齐规范.md)：`PhysicalResponseTrace` 是模型执行主 Artifact，数学命令、物理模型、标定、R3 raw observation 与对齐记录保持独立内容身份。首个参考数据来自结构不同于候选模型的 synthetic SIL oracle；阶段报告必须把 `syntheticContractStatus` 与 `realityValidationStatus` 分开。新增真实设备 source 时仍须独立冻结厂商协议、许可、最小权限和环境验收，不从文件回放结果外推。
@@ -453,7 +455,7 @@ R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门，�
 | R0–R1 | Point Lab Web Workbench：导入、编辑、执行、评价、比较和下载证据包 |
 | R2 | Five-Axis Algorithm Lab：数学参考、算法适配、回归与诊断 |
 | R3–R4 | Machine Lab：仿真或设备运行、遥测对齐和差异定位 |
-| R5 | Intelligence Lab：数据集、漂移、残差和效果预测 |
+| R5 | Intelligence Lab：数据集、漂移、残差、真实 holdout 就绪和效果预测 |
 | R6 | Optimization Lab：目标或约束定义、候选参数和验证计划 |
 | R7 | Controlled Runtime：限定包线内的受控执行和监控 |
 
@@ -640,7 +642,7 @@ Axiom 借鉴其“分层、契约、逐级证据和受控升级”，但内部 C
 - R6：受约束优化与安全闭环规范；
 - 新增长期且存在替代方案的技术决策时：新增或替代 ADR。
 
-R3–R5 的设备、物理与学习规范已经创建；R5-A Windows synthetic learning 合同片已经实现，不再列入“未来再创建”的空壳队列。真实跨设备/工况的 R5-B 泛化门仍保持 Open。
+R3–R5 的设备、物理与学习规范已经创建；R5-A Windows synthetic learning 合同片已经实现，R5-B Windows real holdout readiness 合同片也已经实现，不再列入“未来再创建”的空壳队列。真实跨设备/工况的 realWorldGeneralizationStatus 仍保持 Open。
 
 详细触发条件见 [README](README.md)。这保证现在有清晰边界，又不把尚未验证的想法伪装成稳定规范。
 

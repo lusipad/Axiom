@@ -12,6 +12,7 @@ from .r7b_models import DeploymentControllerProfile, ReadOnlyAuthorityEvidence
 from .r7d_models import BeckhoffRuntimeEvidence, BeckhoffTwinCatVendorProfile
 from .r7d_scenarios import build_default_beckhoff_profile
 from .r7e_models import (
+    R7E_DEFAULT_CASE_ID,
     R7E_DEFAULT_SCENARIO_ID,
     R7E_DOMAIN_PACK_ID,
     R7E_EVALUATOR_ID,
@@ -549,6 +550,8 @@ def _run_spec(
     command: Any,
     shadow_evidence: BeckhoffShadowRunEvidence | None,
     audit: BeckhoffShadowRunReadinessAudit,
+    *,
+    case_id: str = R7E_DEFAULT_CASE_ID,
 ) -> dict[str, Any]:
     request: dict[str, Any] = {
         "artifact": audit.model_dump(mode="json", by_alias=True, exclude_none=True),
@@ -559,7 +562,7 @@ def _run_spec(
             mode="json", by_alias=True, exclude_none=True
         ),
         "case": {
-            "caseId": "control.r7e.beckhoff-shadow-run.case@1",
+            "caseId": case_id,
             "requiredMetrics": [
                 "control.beckhoff-shadow-contract@1",
                 "control.beckhoff-deployment-shadow@1",
@@ -608,6 +611,8 @@ def _payload(
     capture_authorization: BeckhoffShadowCaptureAuthorization | None,
     command: Any,
     shadow_evidence: BeckhoffShadowRunEvidence | None,
+    *,
+    case_id: str = R7E_DEFAULT_CASE_ID,
 ) -> R7EExamplePayload:
     audit = assess_r7e_shadow(
         vendor_profile,
@@ -629,6 +634,7 @@ def _payload(
         command,
         shadow_evidence,
         audit,
+        case_id=case_id,
     )
     RunSpec.model_validate(run_spec)
     return R7EExamplePayload(
@@ -747,6 +753,7 @@ def assess_r7e_payload(request: R7EAssessmentRequest) -> R7EExamplePayload:
         request.capture_authorization,
         request.command,
         request.shadow_evidence,
+        case_id=request.case_id or R7E_DEFAULT_CASE_ID,
     )
 
 

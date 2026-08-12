@@ -108,6 +108,7 @@ from .r7d_scenarios import (
     validate_r7d_example_run_spec,
 )
 from .r7e_models import (
+    R7E_DEFAULT_CASE_ID,
     R7E_DEFAULT_SCENARIO_ID,
     R7E_DOMAIN_PACK_ID,
     R7E_EVALUATOR_ID,
@@ -180,6 +181,7 @@ __all__ = [
     "R7EExamplePayload",
     "R7EManifest",
     "R7EScenarioSummary",
+    "R7E_DEFAULT_CASE_ID",
     "R7E_DEFAULT_SCENARIO_ID",
     "R7E_DOMAIN_PACK",
     "R7E_DOMAIN_PACK_ID",

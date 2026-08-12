@@ -94,8 +94,10 @@ jobs:
           & dist/opcua-shadow-win-x64/axiom-opcua-shadow.exe --help
           & dist/opcua-shadow-win-x64/permission-verifier/Axiom.OpcUaShadow.BeckhoffPermissionVerifier.exe --help
           Copy-Item adapters/opcua-shadow/README.md dist/opcua-shadow-win-x64/README.md
+          Copy-Item FIELD-EVIDENCE-WINDOWS.md dist/opcua-shadow-win-x64/FIELD-EVIDENCE-WINDOWS.md
           Copy-Item examples/opcua-shadow.windows.example.json dist/opcua-shadow-win-x64/opcua-shadow.windows.example.json
           Copy-Item examples/beckhoff-twincat-profile.windows.json dist/opcua-shadow-win-x64/beckhoff-twincat-profile.windows.json
+          Copy-Item examples/field-evidence.open-request.json dist/opcua-shadow-win-x64/field-evidence.open-request.json
           Compress-Archive `
             -Path dist/opcua-shadow-win-x64/* `
             -DestinationPath "dist/axiom-opcua-shadow-$env:GITHUB_REF_NAME-win-x64.zip"
@@ -127,6 +129,7 @@ jobs:
               "axiom/control/r7c_models.py",
               "axiom/control/r7d_models.py",
               "axiom/control/r7e_models.py",
+              "axiom/field_evidence.py",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -147,7 +150,11 @@ jobs:
           from pathlib import Path
 
           import axiom
-          from axiom import evaluate_run
+          from axiom import (
+              FieldEvidenceAssessmentRequest,
+              assess_field_evidence,
+              evaluate_run,
+          )
           from axiom.five_axis.f2_runtime import current_f2_numeric_environment
           from axiom.five_axis.f2_scenarios import validate_f2_example_run_spec
           from axiom.five_axis.f3_scenarios import (
@@ -218,7 +225,7 @@ jobs:
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.18.0"
+          assert version("axiom-evaluator") == "0.19.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -402,6 +409,20 @@ jobs:
               "five-axis.device-safe-claim@1",
               "five-axis.process-safe-claim@1",
           }.intersection(r41_claims)
+          field_report = assess_field_evidence(
+              FieldEvidenceAssessmentRequest(
+                  schemaId="axiom.field-evidence-assessment-request@1",
+                  schemaVersion=1,
+                  assessmentId="release-smoke.field-evidence@1",
+                  calibrationPairId="release-smoke.calibration@1",
+                  validationPairId="release-smoke.validation@1",
+                  calibration={"caseId": "release-smoke.case@1"},
+                  validation={"caseId": "release-smoke.case@1"},
+              )
+          )
+          assert field_report.overall_status == "Open"
+          assert field_report.counts_toward_reality is False
+          assert field_report.device_safety_status == "NotAssessed"
 
           intelligence_manifest = build_r5_manifest()
           assert intelligence_manifest["platform"] == "windows"
@@ -537,6 +558,23 @@ jobs:
             $r41Example = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/physical-r41?scenarioId=physical-reality-evidence-open"
             if ($r41Example.runSpec.domainPackId -ne "five-axis.domain-pack@7" -or $null -ne $r41Example.calibrationPair -or $null -ne $r41Example.validationPair -or $r41Example.analysis.realityValidationStatus -ne "Open") {
               throw "installed wheel did not preserve the R4.1 Open evidence boundary"
+            }
+            $fieldRequest = @{
+              schemaId = "axiom.field-evidence-assessment-request@1"
+              schemaVersion = 1
+              assessmentId = "release-smoke.http-field-evidence@1"
+              calibrationPairId = "release-smoke.http-calibration@1"
+              validationPairId = "release-smoke.http-validation@1"
+              calibration = @{ caseId = "release-smoke.http-case@1" }
+              validation = @{ caseId = "release-smoke.http-case@1" }
+            } | ConvertTo-Json -Depth 5
+            $fieldReport = Invoke-RestMethod `
+              -Method Post `
+              -ContentType "application/json" `
+              -Body $fieldRequest `
+              http://127.0.0.1:8765/api/v1/field-evidence/assess
+            if ($fieldReport.overallStatus -ne "Open" -or $fieldReport.countsTowardReality -or $fieldReport.deviceSafetyStatus -ne "NotAssessed") {
+              throw "installed wheel did not preserve the field evidence Open boundary"
             }
             $intelligenceManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/intelligence/r5/manifest
             if ($intelligenceManifest.stage -ne "R5-A" -or $intelligenceManifest.syntheticLearningContractStatus -ne "Passed" -or $intelligenceManifest.realWorldGeneralizationStatus -ne "Open") {

@@ -1,6 +1,6 @@
 # Axiom 文档入口
 
-> 状态：v0.18.0 Windows 发布版本；R0–R2 已闭合，R3–R6 参考合同片、R7-A–R7-E 与 R4.1 双运行 reality evaluator 已实现；真实现场证据/受控闭环保持 Open
+> 状态：v0.19.0 Windows 发布版本；R0–R2 已闭合，R3–R6 参考合同片、R7-A–R7-E、R4.1 双运行 reality evaluator 与现场验收编排已实现；真实现场证据/受控闭环保持 Open
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL / R4.1 Reality` + Intelligence `R5-A / R5-B` + Optimization `R6 v1` + Controlled Runtime `R7-A–R7-E`
 > 更新日期：2026-08-13
 
@@ -41,12 +41,12 @@ flowchart LR
 
 - 讨论产品方向：本文档 → 项目规划蓝图。
 - 设计平台内核：本文档 → 通用评估框架规范 → 有序离散点领域包规范。
-- 研究五轴数学：通用评估框架规范 → FiveAxisTrajectoryPack 全景规范。
+- 研究五轴数学：通用评估框架规范 → FiveAxisTrajectoryPack 全景规范 → [F0 fixture 说明](fixtures/five_axis_f0/README.md)。
 - 研究设备只读观测：项目规划蓝图 R3 → 设备接入与物理闭环规范 → 通用评估框架规范的证据与追溯要求。
 - 研究物理模型与现实对齐：项目规划蓝图 R4 → 物理模型与现实对齐规范 → 设备接入与物理闭环规范 → ADR-0015。
 - 研究机器学习：项目规划蓝图 R5 → 数据集与学习模型规范 → ADR-0016 / ADR-0017。
 - 研究受约束推荐：项目规划蓝图 R6 → 受约束优化与安全闭环规范 → ADR-0018 → 通用评估框架规范的角色与安全边界。
-- 研究真实控制器前置接入：项目规划蓝图 R7 → 受约束优化与安全闭环规范 R7-B–R7-E → ADR-0020–ADR-0023 → 设备接入与物理闭环规范。
+- 研究真实控制器前置接入：项目规划蓝图 R7 → 受约束优化与安全闭环规范 R7-B–R7-E → ADR-0020–ADR-0024 → 设备接入与物理闭环规范 → [OPC UA Shadow Adapter 使用说明](adapters/opcua-shadow/README.md)。
 - 了解为何选择当前契约：对应规范 → ADR 索引 → 具体 ADR。
 - 查看版本变化与升级边界：[CHANGELOG](CHANGELOG.md)。
 
@@ -94,13 +94,13 @@ R7-C 新增隔离的 Windows `.NET 8` OPC UA Shadow Adapter 和 `control.domain-
 
 R7-D 选择 Beckhoff TwinCAT 3 Build 4026+ / TF6100 作为首个具体厂商路径，并新增 `control.domain-pack@4`、版本化 Vendor Profile、Windows `tcpkg`/二进制预检、标准 BuildInfo、TF6100 许可证结果、五轴节点访问级别与独立非执行 canary 拒写证据。生产 Adapter 继续零 Write/Call；权限验证器是单独程序集，只有部署责任人明确授权专用 canary 时才允许执行一次同值 Write。当前开发机没有 TwinCAT/TF6100，因此默认只证明 Profile 合同并返回 `vendorRuntimeStatus=Open`；现实与安全 gate 不升级。详细边界见[ADR-0022](架构决策记录/ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md)。
 
-R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订阅控制器端 `sampleIndex`，每个新索引触发一次 command hash、sample index、X/Y/Z/B/C 七节点 batch Read；M5 索引必须完整连续，不插值，Write/Call 固定为 0。R4.1 使用 `five-axis.domain-pack@7` 消费两个不同授权、不同时间窗的 R7-E calibration/validation pair，冻结参数后在 holdout 上分别验证线性 `mm` 与旋转 `rad` 残差。仓库只提供 Open 场景和合同 conformance，不内置伪真实正例；详细边界见[ADR-0023](架构决策记录/ADR-0023-R7E样本索引采集与R41双运行现实门.md)。
+R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订阅控制器端 `sampleIndex`，每个新索引触发一次 command hash、sample index、X/Y/Z/B/C 七节点 batch Read；M5 索引必须完整连续，不插值，Write/Call 固定为 0。R4.1 使用 `five-axis.domain-pack@7` 消费两个不同授权、不同时间窗的 R7-E calibration/validation pair，冻结参数后在 holdout 上分别验证线性 `mm` 与旋转 `rad` 残差。v0.19.0 增加统一现场验收编排：显式保留现场 `caseId`，依次重验两个 R7-E 门并生成内容寻址的 R4.1 报告。仓库只提供 Open 场景和合同 conformance，不内置伪真实正例；详细边界见[Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)与[ADR-0023](架构决策记录/ADR-0023-R7E样本索引采集与R41双运行现实门.md)。
 
-## v0.18.0 快速开始
+## v0.19.0 快速开始
 
-v0.18.0 保留既有实验室，并新增 Field Evidence 工作台。它把 R7-E Shadow receipt、calibration pair、validation pair、R4.1 reality gate 和永久安全边界放在同一证据链；页面只允许导入 JSON 做核验，不提供 PLC 连接、写入、启动或控制入口。
+v0.19.0 的 Field Evidence 工作台分别导入 calibration 与 validation 两份 R7-E payload，再由统一服务端编排器重验 Case、内容身份、独立性和 R4.1 holdout gate；页面不提供 PLC 连接、写入、启动或控制入口。
 
-v0.18.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
+v0.19.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 F4 最短用法是先取场景 payload，再把 `runSpec` 送回公共执行接口。下面这个例子会返回 `Passed`，并保留 7 个数学 gate claims：
 
@@ -177,6 +177,16 @@ assert claims["five-axis.physical-model-reality-validated-claim@2"] == "Inconclu
 - `GET /api/v1/examples/physical-r41`
 - `POST /api/v1/physical/r41/assess`
 - `POST /api/v1/runs/evaluate`
+
+现场使用不再需要手工拼装两个 pair。把相同显式 `caseId` 的 calibration/validation R7-E 输入放入一个请求，然后运行：
+
+```powershell
+axiom field-evidence .\field-evidence-request.json |
+  Set-Content -Encoding utf8 .\field-evidence-report.json
+$LASTEXITCODE  # 0=Passed, 1=Open/Blocked/Refuted, 2=Malformed
+```
+
+对应 HTTP 入口是 `POST /api/v1/field-evidence/assess`。完整字段、现场前置条件和安全边界见 [Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)；可执行的 Open 骨架见 [`examples/field-evidence.open-request.json`](examples/field-evidence.open-request.json)。
 
 R5-A 同样走公共 Run 路径。正例只支持 synthetic learning Claim，真实泛化 Claim 必须保持 `Inconclusive`：
 
@@ -475,8 +485,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.18.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；R6 v1 固定为六点完全枚举，R7-A 固定为五个 bounded synthetic shadow 场景，R7-B 固定为两个只读就绪性场景，R7-C 固定为一个开放基线与 Windows localhost 网络验收，R7-D/R7-E 各固定一个 Beckhoff 开放基线和外部证据导入，R4.1 固定为两个独立运行。超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
+v0.19.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较、实验或现场证据请求最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；R6 v1 固定为六点完全枚举，R7-A 固定为五个 bounded synthetic shadow 场景，R7-B 固定为两个只读就绪性场景，R7-C 固定为一个开放基线与 Windows localhost 网络验收，R7-D/R7-E 各固定一个 Beckhoff 开放基线和外部证据导入，R4.1 固定为两个独立运行。超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.18.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B/R7-D/R7-E 与 R4.1 只验证导入证据；R7-C–R7-E 的独立 `.NET` 生产程序只有在部署者显式运行时才建立 OPC UA read/subscribe 网络会话，生产源码没有设备写或方法调用路径。R7-D 权限 verifier 仅用于经部署责任人授权的专用非执行 canary，并与生产 Adapter 隔离。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。
+v0.19.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B/R7-D/R7-E、R4.1 与现场验收包只验证导入证据；R7-C–R7-E 的独立 `.NET` 生产程序只有在部署者显式运行时才建立 OPC UA read/subscribe 网络会话，生产源码没有设备写或方法调用路径。R7-D 权限 verifier 仅用于经部署责任人授权的专用非执行 canary，并与生产 Adapter 隔离。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。

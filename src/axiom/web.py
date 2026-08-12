@@ -33,6 +33,11 @@ from .control import (
 )
 from .domain import list_domain_packs
 from .experiment import contour_ab_example, run_experiment
+from .field_evidence import (
+    FieldEvidenceAssessmentReport,
+    FieldEvidenceAssessmentRequest,
+    assess_field_evidence,
+)
 from .five_axis import (
     F1ExamplePayload,
     F1MathStageManifest,
@@ -792,6 +797,17 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     )
     def control_r7e_assess(request: R7EAssessmentRequest) -> R7EExamplePayload:
         return _load_control_r7_api().assess_r7e_payload(request)
+
+    @app.post(
+        "/api/v1/field-evidence/assess",
+        response_model=FieldEvidenceAssessmentReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def field_evidence_assess(
+        request: FieldEvidenceAssessmentRequest,
+    ) -> FieldEvidenceAssessmentReport:
+        return assess_field_evidence(request)
 
     @app.post(
         "/api/v1/experiments/run",

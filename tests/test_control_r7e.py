@@ -4,11 +4,14 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from axiom.control import (
+    R7EAssessmentRequest,
     R7E_DEFAULT_SCENARIO_ID,
     R7E_DOMAIN_PACK_ID,
     BeckhoffShadowCaptureAuthorization,
+    assess_r7e_payload,
     assess_r7e_shadow,
     build_default_beckhoff_shadow_witness_profile,
     build_r7e_manifest,
@@ -17,6 +20,7 @@ from axiom.control import (
     validate_r7e_example_run_spec,
 )
 from axiom.control.models import canonical_hash
+from axiom.five_axis import f4_example_payload
 from axiom.run import evaluate_run
 
 
@@ -190,6 +194,22 @@ def test_r7e_capture_authorization_requires_an_ordered_utc_window() -> None:
     )
     with pytest.raises(ValueError, match="explicit UTC offset"):
         BeckhoffShadowCaptureAuthorization.model_validate(naive_window)
+
+
+def test_r7e_external_command_requires_and_preserves_case_identity() -> None:
+    command = f4_example_payload("canonical-head-table-solver")["artifacts"][
+        "referenceCommand"
+    ]
+
+    with pytest.raises(ValidationError, match="caseId is required"):
+        R7EAssessmentRequest.model_validate({"command": command})
+
+    request = R7EAssessmentRequest.model_validate(
+        {"caseId": "site.part-family-17@1", "command": command}
+    )
+    payload = assess_r7e_payload(request)
+
+    assert payload.run_spec["request"]["case"]["caseId"] == "site.part-family-17@1"
 
 
 def test_r7e_complete_real_criteria_support_only_case_scoped_shadow() -> None:

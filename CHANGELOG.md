@@ -17,7 +17,7 @@
 
 ### Verification
 
-- Windows AMD64 / CPython 3.12.10 冻结接受环境全量验证通过：Python `657 passed`，网页 `35 passed`，TypeScript 检查与生产构建通过。
+- Windows AMD64 / CPython 3.12.10 冻结接受环境全量验证通过：Python `661 passed`，网页 `36 passed`，TypeScript 检查与生产构建通过。
 - R7-B 覆盖公共 Run 的 `Inconclusive` 语义、内容身份篡改、非 Windows 结构化 Unsupported、OpenAPI 响应、JSON 证据导入和禁设备控制 UI。
 
 ### Boundary

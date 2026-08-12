@@ -1,8 +1,8 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.13.0
-> 当前阶段：R6 Windows Offline Recommendation v1 已实现 / 真实泛化、Shadow 与设备写入 gate 保持 Open
+> 状态：Draft / 方向重整与契约闭合版 v0.15.0
+> 当前阶段：R7-B Windows Deployment Shadow Readiness 合同片已实现 / 真实厂商 Adapter、受控试验与设备写入 gate 保持 Open
 > 更新日期：2026-08-12
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)

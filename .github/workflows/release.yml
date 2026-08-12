@@ -79,6 +79,8 @@ jobs:
               "axiom/five_axis/fixtures/manifest.json",
               "axiom/five_axis/fixtures/math_stage_manifest.json",
               "axiom/five_axis/fixtures/sampled_cartesian_view.json",
+              "axiom/machine/fixtures/manifest.json",
+              "axiom/machine/fixtures/captures/read-only-paired-pass.trace.json",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -108,9 +110,14 @@ jobs:
               validate_f4_example_run_spec,
           )
           from axiom.five_axis.f4_runtime import current_f4_numeric_environment
+          from axiom.machine import (
+              MACHINE_OBSERVATION_DOMAIN_PACK_ID,
+              machine_r3_example_run_spec,
+              load_machine_r3_manifest,
+          )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.8.0"
+          assert version("axiom-evaluator") == "0.9.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -157,6 +164,33 @@ jobs:
               "five-axis.process-safe-claim@1",
           }.intersection(claims)
           assert build_f4_stage_acceptance_report().status == "Passed"
+
+          machine_manifest = load_machine_r3_manifest()
+          assert machine_manifest["readOnly"] is True
+          assert machine_manifest["safetyBanner"] == "READ ONLY / NOT DEVICE SAFE"
+          machine = evaluate_run(machine_r3_example_run_spec("read-only-paired-pass"))
+          assert validate_run_bundle_integrity(machine) == []
+          assert machine.run.domain_pack_id == MACHINE_OBSERVATION_DOMAIN_PACK_ID
+          assert machine.run.case_outcome.value == "Passed"
+          assert machine.observation.source == "ImportedArtifact"
+          assert set(machine.report.provenance.context_hashes) == {
+              "deviceProfile",
+              "clockMapping",
+              "coordinateAlignment",
+              "lineage",
+          }
+          machine_claims = {claim.claim_definition_id: claim.status.value for claim in machine.claims}
+          assert machine_claims["machine-observation.raw-integrity-claim@1"] == "Supported"
+          assert machine_claims["machine-observation.read-only-capture-claim@1"] == "Supported"
+          assert not {
+              "five-axis.device-safe-claim@1",
+              "five-axis.process-safe-claim@1",
+          }.intersection(machine_claims)
+
+          forbidden = evaluate_run(machine_r3_example_run_spec("forbidden-write-operation"))
+          assert validate_run_bundle_integrity(forbidden) == []
+          assert forbidden.run.execution_status.value == "Skipped"
+          assert forbidden.run.case_outcome.value == "Invalid"
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `
@@ -184,6 +218,14 @@ jobs:
             $index = (Invoke-WebRequest http://127.0.0.1:8765/).Content
             if ($index -notmatch '<div id="root"></div>') {
               throw "installed wheel did not serve the bundled workbench"
+            }
+            $machineManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/machine/r3/manifest
+            if (-not $machineManifest.readOnly -or $machineManifest.safetyBanner -ne "READ ONLY / NOT DEVICE SAFE") {
+              throw "installed wheel did not expose the R3 read-only manifest"
+            }
+            $machineExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/machine-r3?scenarioId=read-only-paired-pass"
+            if ($machineExample.runSpec.domainPackId -ne "machine-observation.domain-pack@1") {
+              throw "installed wheel did not expose the R3 example RunSpec"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

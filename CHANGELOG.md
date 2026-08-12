@@ -2,6 +2,32 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.9.0 - 2026-08-12
+
+### Added
+
+- 增加 R3 Windows 只读设备观测参考链：`machine-observation.domain-pack@1`、`machine.telemetry-trace`、`machine-trace-import@1` 和 `axiom.windows-file-telemetry-source@1`。
+- 增加有类型的 `DeviceProfile`、`ClockMapping`、`CoordinateAlignment` 与 paired/unpaired `MachineRunLineage`；Profile 冻结设备/导出身份和只读 operation，对齐对象冻结方法、来源、适用时间和标定上下文。
+- 增加五类最高为 `Observed` 的数据可信性 Claim，以及配对通过、未配对通过、缺时钟、序列 gap 和禁止写操作五个确定性场景。
+- 增加 R3 manifest/scenario/example API、统一 CLI 回放和 Machine Read-only Lab；页面分开展示 raw trace、派生对齐、谱系、Metric、Claim 与 Evidence。
+
+### Changed
+
+- `DomainPack` 新增通用 `importRunnerIds`，让非内建导入 Runner 也能把 Observation 来源稳定记录为 `ImportedArtifact`，同时保留 `artifact-import@1` 的既有兼容语义。
+- `Provenance` 新增可选 `contextHashes`，用于独立冻结不属于主 Artifact 的 Profile、对齐和谱系对象；未使用该能力的旧领域内容身份不变。
+- Roadmap 的 R3 v1 参考门切换为已闭合，下一工作面为 R4 物理模型与现实对齐。
+
+### Verification
+
+- R3 Python、CLI、HTTP 与网页端消费同一 RunSpec 和场景数据；重复回放会重验 trace、支持对象与 RunBundle 内容身份。
+- Windows 发布构建包含 R3 package fixtures 和 Machine Lab 静态资源，并在安装后重跑 paired 与禁止写操作 smoke。
+- 本地 Windows 候选验证为 Python 全量 `531 passed / 1 environment-bound skip`、网页 `16 passed`、TypeScript 与生产构建通过；安装后 wheel smoke 通过，视觉终审 `93/100`，依赖审计未发现已知漏洞。
+
+### Boundary
+
+- 本版本只支持 Windows 已落盘 JSON capture，不连接真实控制器、不轮询设备、不调用厂商 SDK，也不支持 Ubuntu/Linux。
+- R3 不提供设备写入、程序传输、cycle start 或联锁操作，不产生 `DeviceSafe`、`ProcessSafe`、`safe-to-run` 或上机许可。
+
 ## 0.8.0 - 2026-08-12
 
 ### Added

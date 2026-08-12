@@ -9,7 +9,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
-from .control import R7ExamplePayload, R7Manifest, R7ReplayRequest, R7ScenarioSummary
+from .control import (
+    R7BAssessmentRequest,
+    R7BExamplePayload,
+    R7BManifest,
+    R7BScenarioSummary,
+    R7ExamplePayload,
+    R7Manifest,
+    R7ReplayRequest,
+    R7ScenarioSummary,
+)
 from .domain import list_domain_packs
 from .experiment import contour_ab_example, run_experiment
 from .five_axis import (
@@ -582,6 +591,43 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             return _load_control_r7_api().r7_example_payload(request.scenario_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/control/r7b/manifest",
+        response_model=R7BManifest,
+        response_model_by_alias=True,
+    )
+    def control_r7b_manifest() -> R7BManifest:
+        return _load_control_r7_api().build_r7b_manifest()
+
+    @app.get(
+        "/api/v1/control/r7b/scenarios",
+        response_model=list[R7BScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def control_r7b_scenarios() -> list[R7BScenarioSummary]:
+        return list(_load_control_r7_api().list_r7b_scenarios())
+
+    @app.get(
+        "/api/v1/examples/control-r7b",
+        response_model=R7BExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7b_example(
+        scenarioId: str = "deployment-shadow-readiness-open",
+    ) -> R7BExamplePayload:
+        try:
+            return _load_control_r7_api().r7b_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/r7b/assess",
+        response_model=R7BExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7b_assess(request: R7BAssessmentRequest) -> R7BExamplePayload:
+        return _load_control_r7_api().assess_r7b_payload(request)
 
     @app.post(
         "/api/v1/experiments/run",

@@ -27,6 +27,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0015](ADR-0015-R4轴空间物理模型与SIL可信度边界.md) | R4 使用轴空间物理响应 Artifact，并把 synthetic SIL 与真实设备可信度严格分开 | Accepted |
 | [ADR-0016](ADR-0016-R5可审计数据集与端侧模型边界.md) | R5 使用可审计数据集快照、split/governance/lineage 和 Windows-only 端侧模型边界 | Accepted |
 | [ADR-0017](ADR-0017-R5B-Windows真实holdout就绪门边界.md) | R5-B 使用 Windows 真实 holdout 就绪门、case-scoped reality exit 和外部真实 capture 边界 | Accepted |
+| [ADR-0018](ADR-0018-R6多目标离线推荐与权限边界.md) | R6 使用无权重多目标 Offline Recommendation，并保持零设备写入与零自动接受 | Accepted |
 
 ## 生命周期规则
 

@@ -2,6 +2,30 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.13.0 - 2026-08-12
+
+### Added
+
+- 增加 Windows-only R6 Offline Recommendation：`optimization.domain-pack@1`、两参数六点确定性搜索、三目标无权重 Pareto、RecommendationSet 内容身份和公共 Run 重放验收。
+- 增加 R4 多采样率适用性证据，用结构不同的双滞后 oracle 独立覆盖 `0.04s` / `0.08s`；物理仿真现在拒绝超出模型声明适用范围的采样周期。
+- 增加 Optimization R6 Lab、manifest/scenario/example/search API、目标上限输入、候选矩阵、七数学硬门、OOD 注记和验证/回滚计划。
+- 增加[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)与 ADR-0018。
+
+### Changed
+
+- `feedOverride` 通过按 `f/f²/f³` 降额运动约束后重新规划 M4，不再通过缩放旧时间戳伪造新证书。
+- R5 模型只承担 OOD 注记与晋级阻断；首版物理目标来自 R4 模型响应，秒、毫米和样本数不相加。
+
+### Verification
+
+- Windows AMD64 / CPython 3.12.10 发布环境全量验证通过：Python `625 passed`，网页 `29 passed`，TypeScript 检查与生产构建通过。
+- 安装后的 `0.13.0` wheel 在固定数值环境中重放 6 个候选与 6 个 Pareto 候选，R6 内容身份和公共 Run 完整性 smoke 通过。
+
+### Boundary
+
+- 所有 Recommendation 固定为 `Offline`，`deviceWriteAllowed=false`、`automaticAcceptanceAllowed=false`、`promotionEligible=false`。
+- `realityValidationStatus` 与 `realWorldGeneralizationStatus` 继续保持 Open；本版本不实现 Ubuntu/Linux/WSL、Shadow、Controlled Trial、Closed Loop、DeviceSafe 或 ProcessSafe。
+
 ## 0.12.0 - 2026-08-12
 
 ### Added

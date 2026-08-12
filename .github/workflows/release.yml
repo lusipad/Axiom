@@ -84,10 +84,14 @@ jobs:
               "axiom/physical/fixtures/manifest.json",
               "axiom/physical/fixtures/captures/in-domain-synthetic-sil.response.json",
               "axiom/intelligence/fixtures/manifest.json",
+              "axiom/optimization/search.py",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
                   raise SystemExit(f"release wheel is missing {entry}")
+          web_assets = [name for name in names if name.startswith("axiom/web_dist/assets/")]
+          if len(web_assets) != 2:
+              raise SystemExit(f"release wheel must contain exactly one current JS/CSS pair: {web_assets}")
 
       - name: Smoke test installed wheel
         run: |
@@ -138,9 +142,15 @@ jobs:
               validate_r4_example_run_spec,
           )
           from axiom.physical.runtime import REALITY_VALIDATED_CLAIM_ID
+          from axiom.optimization import (
+              R6_DOMAIN_PACK_ID,
+              build_r6_manifest,
+              r6_example_payload,
+              validate_r6_example_run_spec,
+          )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.12.0"
+          assert version("axiom-evaluator") == "0.13.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -294,6 +304,21 @@ jobs:
               "five-axis.device-safe-claim@1",
               "five-axis.process-safe-claim@1",
           }.intersection(r5b_claims)
+
+          r6_manifest = build_r6_manifest()
+          assert r6_manifest.domain_pack_id == R6_DOMAIN_PACK_ID
+          assert r6_manifest.permission_level == "Offline"
+          assert r6_manifest.device_write_allowed is False
+          r6_example = r6_example_payload()
+          assert len(r6_example.recommendation_set.candidates) == 6
+          assert r6_example.recommendation_set.pareto_candidate_ids
+          assert r6_example.recommendation_set.content_hash == "f4a4bd3d44b21f9bd068005bbdd5c88c5f7c4b63b3493b3a73c72105ddf0b97d"
+          assert all(candidate.hard_constraints_satisfied for candidate in r6_example.recommendation_set.candidates)
+          assert all(not candidate.promotion_eligible for candidate in r6_example.recommendation_set.candidates)
+          r6 = evaluate_run(validate_r6_example_run_spec())
+          assert validate_run_bundle_integrity(r6) == []
+          assert r6.run.domain_pack_id == R6_DOMAIN_PACK_ID
+          assert r6.run.case_outcome.value == "Passed"
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `
@@ -354,6 +379,14 @@ jobs:
             if ($r5bExample.runSpec.domainPackId -ne "intelligence.domain-pack@2" -or $null -ne $r5bExample.realHoldoutSet) {
               throw "installed wheel did not preserve the R5-B Open example boundary"
             }
+            $r6Manifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/optimization/r6/manifest
+            if ($r6Manifest.domainPackId -ne "optimization.domain-pack@1" -or $r6Manifest.permissionLevel -ne "Offline" -or $r6Manifest.deviceWriteAllowed) {
+              throw "installed wheel did not expose the R6 Offline contract"
+            }
+            $r6Example = Invoke-RestMethod http://127.0.0.1:8765/api/v1/examples/optimization-r6
+            if ($r6Example.runSpec.domainPackId -ne "optimization.domain-pack@1" -or $r6Example.recommendationSet.candidates.Count -ne 6 -or $r6Example.recommendationSet.deviceWriteAllowed) {
+              throw "installed wheel did not preserve the R6 recommendation boundary"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
@@ -363,6 +396,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R5BExamplePayload") {
               throw "installed wheel did not expose the typed R5-B OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R6ExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "OptimizationSearchRequest") {
+              throw "installed wheel did not expose the typed R6 OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

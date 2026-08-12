@@ -1,8 +1,8 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.12.0
-> 当前阶段：R5-A Windows synthetic learning 合同片与 R5-B real holdout readiness 合同片已实现 / 真实泛化 gate 保持 Open
+> 状态：Draft / 方向重整与契约闭合版 v0.13.0
+> 当前阶段：R6 Windows Offline Recommendation v1 已实现 / 真实泛化、Shadow 与设备写入 gate 保持 Open
 > 更新日期：2026-08-12
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)
@@ -433,11 +433,12 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 - R3：已完成 Windows JSON capture 的只读参考链，冻结 Device/Profile、raw telemetry、时钟/坐标上下文、paired/unpaired MachineRun lineage、五类 `Observed` 数据 Claim 和 Machine Lab；它不代表真实控制器协议或写能力已经实现；
 - R4：首片冻结 Windows 轴空间一阶响应模型、独立 synthetic SIL oracle、校准/holdout 隔离、显式时间/通道对齐和单位分组残差；这只闭合合同片，不能把真实设备 reality gate 标为完成；
 - R5：R5-A Windows synthetic learning 合同片已实现，已冻结 DatasetSnapshot、split/lineage/governance、X-only 残差、split conformal 不确定性、JSON ModelBundle、typed API/UI 和禁语边界；R5-B Windows real holdout readiness 合同片已实现，已冻结 RealPairedHoldoutSet、RealHoldoutGovernance、RealHoldoutSelectionReceipt、case-scoped Evidence、外部上传入口和就绪阈值，但仍不能把真实跨设备泛化门标为完成；
-- R6–R7：保持受约束推荐和受控闭环的阶段门清晰，不提前锁定具体驱动器、数据库、训练框架或优化算法。
+- R6：Windows Offline Recommendation v1 已实现，冻结 `feedOverride × samplePeriod` 六点网格、三目标无权重 Pareto、七数学硬门重放、R4 多采样率适用性证据、R5 OOD 注记和零写入验证计划；它不等于真实设备优化已经通过；
+- R7：保持受控闭环阶段门清晰，不提前锁定具体驱动器、权限系统或在线优化算法。
 
 R4 的首个具体合同见[物理模型与现实对齐规范](物理模型与现实对齐规范.md)：`PhysicalResponseTrace` 是模型执行主 Artifact，数学命令、物理模型、标定、R3 raw observation 与对齐记录保持独立内容身份。首个参考数据来自结构不同于候选模型的 synthetic SIL oracle；阶段报告必须把 `syntheticContractStatus` 与 `realityValidationStatus` 分开。新增真实设备 source 时仍须独立冻结厂商协议、许可、最小权限和环境验收，不从文件回放结果外推。
 
-R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门，不提前锁定数据库、通用训练框架或优化算法，更不会把在线学习或设备写回写进主线。
+R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门；R6 只把 R5 用作 OOD 注记和晋级阻断，不把 synthetic 模型升级为物理目标或真实泛化证据。R6 权威合同见[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)与[ADR-0018](架构决策记录/ADR-0018-R6多目标离线推荐与权限边界.md)。
 
 ### 10.2 依赖原则
 
@@ -624,7 +625,7 @@ Axiom 借鉴其“分层、契约、逐级证据和受控升级”，但内部 C
 
 ## 18. 文档演进
 
-当前规范性主体保持为八份，长期架构决策另以 ADR 记录：
+当前规范性主体保持为九份，长期架构决策另以 ADR 记录：
 
 1. [文档入口](README.md)；
 2. 本项目规划蓝图；
@@ -633,16 +634,14 @@ Axiom 借鉴其“分层、契约、逐级证据和受控升级”，但内部 C
 5. [FiveAxisTrajectoryPack — CNC 五轴数学参考系统全景规范](CNC%20数学参考系统全景规范.md)；
 6. [设备接入与物理闭环规范](设备接入与物理闭环规范.md)；
 7. [物理模型与现实对齐规范](物理模型与现实对齐规范.md)；
-8. [数据集与学习模型规范](数据集与学习模型规范.md)。
+8. [数据集与学习模型规范](数据集与学习模型规范.md)；
+9. [受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)。
 
 已生效的架构决策见 [ADR 索引](架构决策记录/README.md)。ADR 只记录跨文档、长期约束实现且存在实质替代方案的决定，不复制规范正文。
 
-当后续阶段真正启动时再创建：
+后续新增长期且存在替代方案的技术决策时，新增或替代 ADR。
 
-- R6：受约束优化与安全闭环规范；
-- 新增长期且存在替代方案的技术决策时：新增或替代 ADR。
-
-R3–R5 的设备、物理与学习规范已经创建；R5-A Windows synthetic learning 合同片已经实现，R5-B Windows real holdout readiness 合同片也已经实现，不再列入“未来再创建”的空壳队列。真实跨设备/工况的 realWorldGeneralizationStatus 仍保持 Open。
+R3–R6 的设备、物理、学习与受约束推荐规范已经创建。R6 v1 只闭合 Windows Offline Recommendation，真实跨设备/工况的 realWorldGeneralizationStatus、Shadow、Controlled Trial 与自动闭环仍保持 Open。
 
 详细触发条件见 [README](README.md)。这保证现在有清晰边界，又不把尚未验证的想法伪装成稳定规范。
 

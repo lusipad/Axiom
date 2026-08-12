@@ -1,4 +1,6 @@
 import type {
+  FieldEvidenceAssessmentReport,
+  FieldEvidenceAssessmentRequest,
   R41AssessmentRequest,
   R41ExamplePayload,
   R41Manifest,
@@ -43,6 +45,16 @@ export function loadR41Example(): Promise<R41ExamplePayload> {
 
 export function assessR41(request: R41AssessmentRequest): Promise<R41ExamplePayload> {
   return requestJson<R41ExamplePayload>("/api/v1/physical/r41/assess", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
+
+export function assessFieldEvidence(
+  request: FieldEvidenceAssessmentRequest,
+): Promise<FieldEvidenceAssessmentReport> {
+  return requestJson<FieldEvidenceAssessmentReport>("/api/v1/field-evidence/assess", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),

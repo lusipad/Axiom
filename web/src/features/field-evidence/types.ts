@@ -68,6 +68,7 @@ export interface R7EExamplePayload {
     deviceSafetyStatus: "NotAssessed";
     processSafetyStatus: "NotAssessed";
   };
+  runSpec?: Record<string, unknown>;
 }
 
 export interface R41Manifest {
@@ -118,6 +119,7 @@ export interface R41ExamplePayload {
 }
 
 export interface R7EAssessmentRequest {
+  caseId?: string | null;
   vendorProfile?: Record<string, unknown> | null;
   runtimeEvidence?: Record<string, unknown> | null;
   witnessProfile?: Record<string, unknown> | null;
@@ -134,4 +136,39 @@ export interface R41AssessmentRequest {
   fitImprovementMinimum?: number;
   excitationSpanMinimum?: number;
   decompositionTolerance?: number;
+}
+
+export interface FieldEvidenceAssessmentRequest {
+  schemaId: "axiom.field-evidence-assessment-request@1";
+  schemaVersion: 1;
+  assessmentId: string;
+  calibrationPairId: string;
+  validationPairId: string;
+  calibration: R7EAssessmentRequest;
+  validation: R7EAssessmentRequest;
+  fitImprovementMinimum?: number;
+  excitationSpanMinimum?: number;
+  decompositionTolerance?: number;
+}
+
+export interface FieldEvidenceAssessmentReport {
+  schemaId: "axiom.field-evidence-assessment-report@1";
+  schemaVersion: 1;
+  assessmentId: string;
+  caseId: string;
+  calibrationPairId: string;
+  validationPairId: string;
+  calibrationAssessment: R7EExamplePayload;
+  validationAssessment: R7EExamplePayload;
+  calibrationPair: R41ExamplePayload["calibrationPair"];
+  validationPair: R41ExamplePayload["validationPair"];
+  realityAssessment: R41ExamplePayload;
+  overallStatus: GateStatus;
+  countsTowardReality: boolean;
+  validationScope: "single-device-case-scoped";
+  controlledTrialStatus: "Open";
+  closedLoopStatus: "Open";
+  deviceSafetyStatus: "NotAssessed";
+  processSafetyStatus: "NotAssessed";
+  contentHash: string;
 }

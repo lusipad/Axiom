@@ -2,7 +2,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FieldEvidenceWorkbench } from "./FieldEvidenceWorkbench";
-import type { R41ExamplePayload, R41Manifest, R7EExamplePayload, R7EManifest } from "./types";
+import type {
+  FieldEvidenceAssessmentReport,
+  R41ExamplePayload,
+  R41Manifest,
+  R7EExamplePayload,
+  R7EManifest,
+} from "./types";
 
 const r7eManifest: R7EManifest = {
   manifestId: "control.r7e-manifest@1",
@@ -50,6 +56,7 @@ const r7ePayload: R7EExamplePayload = {
     deviceSafetyStatus: "NotAssessed",
     processSafetyStatus: "NotAssessed",
   },
+  runSpec: { request: { case: { caseId: "site.part-family-17@1" } } },
 };
 
 const r41Manifest: R41Manifest = {
@@ -95,6 +102,28 @@ const r41Payload: R41ExamplePayload = {
   },
 };
 
+const fieldReport: FieldEvidenceAssessmentReport = {
+  schemaId: "axiom.field-evidence-assessment-report@1",
+  schemaVersion: 1,
+  assessmentId: "axiom.field-evidence.web-assessment@1",
+  caseId: "site.part-family-17@1",
+  calibrationPairId: "axiom.field-evidence.calibration@1",
+  validationPairId: "axiom.field-evidence.validation@1",
+  calibrationAssessment: r7ePayload,
+  validationAssessment: r7ePayload,
+  calibrationPair: null,
+  validationPair: null,
+  realityAssessment: r41Payload,
+  overallStatus: "Open",
+  countsTowardReality: false,
+  validationScope: "single-device-case-scoped",
+  controlledTrialStatus: "Open",
+  closedLoopStatus: "Open",
+  deviceSafetyStatus: "NotAssessed",
+  processSafetyStatus: "NotAssessed",
+  contentHash: "d".repeat(64),
+};
+
 function response(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 }
@@ -117,18 +146,24 @@ describe("FieldEvidenceWorkbench", () => {
       { domainPackId: "five-axis.domain-pack@7", comparisonPolicyIds: [], runnerIds: [], runtimeBound: true },
     ] }} />);
 
-    expect(await screen.findByText("从一条真实只读轨迹，到一项受限的现实声明")).toBeInTheDocument();
+    expect(await screen.findByText("从两次真实只读轨迹，到一项受限的现实声明")).toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("READ / SUBSCRIBE ONLY · NOT DEVICE SAFE");
-    expect(screen.getAllByText("Missing")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "导入校准 Shadow 包" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入验证 Shadow 包" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行双证据验收" })).toBeInTheDocument();
     expect(screen.getByText("Write / Call").nextElementSibling).toHaveTextContent("0 / 0");
     expect(screen.getByText("NOT DEVICE SAFE")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /写入|启动|下发|闭环/i })).not.toBeInTheDocument();
   });
 
-  it("导入双运行包后只调用 R4.1 评估端点", async () => {
+  it("把两个同 Case 的 R7-E 结果交给现场证据评估端点", async () => {
     const blocked = {
-      ...r41Payload,
-      analysis: { ...r41Payload.analysis, realityValidationStatus: "Blocked" as const, fitStatus: "Blocked" as const },
+      ...fieldReport,
+      overallStatus: "Blocked" as const,
+      realityAssessment: {
+        ...r41Payload,
+        analysis: { ...r41Payload.analysis, realityValidationStatus: "Blocked" as const, fitStatus: "Blocked" as const },
+      },
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -136,20 +171,92 @@ describe("FieldEvidenceWorkbench", () => {
       if (url.endsWith("/examples/control-r7e")) return Promise.resolve(response(r7ePayload));
       if (url.endsWith("/physical/r41/manifest")) return Promise.resolve(response(r41Manifest));
       if (url.endsWith("/examples/physical-r41")) return Promise.resolve(response(r41Payload));
-      if (url.endsWith("/physical/r41/assess") && init?.method === "POST") return Promise.resolve(response(blocked));
+      if (url.endsWith("/field-evidence/assess") && init?.method === "POST") return Promise.resolve(response(blocked));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<FieldEvidenceWorkbench catalog={null} />);
-    await screen.findByText("从一条真实只读轨迹，到一项受限的现实声明");
-    const file = new File([JSON.stringify({ calibrationPair: { pairId: "cal@1" }, validationPair: { pairId: "val@1" } })], "reality.json", { type: "application/json" });
-    fireEvent.change(screen.getByLabelText("导入 R4.1 双运行证据 JSON"), { target: { files: [file] } });
+    await screen.findByText("从两次真实只读轨迹，到一项受限的现实声明");
+    fireEvent.click(screen.getByRole("button", { name: "运行双证据验收" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
     expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
     const call = fetchMock.mock.calls.at(-1);
-    expect(String(call?.[0])).toContain("/physical/r41/assess");
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ calibrationPair: { pairId: "cal@1" }, validationPair: { pairId: "val@1" } });
+    expect(String(call?.[0])).toContain("/field-evidence/assess");
+    const body = JSON.parse(String(call?.[1]?.body));
+    expect(body.calibration.caseId).toBe("site.part-family-17@1");
+    expect(body.validation.caseId).toBe("site.part-family-17@1");
+    expect(body.calibrationPairId).not.toBe(body.validationPairId);
+  });
+
+  it("新的验收失败时不会继续展示上一次 Reality 结果", async () => {
+    const passed = {
+      ...fieldReport,
+      overallStatus: "Passed" as const,
+      countsTowardReality: true,
+      realityAssessment: {
+        ...r41Payload,
+        analysis: {
+          ...r41Payload.analysis,
+          realityValidationStatus: "Passed" as const,
+          fitStatus: "Passed" as const,
+          countsTowardReality: true,
+        },
+      },
+    };
+    let assessmentCount = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/control/r7e/manifest")) return Promise.resolve(response(r7eManifest));
+      if (url.endsWith("/examples/control-r7e")) return Promise.resolve(response(r7ePayload));
+      if (url.endsWith("/physical/r41/manifest")) return Promise.resolve(response(r41Manifest));
+      if (url.endsWith("/examples/physical-r41")) return Promise.resolve(response(r41Payload));
+      if (url.endsWith("/field-evidence/assess") && init?.method === "POST") {
+        assessmentCount += 1;
+        if (assessmentCount === 1) return Promise.resolve(response(passed));
+        return Promise.resolve(new Response(JSON.stringify({ detail: "capture rejected" }), {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FieldEvidenceWorkbench catalog={null} />);
+    await screen.findByText("从两次真实只读轨迹，到一项受限的现实声明");
+    const runButton = screen.getByRole("button", { name: "运行双证据验收" });
+
+    fireEvent.click(runButton);
+    await waitFor(() => expect(screen.getAllByText("Passed").length).toBeGreaterThan(0));
+    fireEvent.click(runButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("capture rejected");
+    expect(screen.queryByText("case-scoped evidence")).not.toBeInTheDocument();
+    expect(screen.getByText("external evidence missing")).toBeInTheDocument();
+  });
+
+  it("重新导入 R7-E 结果时保留现场 Case 身份", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/control/r7e/manifest")) return Promise.resolve(response(r7eManifest));
+      if (url.endsWith("/examples/control-r7e")) return Promise.resolve(response(r7ePayload));
+      if (url.endsWith("/physical/r41/manifest")) return Promise.resolve(response(r41Manifest));
+      if (url.endsWith("/examples/physical-r41")) return Promise.resolve(response(r41Payload));
+      if (url.endsWith("/control/r7e/assess") && init?.method === "POST") return Promise.resolve(response(r7ePayload));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FieldEvidenceWorkbench catalog={null} />);
+    await screen.findByText("从两次真实只读轨迹，到一项受限的现实声明");
+    const file = new File([JSON.stringify(r7ePayload)], "shadow.json", { type: "application/json" });
+    fireEvent.change(screen.getByLabelText("导入校准 R7-E Shadow 证据 JSON"), { target: { files: [file] } });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    const call = fetchMock.mock.calls.at(-1);
+    expect(String(call?.[0])).toContain("/control/r7e/assess");
+    expect(JSON.parse(String(call?.[1]?.body)).caseId).toBe("site.part-family-17@1");
   });
 });

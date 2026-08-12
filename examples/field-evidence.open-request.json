@@ -1,0 +1,16 @@
+{
+  "schemaId": "axiom.field-evidence-assessment-request@1",
+  "schemaVersion": 1,
+  "assessmentId": "example.windows-field-evidence@1",
+  "calibrationPairId": "example.windows-field-evidence.calibration@1",
+  "validationPairId": "example.windows-field-evidence.validation@1",
+  "calibration": {
+    "caseId": "example.five-axis-part-family@1"
+  },
+  "validation": {
+    "caseId": "example.five-axis-part-family@1"
+  },
+  "fitImprovementMinimum": 0.2,
+  "excitationSpanMinimum": 0.000001,
+  "decompositionTolerance": 1e-12
+}

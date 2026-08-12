@@ -2,6 +2,34 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.19.0 - 2026-08-13
+
+### Added
+
+- 增加 `axiom.field-evidence-assessment-request@1` / `report@1`，把两次 R7-E assessment、pair 构造、R4.1 holdout 验证、最终状态与内容哈希收敛为一个确定性 Windows 现场验收流程。
+- 增加 `axiom field-evidence REQUEST.json` 和 `POST /api/v1/field-evidence/assess`；退出码固定为 `0=Passed`、`1=Open/Blocked/Refuted`、`2=Malformed`。
+- Field Evidence 网页工作台现在分别导入 calibration 与 validation 两份 R7-E payload，并通过统一服务端编排器执行验收；新增 [Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)和可执行 Open 请求骨架。
+
+### Changed
+
+- 外部 R7-E assessment 在包含 M5 command 或 Shadow evidence 时必须显式携带 `caseId`；生成的 RunSpec 原样保留该身份，避免不同现场输入被共享默认 Case 错误归并。
+- 现场报告仅在两个 R7-E deployment Shadow gate 都为 `Passed` 时创建有类型 calibration/validation pair；证据复用、跨 Case、门未闭合和 holdout 失配分别保持 `Blocked`、拒绝、`Open` 或 `Refuted`。
+- 发布目标继续只包含 Windows；现场编排器只读取导入 JSON，不添加 PLC 网络、Write、Method Call 或设备控制路径。
+
+### Fixed
+
+- 新的现场导入或双运行验收失败时立即清除旧 Reality 结果，避免错误提示旁继续显示上一次的 `Passed` 状态。
+
+### Verification
+
+- Python 定向覆盖 Open、Passed、Blocked、Refuted、跨 Case 拒绝、内容篡改、CLI 和 HTTP 确定性；网页组件测试、TypeScript 和 Vite 生产构建通过。
+- Field Evidence 双运行页面在 1440×1000 实页复核中无横向溢出，主动作层级视觉门为 `94/100`。
+
+### Boundary
+
+- Passed 测试数据只存在于单元测试，未进入公共示例；仓库仍没有可计入现实证据的 TwinCAT/TF6100 双运行 capture。
+- 即使 case-scoped reality 通过，Controlled Trial、Closed Loop、DeviceSafe、ProcessSafe 和跨设备/工况泛化仍保持 Open/NotAssessed。
+
 ## 0.18.0 - 2026-08-13
 
 ### Added

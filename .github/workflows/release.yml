@@ -62,7 +62,9 @@ jobs:
               raise SystemExit(f"tag {tag!r} does not match package version {version!r}")
 
       - name: Build release artifacts
-        run: python -m build
+        run: |
+          Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
+          python -m build
 
       - name: Verify bundled workbench
         shell: python
@@ -433,6 +435,14 @@ jobs:
             if ($r7Example.runSpec.domainPackId -ne "control.domain-pack@1" -or $r7Example.runtimeAudit.finalState -ne "RollbackVerified" -or $r7Example.runtimeAudit.deviceWritePerformed) {
               throw "installed wheel did not preserve the R7-A stop and no-write contract"
             }
+            $r7bManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/control/r7b/manifest
+            if ($r7bManifest.domainPackId -ne "control.domain-pack@2" -or $r7bManifest.permissionCeiling -ne "Shadow" -or $r7bManifest.deviceWriteAllowed -or $r7bManifest.vendorAdapterStatus -ne "Open" -or $r7bManifest.deploymentShadowStatus -ne "Open") {
+              throw "installed wheel did not expose the R7-B readiness boundary"
+            }
+            $r7bExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/control-r7b?scenarioId=contract-fixture-blocked"
+            if ($r7bExample.runSpec.domainPackId -ne "control.domain-pack@2" -or $r7bExample.readinessAudit.readinessOutcome -ne "Blocked" -or $r7bExample.readinessAudit.deploymentShadowStatus -ne "Open") {
+              throw "installed wheel did not preserve the R7-B non-reality fixture boundary"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
@@ -448,6 +458,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7ExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7ReplayRequest") {
               throw "installed wheel did not expose the typed R7-A OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7BExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7BAssessmentRequest") {
+              throw "installed wheel did not expose the typed R7-B OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

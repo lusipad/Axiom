@@ -29,4 +29,3 @@ export function replayR7Scenario(scenarioId: string): Promise<R7ExamplePayload> 
     body: JSON.stringify({ scenarioId }),
   });
 }
-

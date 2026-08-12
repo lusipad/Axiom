@@ -48,4 +48,3 @@ describe("ControlR7Workbench", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith("/control/r7/replay") && init?.method === "POST")).toBe(true));
   });
 });
-

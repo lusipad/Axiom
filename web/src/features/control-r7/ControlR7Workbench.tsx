@@ -188,4 +188,3 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
     </>
   );
 }
-

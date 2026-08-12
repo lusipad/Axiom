@@ -24,6 +24,10 @@ jobs:
           python-version: "3.12.10"
           cache: pip
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
       - uses: pnpm/setup@v1
         with:
           version: "11.21.0"
@@ -38,6 +42,12 @@ jobs:
 
       - name: Install web dependencies
         run: pnpm --dir web install --frozen-lockfile
+
+      - name: Verify Windows OPC UA shadow adapter
+        run: |
+          dotnet restore adapters/opcua-shadow/Axiom.OpcUaShadow.slnx --locked-mode
+          dotnet build adapters/opcua-shadow/Axiom.OpcUaShadow.slnx -c Release --no-restore
+          dotnet run --project adapters/opcua-shadow/tests/Axiom.OpcUaShadow.Conformance -c Release --no-build
 
       - name: Verify web application
         run: |

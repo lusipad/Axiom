@@ -25,6 +25,10 @@ jobs:
           python-version: "3.12.10"
           cache: pip
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
       - uses: pnpm/setup@v1
         with:
           version: "11.21.0"
@@ -43,6 +47,9 @@ jobs:
 
       - name: Verify release source
         run: |
+          dotnet restore adapters/opcua-shadow/Axiom.OpcUaShadow.slnx --locked-mode
+          dotnet build adapters/opcua-shadow/Axiom.OpcUaShadow.slnx -c Release --no-restore
+          dotnet run --project adapters/opcua-shadow/tests/Axiom.OpcUaShadow.Conformance -c Release --no-build
           pnpm --dir web test
           pnpm --dir web check
           pnpm --dir web build
@@ -65,6 +72,19 @@ jobs:
         run: |
           Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
           python -m build
+          dotnet publish adapters/opcua-shadow/src/Axiom.OpcUaShadow.Adapter `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:RestoreLockedMode=true `
+            -o dist/opcua-shadow-win-x64
+          Copy-Item adapters/opcua-shadow/README.md dist/opcua-shadow-win-x64/README.md
+          Copy-Item examples/opcua-shadow.windows.example.json dist/opcua-shadow-win-x64/opcua-shadow.windows.example.json
+          Compress-Archive `
+            -Path dist/opcua-shadow-win-x64/* `
+            -DestinationPath "dist/axiom-opcua-shadow-$env:GITHUB_REF_NAME-win-x64.zip"
+          Remove-Item -Recurse -Force dist/opcua-shadow-win-x64
 
       - name: Verify bundled workbench
         shell: python
@@ -88,6 +108,7 @@ jobs:
               "axiom/intelligence/fixtures/manifest.json",
               "axiom/optimization/search.py",
               "axiom/control/models.py",
+              "axiom/control/r7c_models.py",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -154,16 +175,20 @@ jobs:
           from axiom.control import (
               R7_DOMAIN_PACK_ID,
               R7B_DOMAIN_PACK_ID,
+              R7C_DOMAIN_PACK_ID,
               build_r7_manifest,
               build_r7b_manifest,
+              build_r7c_manifest,
               r7_example_payload,
               r7b_example_payload,
+              r7c_example_payload,
               validate_r7_example_run_spec,
               validate_r7b_example_run_spec,
+              validate_r7c_example_run_spec,
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.15.0"
+          assert version("axiom-evaluator") == "0.16.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -184,6 +209,18 @@ jobs:
           r7b = evaluate_run(validate_r7b_example_run_spec())
           assert validate_run_bundle_integrity(r7b) == []
           assert r7b.run.case_outcome.value == "Inconclusive"
+
+          r7c_manifest = build_r7c_manifest()
+          assert r7c_manifest.domain_pack_id == R7C_DOMAIN_PACK_ID
+          assert r7c_manifest.supported_platforms == ("Windows",)
+          assert r7c_manifest.device_write_allowed is False
+          assert r7c_manifest.network_conformance_status == "Passed"
+          assert r7c_manifest.vendor_adapter_status == "Open"
+          assert r7c_manifest.reality_validation_status == "Open"
+          assert r7c_example_payload().readiness_audit.virtual_transport_status == "Open"
+          r7c = evaluate_run(validate_r7c_example_run_spec())
+          assert validate_run_bundle_integrity(r7c) == []
+          assert r7c.run.case_outcome.value == "Inconclusive"
 
           f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
           assert validate_run_bundle_integrity(f2) == []
@@ -443,6 +480,14 @@ jobs:
             if ($r7bExample.runSpec.domainPackId -ne "control.domain-pack@2" -or $r7bExample.readinessAudit.readinessOutcome -ne "Blocked" -or $r7bExample.readinessAudit.deploymentShadowStatus -ne "Open") {
               throw "installed wheel did not preserve the R7-B non-reality fixture boundary"
             }
+            $r7cManifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/control/r7c/manifest
+            if ($r7cManifest.domainPackId -ne "control.domain-pack@3" -or $r7cManifest.permissionCeiling -ne "Shadow" -or $r7cManifest.deviceWriteAllowed -or $r7cManifest.networkConformanceStatus -ne "Passed" -or $r7cManifest.vendorAdapterStatus -ne "Open" -or $r7cManifest.realityValidationStatus -ne "Open") {
+              throw "installed wheel did not expose the R7-C virtual transport boundary"
+            }
+            $r7cExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/control-r7c?scenarioId=opcua-transport-evidence-open"
+            if ($r7cExample.runSpec.domainPackId -ne "control.domain-pack@3" -or $null -ne $r7cExample.transportEvidence -or $r7cExample.readinessAudit.virtualTransportStatus -ne "Open") {
+              throw "installed wheel did not preserve the R7-C Open example boundary"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
@@ -461,6 +506,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7BExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7BAssessmentRequest") {
               throw "installed wheel did not expose the typed R7-B OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7CExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7CAssessmentRequest") {
+              throw "installed wheel did not expose the typed R7-C OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

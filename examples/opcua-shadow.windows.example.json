@@ -1,0 +1,70 @@
+{
+  "schemaId": "axiom.control.opcua-shadow-config@1",
+  "configId": "axiom.control.opcua-shadow.example-config@1",
+  "evidenceId": "axiom.control.opcua-shadow.example-evidence@1",
+  "endpointUrl": "opc.tcp://controller-host:4840",
+  "applicationUri": "urn:axiom:control:opcua-shadow:example-client",
+  "applicationCertificateSubject": "CN=Axiom OPC UA Shadow, O=Axiom",
+  "pkiRootPath": ".axiom-opcua/pki",
+  "trustedServerCertificatePath": "controller-server.der",
+  "trustedServerCertificateSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "securityPolicyUri": "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256",
+  "messageSecurityMode": "SignAndEncrypt",
+  "publishingIntervalMs": 50,
+  "samplingIntervalMs": 20,
+  "queueSize": 32,
+  "minimumFrameCount": 20,
+  "captureTimeoutMs": 10000,
+  "identity": {
+    "type": "username-environment",
+    "username": "replace-with-read-only-principal",
+    "passwordEnvironmentVariable": "AXIOM_OPCUA_SHADOW_PASSWORD"
+  },
+  "channels": [
+    {
+      "channelId": "axis.X.position",
+      "namespaceUri": "urn:replace-with-controller-namespace",
+      "identifier": "replace-with-X-node-identifier",
+      "canonicalSignalId": "machine.axis.X.position",
+      "quantity": "axis-position",
+      "axisId": "X",
+      "unit": "mm"
+    },
+    {
+      "channelId": "axis.Y.position",
+      "namespaceUri": "urn:replace-with-controller-namespace",
+      "identifier": "replace-with-Y-node-identifier",
+      "canonicalSignalId": "machine.axis.Y.position",
+      "quantity": "axis-position",
+      "axisId": "Y",
+      "unit": "mm"
+    },
+    {
+      "channelId": "axis.Z.position",
+      "namespaceUri": "urn:replace-with-controller-namespace",
+      "identifier": "replace-with-Z-node-identifier",
+      "canonicalSignalId": "machine.axis.Z.position",
+      "quantity": "axis-position",
+      "axisId": "Z",
+      "unit": "mm"
+    },
+    {
+      "channelId": "axis.B.position",
+      "namespaceUri": "urn:replace-with-controller-namespace",
+      "identifier": "replace-with-B-node-identifier",
+      "canonicalSignalId": "machine.axis.B.position",
+      "quantity": "axis-position",
+      "axisId": "B",
+      "unit": "rad"
+    },
+    {
+      "channelId": "axis.C.position",
+      "namespaceUri": "urn:replace-with-controller-namespace",
+      "identifier": "replace-with-C-node-identifier",
+      "canonicalSignalId": "machine.axis.C.position",
+      "quantity": "axis-position",
+      "axisId": "C",
+      "unit": "rad"
+    }
+  ]
+}

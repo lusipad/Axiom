@@ -8,8 +8,11 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+**/bin/
+**/obj/
 web/node_modules/
 web/coverage/
 web/.vite/
 .omx/
 .gstack/
+.tmp/

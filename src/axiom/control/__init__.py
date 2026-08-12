@@ -49,6 +49,34 @@ from .r7b_scenarios import (
     r7b_example_run_spec,
     validate_r7b_example_run_spec,
 )
+from .r7c_models import (
+    R7C_DEFAULT_SCENARIO_ID,
+    R7C_DOMAIN_PACK_ID,
+    R7C_EVALUATOR_ID,
+    R7C_RUNNER_ID,
+    R7C_SCENARIO_IDS,
+    OpcUaTransportEvidence,
+    OpcUaTransportReadinessAudit,
+    R7CAssessmentRequest,
+    R7CExamplePayload,
+    R7CManifest,
+    R7CScenarioSummary,
+)
+from .r7c_runtime import (
+    R7C_DOMAIN_PACK,
+    R7C_RUNTIME_BINDING,
+    evaluate_r7c_opcua_transport,
+)
+from .r7c_scenarios import (
+    assess_r7c_opcua_transport,
+    assess_r7c_payload,
+    build_r7c_manifest,
+    list_r7c_scenarios,
+    load_r7c_scenario,
+    r7c_example_payload,
+    r7c_example_run_spec,
+    validate_r7c_example_run_spec,
+)
 from .runner import build_control_envelope, run_shadow
 from .runtime import R7_DOMAIN_PACK, R7_RUNTIME_BINDING, evaluate_control
 from .scenarios import (
@@ -61,6 +89,17 @@ from .scenarios import (
 )
 
 __all__ = [
+    "R7CAssessmentRequest",
+    "R7CExamplePayload",
+    "R7CManifest",
+    "R7CScenarioSummary",
+    "R7C_DEFAULT_SCENARIO_ID",
+    "R7C_DOMAIN_PACK",
+    "R7C_DOMAIN_PACK_ID",
+    "R7C_EVALUATOR_ID",
+    "R7C_RUNNER_ID",
+    "R7C_RUNTIME_BINDING",
+    "R7C_SCENARIO_IDS",
     "R7B_DEFAULT_SCENARIO_ID",
     "R7B_DOMAIN_PACK",
     "R7B_DOMAIN_PACK_ID",
@@ -84,6 +123,8 @@ __all__ = [
     "DeploymentShadowCapture",
     "DeploymentShadowEvidenceSet",
     "DeploymentShadowReadinessAudit",
+    "OpcUaTransportEvidence",
+    "OpcUaTransportReadinessAudit",
     "R7BAssessmentRequest",
     "R7BExamplePayload",
     "R7BManifest",
@@ -98,21 +139,30 @@ __all__ = [
     "ShadowTrace",
     "assess_r7b_deployment_shadow",
     "assess_r7b_payload",
+    "assess_r7c_opcua_transport",
+    "assess_r7c_payload",
     "build_control_envelope",
     "build_r7_manifest",
     "build_r7b_manifest",
+    "build_r7c_manifest",
     "evaluate_control",
     "evaluate_r7b_deployment_shadow",
+    "evaluate_r7c_opcua_transport",
     "list_r7_scenarios",
     "list_r7b_scenarios",
+    "list_r7c_scenarios",
     "load_r7_scenario",
     "load_r7b_scenario",
+    "load_r7c_scenario",
     "r7_example_payload",
     "r7_example_run_spec",
     "r7b_contract_fixture_evidence",
     "r7b_example_payload",
     "r7b_example_run_spec",
+    "r7c_example_payload",
+    "r7c_example_run_spec",
     "run_shadow",
     "validate_r7_example_run_spec",
     "validate_r7b_example_run_spec",
+    "validate_r7c_example_run_spec",
 ]

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Axiom.OpcUaShadow.Adapter/Axiom.OpcUaShadow.Adapter.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Axiom.OpcUaShadow.Conformance/Axiom.OpcUaShadow.Conformance.csproj" />
+  </Folder>
+</Solution>

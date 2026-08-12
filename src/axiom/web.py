@@ -14,6 +14,10 @@ from .control import (
     R7BExamplePayload,
     R7BManifest,
     R7BScenarioSummary,
+    R7CAssessmentRequest,
+    R7CExamplePayload,
+    R7CManifest,
+    R7CScenarioSummary,
     R7ExamplePayload,
     R7Manifest,
     R7ReplayRequest,
@@ -628,6 +632,43 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     )
     def control_r7b_assess(request: R7BAssessmentRequest) -> R7BExamplePayload:
         return _load_control_r7_api().assess_r7b_payload(request)
+
+    @app.get(
+        "/api/v1/control/r7c/manifest",
+        response_model=R7CManifest,
+        response_model_by_alias=True,
+    )
+    def control_r7c_manifest() -> R7CManifest:
+        return _load_control_r7_api().build_r7c_manifest()
+
+    @app.get(
+        "/api/v1/control/r7c/scenarios",
+        response_model=list[R7CScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def control_r7c_scenarios() -> list[R7CScenarioSummary]:
+        return list(_load_control_r7_api().list_r7c_scenarios())
+
+    @app.get(
+        "/api/v1/examples/control-r7c",
+        response_model=R7CExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7c_example(
+        scenarioId: str = "opcua-transport-evidence-open",
+    ) -> R7CExamplePayload:
+        try:
+            return _load_control_r7_api().r7c_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/r7c/assess",
+        response_model=R7CExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7c_assess(request: R7CAssessmentRequest) -> R7CExamplePayload:
+        return _load_control_r7_api().assess_r7c_payload(request)
 
     @app.post(
         "/api/v1/experiments/run",

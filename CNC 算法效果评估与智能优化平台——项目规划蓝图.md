@@ -1,8 +1,8 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.15.0
-> 当前阶段：R7-B Windows Deployment Shadow Readiness 合同片已实现 / 真实厂商 Adapter、受控试验与设备写入 gate 保持 Open
+> 状态：Draft / 方向重整与契约闭合版 v0.16.0
+> 当前阶段：R7-C Windows 虚拟 OPC UA 传输合同片已实现 / 真实厂商 Adapter、现实验证、受控试验与设备写入 gate 保持 Open
 > 更新日期：2026-08-12
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)
@@ -434,11 +434,11 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 - R4：首片冻结 Windows 轴空间一阶响应模型、独立 synthetic SIL oracle、校准/holdout 隔离、显式时间/通道对齐和单位分组残差；这只闭合合同片，不能把真实设备 reality gate 标为完成；
 - R5：R5-A Windows synthetic learning 合同片已实现，已冻结 DatasetSnapshot、split/lineage/governance、X-only 残差、split conformal 不确定性、JSON ModelBundle、typed API/UI 和禁语边界；R5-B Windows real holdout readiness 合同片已实现，已冻结 RealPairedHoldoutSet、RealHoldoutGovernance、RealHoldoutSelectionReceipt、case-scoped Evidence、外部上传入口和就绪阈值，但仍不能把真实跨设备泛化门标为完成；
 - R6：Windows Offline Recommendation v1 已实现，冻结 `feedOverride × samplePeriod` 六点网格、三目标无权重 Pareto、七数学硬门重放、R4 多采样率适用性证据、R5 OOD 注记和零写入验证计划；它不等于真实设备优化已经通过；
-- R7：R7-A Windows Synthetic Shadow 合同片已实现，冻结独立 AcceptanceRecord、Shadow 权限上限、控制包线、fail-closed 状态机、停止/基线保留 receipt、五类反例和 Controlled Runtime UI；R7-B 进一步用 `control.domain-pack@2` 冻结厂商无关的 Deployment Shadow Readiness、控制器端只读 authority、capture/Adapter Receipt、时钟/信号映射、外部 provenance、七项检查和证据导入 UI。两片都没有真实设备写入或安全功能；目标厂商未选，因此 vendor Adapter、deployment shadow、Controlled Trial、Closed Loop 与标准符合性继续保持 Open。
+- R7：R7-A Windows Synthetic Shadow 合同片已实现，冻结独立 AcceptanceRecord、Shadow 权限上限、控制包线、fail-closed 状态机、停止/基线保留 receipt、五类反例和 Controlled Runtime UI；R7-B 用 `control.domain-pack@2` 冻结厂商无关的 Deployment Shadow Readiness、控制器端只读 authority、capture/Adapter Receipt、时钟/信号映射、外部 provenance、七项检查和证据导入 UI；R7-C 再用隔离 `.NET 8` 官方 OPC UA 栈和 `control.domain-pack@3` 闭合 Windows localhost 的证书固定、加密会话、五轴订阅、通知完整性、零写和跨语言证据合同。三片都没有真实设备写入或安全功能；R7-C 只允许 `virtualTransportStatus=Passed`，目标厂商、reality validation、deployment shadow、Controlled Trial、Closed Loop 与标准符合性继续保持 Open。
 
 R4 的首个具体合同见[物理模型与现实对齐规范](物理模型与现实对齐规范.md)：`PhysicalResponseTrace` 是模型执行主 Artifact，数学命令、物理模型、标定、R3 raw observation 与对齐记录保持独立内容身份。首个参考数据来自结构不同于候选模型的 synthetic SIL oracle；阶段报告必须把 `syntheticContractStatus` 与 `realityValidationStatus` 分开。新增真实设备 source 时仍须独立冻结厂商协议、许可、最小权限和环境验收，不从文件回放结果外推。
 
-R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门；R6 只把 R5 用作 OOD 注记和晋级阻断，不把 synthetic 模型升级为物理目标或真实泛化证据。R6/R7 权威合同见[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)、[ADR-0018](架构决策记录/ADR-0018-R6多目标离线推荐与权限边界.md)、[ADR-0019](架构决策记录/ADR-0019-R7A-Shadow受控运行与设备安全边界.md)与[ADR-0020](架构决策记录/ADR-0020-R7B-部署影子就绪性与厂商边界.md)。
+R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门；R6 只把 R5 用作 OOD 注记和晋级阻断，不把 synthetic 模型升级为物理目标或真实泛化证据。R6/R7 权威合同见[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)、[ADR-0018](架构决策记录/ADR-0018-R6多目标离线推荐与权限边界.md)、[ADR-0019](架构决策记录/ADR-0019-R7A-Shadow受控运行与设备安全边界.md)、[ADR-0020](架构决策记录/ADR-0020-R7B-部署影子就绪性与厂商边界.md)与[ADR-0021](架构决策记录/ADR-0021-R7C-Windows虚拟OPC-UA传输验收边界.md)。
 
 ### 10.2 依赖原则
 
@@ -641,7 +641,7 @@ Axiom 借鉴其“分层、契约、逐级证据和受控升级”，但内部 C
 
 后续新增长期且存在替代方案的技术决策时，新增或替代 ADR。
 
-R3–R6 的设备、物理、学习与受约束推荐规范已经创建。R6 v1 只闭合 Windows Offline Recommendation，真实跨设备/工况的 realWorldGeneralizationStatus、Shadow、Controlled Trial 与自动闭环仍保持 Open。
+R3–R7 的设备、物理、学习、受约束推荐与受控运行规范已经创建。R7-C 只闭合 Windows 虚拟 OPC UA 传输合同，真实跨设备/工况的 realWorldGeneralizationStatus、厂商 Adapter、reality validation、deployment Shadow、Controlled Trial 与自动闭环仍保持 Open。
 
 详细触发条件见 [README](README.md)。这保证现在有清晰边界，又不把尚未验证的想法伪装成稳定规范。
 

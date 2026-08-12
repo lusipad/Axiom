@@ -1,7 +1,7 @@
 # Axiom 架构决策记录
 
 > 状态：Active  
-> 更新日期：2026-08-12
+> 更新日期：2026-08-13
 > 规范入口：[README](../README.md)
 
 ADR 记录会长期约束多个文档或实现、且存在实质替代方案的决定。ADR 解释选择理由和后果；当前规范正文仍是实现契约的唯一来源。
@@ -30,6 +30,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0018](ADR-0018-R6多目标离线推荐与权限边界.md) | R6 使用无权重多目标 Offline Recommendation，并保持零设备写入与零自动接受 | Accepted |
 | [ADR-0019](ADR-0019-R7A-Shadow受控运行与设备安全边界.md) | R7-A 先闭合 Windows Synthetic Shadow 合同，并保持真实设备写入、受控试验和安全声明为 Open | Accepted |
 | [ADR-0020](ADR-0020-R7B-部署影子就绪性与厂商边界.md) | R7-B 先冻结厂商无关的只读部署证据门，不在目标控制器未选时伪造厂商 Adapter | Accepted |
+| [ADR-0021](ADR-0021-R7C-Windows虚拟OPC-UA传输验收边界.md) | R7-C 使用隔离的官方 .NET 栈闭合 Windows 虚拟 OPC UA 只读传输合同，厂商与现实门保持 Open | Accepted |
 
 ## 生命周期规则
 

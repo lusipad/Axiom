@@ -7,6 +7,7 @@ import {
 } from "./api";
 import { ControlR7Workbench } from "./features/control-r7/ControlR7Workbench";
 import { ControlR7BWorkbench } from "./features/control-r7b/ControlR7BWorkbench";
+import { ControlR7CWorkbench } from "./features/control-r7c/ControlR7CWorkbench";
 import { F1Workbench } from "./features/five-axis-f1/F1Workbench";
 import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
 import { F3Workbench } from "./features/five-axis-f3/F3Workbench";
@@ -25,7 +26,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7" | "control-r7b";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7" | "control-r7b" | "control-r7c";
 type PointView = "geometry" | "metrics";
 
 function clone<T>(value: T): T {
@@ -253,6 +254,8 @@ export function App() {
               ? "Controlled Runtime R7-A"
             : activeLab === "control-r7b"
               ? "Deployment Shadow Readiness R7-B"
+            : activeLab === "control-r7c"
+              ? "Windows OPC UA Transport R7-C"
             : "Machine Read-only Lab";
   const activeManifestId = activeLab === "point"
     ? spec?.experimentId ?? "loading"
@@ -276,6 +279,8 @@ export function App() {
               ? "control.r7-manifest@1"
             : activeLab === "control-r7b"
               ? "control.r7b-manifest@1"
+            : activeLab === "control-r7c"
+              ? "control.r7c-manifest@1"
             : "machine.r3-manifest@1";
 
   const buildPointSpec = (): ExperimentSpec => {
@@ -393,6 +398,8 @@ export function App() {
                   ? "SHADOW ONLY · NO DEVICE AUTHORITY · DEPLOYMENT OPEN"
                 : activeLab === "control-r7b"
                   ? "READINESS ONLY · VENDOR UNSELECTED · NO DEVICE WRITE · REALITY OPEN"
+                : activeLab === "control-r7c"
+                  ? "VIRTUAL OPC UA ONLY · ZERO WRITE · VENDOR OPEN · REALITY OPEN"
                   : "MATH ONLY · NOT DEVICE SAFE"}
             </span>
           )}
@@ -446,6 +453,9 @@ export function App() {
         </button>
         <button className={`lab ${activeLab === "control-r7b" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7b")}>
           <span>12</span>Deployment<small>R7-B</small>
+        </button>
+        <button className={`lab ${activeLab === "control-r7c" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7c")}>
+          <span>13</span>OPC UA<small>R7-C</small>
         </button>
       </div>
 
@@ -652,6 +662,8 @@ export function App() {
         <ControlR7Workbench catalog={catalog} />
       ) : activeLab === "control-r7b" ? (
         <ControlR7BWorkbench catalog={catalog} />
+      ) : activeLab === "control-r7c" ? (
+        <ControlR7CWorkbench catalog={catalog} />
       ) : (
         <MachineR3Workbench catalog={catalog} />
       )}

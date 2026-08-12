@@ -2,6 +2,29 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.16.0 - 2026-08-13
+
+### Added
+
+- 增加 Windows-only R7-C OPC UA Shadow Transport：隔离的 `.NET 8` 只读 Adapter、`control.domain-pack@3`、五轴传输证据、七项机器可判定检查和跨语言内容哈希。
+- 增加独立 localhost OPC UA Server conformance：固定 `SignAndEncrypt`、应用证书互信、非匿名 username、X/Y/Z/B/C 订阅、通知序号/时间/丢包，以及未知客户端证书和写请求拒绝验证。
+- 增加 OPC UA R7-C 网页工作台、manifest/scenario/example/assess API、Windows 配置模板、locked NuGet 依赖和 `win-x64` 发布包。
+
+### Changed
+
+- R7 从厂商无关 JSON 就绪门推进到可执行网络传输合同；生产 Adapter 源码不包含 OPC UA Write 或 Method Call 路径，密码只从命名的 Windows 进程环境变量读取。
+- CI 与发布工作流新增 .NET 8 locked restore、无警告构建、网络 conformance 和 `.NET → Python` 证据重验。
+
+### Verification
+
+- Windows 本地 `.NET 8` 构建与网络 conformance 通过；五轴 25 个样本被采集，Adapter 写计数为 0，独立写请求和未知客户端证书均被拒绝。
+- Python 全量测试 `677 passed, 1 skipped`；前端全量测试 `39 passed`，TypeScript 与 Vite 生产构建通过；干净 Python 3.12 wheel、Windows Adapter ZIP 与实页视觉门（`92/100`、控制台 0 错误、无设备控制按钮）均通过。
+
+### Boundary
+
+- `virtualTransportStatus=Passed` 不等于厂商兼容或真实设备验证；所有 R7-C 证据均 `declaredReal=false`、`countsTowardReality=false`。
+- `vendorAdapterStatus`、`realityValidationStatus`、真实 deployment Shadow、Controlled Trial 与 Closed Loop 继续保持 Open；DeviceSafe、ProcessSafe 和标准符合性未评估。
+
 ## 0.15.0 - 2026-08-12
 
 ### Added

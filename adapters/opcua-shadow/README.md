@@ -93,6 +93,11 @@ R7-E 不把 OPC UA publishing interval 当作 M5 覆盖证明。Bound Witness Pr
 sample index，每个新索引触发一次七节点 batch Read。索引必须从 0 开始并与 M5 完全一致，
 缺失索引不会被插值。
 
+发布包同时提供 `deployment/FB_AxiomShadowWitness.TcPOU`。该功能块先锁存 command hash
+与五轴回读，最后发布 sample index；它不生成索引、不写轴、不启停设备。TwinCAT 导入、
+实例化、TMC 符号生成、TF6100 ACL 和显式 NodeId 绑定步骤见
+[`BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md`](../../BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)。
+
 真实采集还需绑定 Vendor Profile、R7-D runtime evidence、Controller Profile、已验证的
 只读 authority 和数据所有者 capture authorization。authorization 必须包含带 UTC offset 的
 `authorizedFrom` / `authorizedUntil`，且 capture receipt 的打开、关闭与 `capturedAt` 均须落在

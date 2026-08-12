@@ -2,6 +2,28 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.20.0 - 2026-08-13
+
+### Added
+
+- 增加可导入的 TwinCAT `FB_AxiomShadowWitness.TcPOU`：只锁存 command hash、M5 sample index 和 X/Y/Z/B/C，先复制 hash/axes、最后发布 sample index；七个输出均使用 TF6100 只读 OPC UA pragma。
+- 增加 `axiom.control.beckhoff-shadow-witness-deployment-request@1` / `report@1`、`axiom beckhoff-witness-deployment`、typed HTTP API 与 Field Evidence 网页部署预检。
+- 增加 [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、Open 请求骨架与 ADR-0025；Windows Adapter ZIP 同时携带模板、指南和请求示例。
+
+### Changed
+
+- R7-E 不再只描述“控制器应提供 sample index”；现在冻结控制器锁存协议、七信号顺序、显式 namespace/identifier 绑定和可复算的 Bound Witness Profile 生成规则。
+- 网页可下载模板、导入部署请求并分别显示 Profile、vendor runtime、preparation、TwinCAT compile、Shadow 与 Reality 状态；仍没有 PLC 连接、写入、下发或控制入口。
+
+### Verification
+
+- 自动验证 `.TcPOU` XML、七组 `OPC.UA.DA`/只读 Access pragma、索引最后赋值、零运动控制调用、绑定顺序、内容哈希、CLI/HTTP 同义和 wheel/ZIP 包含关系。
+- TwinCAT 导入、编译、激活、TF6100 ACL 与真实 capture 仍需在部署方 Windows 环境执行并留证；开发机没有伪造这些结果。
+
+### Boundary
+
+- `capturePreparationStatus=Passed` 只表示静态模板/runtime/command/NodeId 准备闭合；capture authorization、Deployment Shadow、Reality、Controlled Trial 与 Closed Loop 仍为 `Open`，DeviceSafe/ProcessSafe 仍为 `NotAssessed`。
+
 ## 0.19.0 - 2026-08-13
 
 ### Added

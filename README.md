@@ -1,6 +1,6 @@
 # Axiom 文档入口
 
-> 状态：v0.10.1 Windows 补丁候选；R0–R2 已闭合，R3 Windows 只读参考链已闭合，R4.0 synthetic SIL 合同片已实现、reality gate 保持 Open
+> 状态：v0.10.1 Windows 已发布；R0–R2 已闭合，R3 Windows 只读参考链已闭合，R4.0 synthetic SIL 合同片已实现、reality gate 保持 Open
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL`
 > 更新日期：2026-08-12
 

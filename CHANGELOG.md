@@ -12,7 +12,8 @@
 
 ### Verification
 
-- 发布阻断环境固定为 `windows-latest + CPython 3.12.10`；Python、网页、构建、wheel 安装后 smoke 与 GitHub Release 结果以发布工作流为准。
+- [Windows 发布工作流](https://github.com/lusipad/Axiom/actions/runs/31562511858)在 `windows-latest + CPython 3.12.10` 上通过：Python `570 passed`、网页 `20 passed`、构建、wheel 安装后 CLI/API/UI smoke 与 GitHub Release 均成功。
+- `v0.10.1` 已发布到 [GitHub Releases](https://github.com/lusipad/Axiom/releases/tag/v0.10.1)。
 
 ### Boundary
 

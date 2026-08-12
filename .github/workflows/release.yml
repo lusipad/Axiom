@@ -151,13 +151,17 @@ jobs:
           )
           from axiom.control import (
               R7_DOMAIN_PACK_ID,
+              R7B_DOMAIN_PACK_ID,
               build_r7_manifest,
+              build_r7b_manifest,
               r7_example_payload,
+              r7b_example_payload,
               validate_r7_example_run_spec,
+              validate_r7b_example_run_spec,
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.14.0"
+          assert version("axiom-evaluator") == "0.15.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -170,6 +174,14 @@ jobs:
               current_f4_numeric_environment(),
           ):
               assert expected_policy.items() <= environment.items()
+
+          r7b_manifest = build_r7b_manifest()
+          assert r7b_manifest.domain_pack_id == R7B_DOMAIN_PACK_ID
+          assert r7b_manifest.device_write_allowed is False
+          assert r7b_example_payload().readiness_audit.readiness_outcome == "Open"
+          r7b = evaluate_run(validate_r7b_example_run_spec())
+          assert validate_run_bundle_integrity(r7b) == []
+          assert r7b.run.case_outcome.value == "Inconclusive"
 
           f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
           assert validate_run_bundle_integrity(f2) == []

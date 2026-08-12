@@ -1,0 +1,64 @@
+{
+  "schemaId": "axiom.control.beckhoff-twincat-profile@1",
+  "profileId": "axiom.control.beckhoff-twincat-default-profile@1",
+  "vendorId": "beckhoff",
+  "vendorName": "Beckhoff Automation",
+  "controllerFamily": "TwinCAT 3",
+  "minimumTwinCatBuild": 4026,
+  "opcUaServerProduct": "TF6100 OPC UA Server",
+  "requiredLicenseId": "TF6100",
+  "acceptedRuntimeLicenseStates": [
+    "Full",
+    "Trial"
+  ],
+  "deploymentRequiredLicenseState": "Full",
+  "requiredPackages": [
+    "TwinCAT.Standard.XAR",
+    "TF6100.OpcUaServer.XAR"
+  ],
+  "optionalEngineeringPackage": "TF6100.OpcUaServer.XAE",
+  "supportedPlatforms": [
+    "Windows"
+  ],
+  "protocol": "opc-ua",
+  "defaultEndpointUrl": "opc.tcp://localhost:4840",
+  "messageSecurityMode": "SignAndEncrypt",
+  "identityType": "username",
+  "accessMode": "read-subscribe-only",
+  "bindingStatus": "Open",
+  "channels": [
+    {
+      "axisId": "X",
+      "canonicalSignalId": "machine.axis.X.position",
+      "quantity": "axis-position",
+      "unit": "mm"
+    },
+    {
+      "axisId": "Y",
+      "canonicalSignalId": "machine.axis.Y.position",
+      "quantity": "axis-position",
+      "unit": "mm"
+    },
+    {
+      "axisId": "Z",
+      "canonicalSignalId": "machine.axis.Z.position",
+      "quantity": "axis-position",
+      "unit": "mm"
+    },
+    {
+      "axisId": "B",
+      "canonicalSignalId": "machine.axis.B.position",
+      "quantity": "axis-position",
+      "unit": "rad"
+    },
+    {
+      "axisId": "C",
+      "canonicalSignalId": "machine.axis.C.position",
+      "quantity": "axis-position",
+      "unit": "rad"
+    }
+  ],
+  "permissionCeiling": "Shadow",
+  "deviceWriteAllowed": false,
+  "contentHash": "3ecf4305536cf117625273eefa643b47ba5993e3164dda30ab62f5d5dbcf3915"
+}

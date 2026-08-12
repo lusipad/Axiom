@@ -11,6 +11,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{14026850
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Axiom.OpcUaShadow.Conformance", "tests\Axiom.OpcUaShadow.Conformance\Axiom.OpcUaShadow.Conformance.csproj", "{FA283101-C7BD-43FA-AE7A-8EE104F4BCA8}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{13BAC211-DC11-4F5C-AF4F-287A2DA64149}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Axiom.OpcUaShadow.BeckhoffPermissionVerifier", "tools\Axiom.OpcUaShadow.BeckhoffPermissionVerifier\Axiom.OpcUaShadow.BeckhoffPermissionVerifier.csproj", "{1C0CC6EF-7B11-4319-8B44-36573C436003}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -28,9 +32,14 @@ Global
 		{FA283101-C7BD-43FA-AE7A-8EE104F4BCA8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FA283101-C7BD-43FA-AE7A-8EE104F4BCA8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FA283101-C7BD-43FA-AE7A-8EE104F4BCA8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C0CC6EF-7B11-4319-8B44-36573C436003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C0CC6EF-7B11-4319-8B44-36573C436003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C0CC6EF-7B11-4319-8B44-36573C436003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C0CC6EF-7B11-4319-8B44-36573C436003}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{8983E91B-4EE7-4A44-890A-98E9923F524F} = {C6DE1FF6-BE08-46A8-921A-EDFEC73E43F3}
 		{FA283101-C7BD-43FA-AE7A-8EE104F4BCA8} = {14026850-D360-4861-9C0E-62696A50EDDD}
+		{1C0CC6EF-7B11-4319-8B44-36573C436003} = {13BAC211-DC11-4F5C-AF4F-287A2DA64149}
 	EndGlobalSection
 EndGlobal

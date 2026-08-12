@@ -20,6 +20,67 @@ internal static class Program
                 Console.WriteLine($"{Contract.AdapterId} {Contract.AdapterVersion}");
                 return 0;
             }
+            if (args.Length == 5
+                && args[0] == "beckhoff-preflight"
+                && args[1] == "--profile"
+                && args[3] == "--output")
+            {
+                using var preflightCancellation = new CancellationTokenSource();
+                LoadedBeckhoffProfile profile = await JsonSupport.LoadBeckhoffProfileAsync(
+                    args[2],
+                    preflightCancellation.Token).ConfigureAwait(false);
+                BeckhoffRuntimeEvidence evidence = await BeckhoffTwinCatVerifier.PreflightAsync(
+                    profile,
+                    preflightCancellation.Token).ConfigureAwait(false);
+                await JsonSupport.WriteNewAsync(
+                    args[4],
+                    evidence,
+                    preflightCancellation.Token).ConfigureAwait(false);
+                Console.WriteLine($"Beckhoff preflight evidence: {Path.GetFullPath(args[4])}");
+                Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
+                return 0;
+            }
+            if (args.Length >= 7 && args[0] == "beckhoff-inspect")
+            {
+                Dictionary<string, string> options = ParseNamedOptions(args, 1);
+                string profilePath = RequireOption(options, "--profile");
+                string configPath = RequireOption(options, "--config");
+                string outputPath = RequireOption(options, "--output");
+                using var inspectCancellation = new CancellationTokenSource();
+                LoadedBeckhoffProfile profile = await JsonSupport.LoadBeckhoffProfileAsync(
+                    profilePath,
+                    inspectCancellation.Token).ConfigureAwait(false);
+                LoadedShadowConfig inspectConfig = await JsonSupport.LoadConfigAsync(
+                    configPath,
+                    inspectCancellation.Token).ConfigureAwait(false);
+                OpcUaTransportEvidence? transport = options.TryGetValue(
+                    "--transport",
+                    out string? transportPath)
+                    ? await JsonSupport.LoadTransportEvidenceAsync(
+                        transportPath,
+                        inspectCancellation.Token).ConfigureAwait(false)
+                    : null;
+                BeckhoffWriteRejectionReceipt? receipt = options.TryGetValue(
+                    "--write-receipt",
+                    out string? receiptPath)
+                    ? await JsonSupport.LoadWriteReceiptAsync(
+                        receiptPath,
+                        inspectCancellation.Token).ConfigureAwait(false)
+                    : null;
+                BeckhoffRuntimeEvidence evidence = await BeckhoffTwinCatVerifier.InspectAsync(
+                    profile,
+                    inspectConfig,
+                    transport,
+                    receipt,
+                    inspectCancellation.Token).ConfigureAwait(false);
+                await JsonSupport.WriteNewAsync(
+                    outputPath,
+                    evidence,
+                    inspectCancellation.Token).ConfigureAwait(false);
+                Console.WriteLine($"Beckhoff runtime evidence: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
+                return 0;
+            }
             if (args.Length < 3 || args[1] != "--config")
             {
                 PrintUsage();
@@ -80,5 +141,44 @@ internal static class Program
         Console.Error.WriteLine("  axiom-opcua-shadow init --config <config.json>");
         Console.Error.WriteLine(
             "  axiom-opcua-shadow capture --config <config.json> --output <evidence.json>");
+        Console.Error.WriteLine(
+            "  axiom-opcua-shadow beckhoff-preflight --profile <profile.json> --output <evidence.json>");
+        Console.Error.WriteLine(
+            "  axiom-opcua-shadow beckhoff-inspect --profile <bound-profile.json> --config <config.json> [--transport <capture.json>] [--write-receipt <receipt.json>] --output <evidence.json>");
+    }
+
+    private static Dictionary<string, string> ParseNamedOptions(
+        string[] args,
+        int startIndex)
+    {
+        if ((args.Length - startIndex) % 2 != 0)
+        {
+            throw new ShadowContractException("named options must be provided as flag/value pairs");
+        }
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (int index = startIndex; index < args.Length; index += 2)
+        {
+            string name = args[index];
+            string value = args[index + 1];
+            if (name is not (
+                "--profile" or "--config" or "--transport" or "--write-receipt" or "--output")
+                || string.IsNullOrWhiteSpace(value)
+                || !options.TryAdd(name, value))
+            {
+                throw new ShadowContractException($"invalid or duplicate option '{name}'");
+            }
+        }
+        return options;
+    }
+
+    private static string RequireOption(
+        Dictionary<string, string> options,
+        string name)
+    {
+        if (!options.TryGetValue(name, out string? value))
+        {
+            throw new ShadowContractException($"required option '{name}' is missing");
+        }
+        return value;
     }
 }

@@ -446,6 +446,30 @@ describe("Axiom workbench", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
   });
 
+  it("R7-B 顶栏保持就绪性、厂商未选择和禁止设备写入边界", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.includes("/control/r7b/") || url.includes("/examples/control-r7b")) {
+        return Promise.resolve(jsonResponse({ detail: "R7-B unavailable" }, 503));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Deployment.*R7-B/i }));
+
+    expect(screen.getByText("READINESS ONLY · VENDOR UNSELECTED · NO DEVICE WRITE · REALITY OPEN")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
+    expect(screen.queryByRole("button", { name: /启动|复位|写入参数|下发|急停|连接机床/i })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/control/r7b/manifest"))).toBe(true);
+  });
+
   it("R5-B 入口保持 Windows 真实 holdout 边界且不暴露设备控制", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);

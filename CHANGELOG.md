@@ -2,6 +2,29 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.15.0 - 2026-08-12
+
+### Added
+
+- 增加 Windows-only R7-B Deployment Shadow Readiness：`control.domain-pack@2`、控制器 Profile、控制器端只读权限证据、raw capture、Adapter Receipt、时钟/信号映射、外部 provenance 和七项机器可判定检查。
+- 增加无证据 `Open` 与合同夹具 `Blocked` 两个确定性场景；合同夹具永久 `declaredReal=false`、`countsTowardReality=false`，不能升级为真实部署证据。
+- 增加 Deployment R7-B 网页工作台、manifest/scenario/example/assess API、外部证据 JSON 导入，以及 ADR-0020。
+
+### Changed
+
+- R7 从 R7-A synthetic software contract 扩展到 R7-B vendor-neutral readiness gate；用户尚未选择目标控制器时，不预先伪造 Siemens、FANUC、HEIDENHAIN 或其他厂商 Adapter。
+- 真实接入条件现在显式拆为目标控制器、厂商 Adapter、控制器端 authority verifier、capture integrity、clock/signal coverage 与 case-scoped reality gate。
+
+### Verification
+
+- Windows AMD64 / CPython 3.12.10 冻结接受环境全量验证通过：Python `661 passed`，网页 `36 passed`，TypeScript 检查与生产构建通过。
+- R7-B 覆盖公共 Run 的 `Inconclusive` 语义、内容身份篡改、非 Windows 结构化 Unsupported、OpenAPI 响应、JSON 证据导入和禁设备控制 UI。
+
+### Boundary
+
+- 本版本不连接控制器，不包含厂商 SDK，不执行 read/subscribe，更不执行设备写入；上传的 JSON 不能自行关闭现实门。
+- 厂商 Adapter、真实 deployment Shadow、Controlled Trial、Closed Loop、DeviceSafe、ProcessSafe 和标准符合性仍未实现；下一步需要部署方选定目标控制器并提供只读凭据与可验收环境。
+
 ## 0.14.0 - 2026-08-12
 
 ### Added

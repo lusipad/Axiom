@@ -29,6 +29,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0017](ADR-0017-R5B-Windows真实holdout就绪门边界.md) | R5-B 使用 Windows 真实 holdout 就绪门、case-scoped reality exit 和外部真实 capture 边界 | Accepted |
 | [ADR-0018](ADR-0018-R6多目标离线推荐与权限边界.md) | R6 使用无权重多目标 Offline Recommendation，并保持零设备写入与零自动接受 | Accepted |
 | [ADR-0019](ADR-0019-R7A-Shadow受控运行与设备安全边界.md) | R7-A 先闭合 Windows Synthetic Shadow 合同，并保持真实设备写入、受控试验和安全声明为 Open | Accepted |
+| [ADR-0020](ADR-0020-R7B-部署影子就绪性与厂商边界.md) | R7-B 先冻结厂商无关的只读部署证据门，不在目标控制器未选时伪造厂商 Adapter | Accepted |
 
 ## 生命周期规则
 

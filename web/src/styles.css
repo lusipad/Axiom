@@ -57,7 +57,7 @@ button { color: inherit; }
 
 .lab-switcher { min-height: 40px; flex: 0 0 auto; display: flex; overflow-x: auto; scrollbar-width: none; background: #10171b; border-bottom: 1px solid var(--line); padding-left: 16px; }
 .lab-switcher::-webkit-scrollbar { display: none; }
-.lab { min-width: 128px; height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 0; border-right: 1px solid var(--line-soft); background: transparent; color: #667780; font-size: 11px; cursor: default; white-space: nowrap; }
+.lab { min-width: 114px; height: 40px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-right: 1px solid var(--line-soft); background: transparent; color: #667780; font-size: 11px; cursor: default; white-space: nowrap; }
 .lab span { font: 9px var(--mono); color: #46565f; }
 .lab small { margin-left: auto; font: 8px var(--mono); color: #52636c; }
 .lab.active { color: #d7e4e9; background: #172127; border-bottom: 2px solid var(--green); }

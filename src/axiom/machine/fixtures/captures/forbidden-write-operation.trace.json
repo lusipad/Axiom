@@ -1,0 +1,41 @@
+{
+  "artifactType": "machine.telemetry-trace",
+  "schemaVersion": 1,
+  "traceId": "trace:forbidden-write-operation",
+  "sourceKind": "synthetic-replay",
+  "captureReceipt": {
+    "receiptId": "receipt:forbidden-write-operation",
+    "sourceId": "axiom.windows-file-telemetry-source@1",
+    "operation": "parameter-write",
+    "transport": "windows-file-json",
+    "capturedAt": "2026-08-11T13:30:00Z",
+    "traceContentHash": "0a438507dfad183823dfb980bf9202c35fb9d673dbbbbc2ea9e0445874697060"
+  },
+  "deviceIdentity": {
+    "deviceId": "sim-840d",
+    "controllerFamily": "siemens-840d",
+    "machineModel": "vmc-5x-sim"
+  },
+  "frames": [
+    {
+      "sequenceId": 600,
+      "deviceTimestamp": "2026-08-11T13:29:58.000Z",
+      "samples": [
+        {"channelId": "pos.work", "value": [40.0, 3.0, 5.0], "unit": "mm"},
+        {"channelId": "feed.actual", "value": 300.0, "unit": "mm/min"}
+      ]
+    },
+    {
+      "sequenceId": 601,
+      "deviceTimestamp": "2026-08-11T13:29:58.050Z",
+      "samples": [
+        {"channelId": "pos.work", "value": [40.6, 3.0, 4.8], "unit": "mm"},
+        {"channelId": "feed.actual", "value": 320.0, "unit": "mm/min"}
+      ]
+    }
+  ],
+  "vendorMetadata": {
+    "programName": "DEMO_5X_R3",
+    "channel": "CHANNEL_1"
+  }
+}

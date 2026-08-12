@@ -162,6 +162,7 @@ v0.3 的有序离散点实现把 `Experiment` 落为恰好两个不同 Arm 的�
 8. 确定性、数值容差和失败分类要求。
 9. 机器可读的能力清单，以及每项指标的 `requires` / `optional` 依赖；
 10. 从领域失败码到公共状态轴的确定映射。
+11. 若存在导入式 Runner，使用 `importRunnerIds` 明确声明其 Observation 来源语义；该集合必须是已支持 Runner 的子集。
 
 领域包不得：
 
@@ -180,6 +181,8 @@ v0.3 的有序离散点实现把 `Experiment` 落为恰好两个不同 Arm 的�
 3. 与描述符一致的 DomainPack ID、Evaluator 版本和 Artifact 类型/schema 支持范围。
 
 一个 DomainPack 可以声明多个 `ArtifactTypeDescriptor`。每个描述符至少冻结 `artifactType`、允许的 `schemaVersion` 和领域内角色；同一 `(artifactType, schemaVersion, role)` 不得重复。兼容已有单类型描述符时，`artifactType` / `artifactSchemaVersions` 表示默认类型，但不得被解释为排斥同一包已声明的其他类型。
+
+Runner 的“导入”或“执行”语义不得由 ID 名称猜测。内建 `artifact-import@1` 为兼容既有契约保持导入语义；领域新增的导入 Runner 必须同时出现在 `runnerIds` 与 `importRunnerIds`。Core 据此把 Observation 来源冻结为 `ImportedArtifact`，其他 Runner 记为 `ExecutedSubject`。领域包不得要求 Core 按领域 ID 编写分支。
 
 一次 `RunSpec` 和 `Observation` 仍只携带一个主 Artifact。Core 对该主 Artifact 只执行 `(artifactType, schemaVersion)` 成员校验；它不解释领域角色，也不要求一个 DomainPack 的所有 Run 使用同一 Artifact 类型。领域层之间的派生必须通过不可变 Run、内容标识和 provenance 串联，不能把多个层压进无类型 payload 来绕过描述符。
 
@@ -418,6 +421,8 @@ Claim 不是日志字符串。它必须指向明确命题、适用域、指标�
 - 能力解析结果、必选/可选指标集合，以及对应的公共状态轴。
 - `executionOutcomePolicy`、执行失败/取消/跳过原因和归因证据。
 - Experiment、共享输入和 ParameterSet 的内容标识，以及每个 Arm 的 Subject/Runner 版本。
+
+当领域请求携带不属于主 Artifact 的支持对象时，`Provenance.contextHashes` 应按稳定领域名称分别冻结其 SHA-256；`requestHash` 仍覆盖完整请求，但不能替代支持对象的独立审计身份。未使用支持对象的既有领域可省略该字段，避免改变已有内容身份。
 
 同一 `RunSpec` 在声明为确定性的组件上必须可重放；不能重放的设备或随机过程必须保存足以审计的原始观测和环境快照。
 

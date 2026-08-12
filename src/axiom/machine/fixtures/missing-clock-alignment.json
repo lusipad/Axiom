@@ -1,0 +1,99 @@
+{
+  "scenario": {
+    "scenarioId": "missing-clock-alignment",
+    "title": "缺失时钟映射",
+    "description": "原始 trace 完整，但未提供 device-host 时钟映射。",
+    "expectedExecutionStatus": "Succeeded",
+    "expectedCaseOutcome": "Inconclusive"
+  },
+  "artifactFile": "captures/missing-clock-alignment.trace.json",
+  "subjectId": "machine-r3-sim@missing-clock",
+  "deviceProfile": {
+    "profileId": "device-profile.sim-840d@1",
+    "deviceId": "sim-840d",
+    "manufacturer": "Axiom Simulation",
+    "machineModel": "vmc-5x-sim",
+    "controllerFamily": "siemens-840d",
+    "firmwareVersion": "sim-fw-1.0",
+    "exportVersion": "windows-file-json@1",
+    "allowedReadOnlyOperations": [
+      "file-import"
+    ],
+    "calibrationId": "calibration.sim-840d@1",
+    "channels": [
+      {
+        "channelId": "pos.work",
+        "kind": "position-vector",
+        "unit": "mm",
+        "coordinateFrame": "workpiece"
+      },
+      {
+        "channelId": "feed.actual",
+        "kind": "scalar",
+        "unit": "mm/min"
+      }
+    ]
+  },
+  "coordinateAlignment": {
+    "alignmentId": "alignment.sim-840d@1",
+    "deviceId": "sim-840d",
+    "machineCoordinateFrame": "machine",
+    "workCoordinateFrame": "workpiece",
+    "sourceKind": "synthetic-reference",
+    "effectiveAt": "2026-08-11T00:00:00Z",
+    "calibrationStatus": "calibrated",
+    "calibrationId": "calibration.sim-840d@1",
+    "channelIds": [
+      "pos.work"
+    ]
+  },
+  "lineage": {
+    "machineRunId": "machine-run:missing-clock",
+    "pairingStatus": "paired",
+    "baselineKind": "reference",
+    "baselineRunBundleHash": "beec29557d6bf8c22363616c65a73f4394e484c9b516478898e9c4039bc44d79",
+    "sourceCommandContentHash": "085ab2047f6089fb3fa681c7a83ee3aa63c9d379b55529bbbabbd0411874d218",
+    "upstreamClaims": [
+      {
+        "claimDefinitionId": "five-axis.geometry-valid-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.task-geometry-collision-free-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.kinematically-feasible-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.configuration-collision-free-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.continuously-feasible-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.interval-certified-claim@1",
+        "status": "Supported"
+      },
+      {
+        "claimDefinitionId": "five-axis.model-collision-free-claim@1",
+        "status": "Supported"
+      }
+    ]
+  },
+  "case": {
+    "caseId": "machine-r3-missing-clock@1",
+    "requiredMetrics": [
+      "machine-observation.raw-integrity@1",
+      "machine-observation.read-only-capture@1",
+      "machine-observation.clock-aligned@1"
+    ],
+    "optionalMetrics": [
+      "machine-observation.lineage-complete@1",
+      "machine-observation.coordinate-context@1"
+    ]
+  }
+}

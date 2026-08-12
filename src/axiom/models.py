@@ -348,10 +348,23 @@ class Provenance(AxiomModel):
     execution_outcome_policy: str = Field(alias="executionOutcomePolicy")
     numeric_type: Literal["float64"] = Field(default="float64", alias="numericType")
     numeric_environment: dict[str, str] = Field(alias="numericEnvironment")
+    context_hashes: dict[str, str] | None = Field(default=None, alias="contextHashes")
     subject_version: str | None = Field(default=None, alias="subjectVersion")
     input_artifact_hash: str | None = Field(default=None, alias="inputArtifactHash")
     parameter_set_hash: str | None = Field(default=None, alias="parameterSetHash")
     experiment_spec_hash: str | None = Field(default=None, alias="experimentSpecHash")
+
+    @field_validator("context_hashes")
+    @classmethod
+    def require_named_sha256_contexts(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return value
+        if not value:
+            raise ValueError("contextHashes must not be empty when provided")
+        for name, content_hash in value.items():
+            if not name or len(content_hash) != 64 or any(character not in "0123456789abcdef" for character in content_hash):
+                raise ValueError("contextHashes must map non-empty names to lowercase SHA-256 values")
+        return value
 
 
 class EvaluationReport(AxiomModel):

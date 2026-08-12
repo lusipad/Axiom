@@ -35,6 +35,11 @@ from .five_axis import (
     list_f4_scenarios,
     load_f0_manifest,
 )
+from .machine import (
+    list_machine_r3_scenarios,
+    load_machine_r3_manifest,
+    machine_r3_example_payload,
+)
 from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
 from .run import evaluate_run
 from .runtime import find_domain_runtime_binding
@@ -236,6 +241,23 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         try:
             return f4_example_payload(scenarioId)
         except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/machine/r3/manifest")
+    def machine_r3_manifest() -> dict[str, Any]:
+        return load_machine_r3_manifest()
+
+    @app.get("/api/v1/machine/r3/scenarios")
+    def machine_r3_scenarios() -> Any:
+        return list_machine_r3_scenarios()
+
+    @app.get("/api/v1/examples/machine-r3")
+    def machine_r3_example(
+        scenarioId: str = "read-only-paired-pass",
+    ) -> dict[str, Any]:
+        try:
+            return machine_r3_example_payload(scenarioId)
+        except (FileNotFoundError, KeyError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post(

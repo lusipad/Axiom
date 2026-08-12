@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 
+import uvicorn
+
 import axiom.cli as cli_module
 import axiom.web as web_module
 from axiom.cli import main
 from axiom.experiment import contour_ab_example
 from axiom.five_axis import f0_example_run_spec
-import uvicorn
-
+from axiom.machine import machine_r3_example_run_spec
 
 COMPARISON_FIXTURE = (
     Path(__file__).parents[1]
@@ -144,6 +145,39 @@ def test_cli_runs_the_five_axis_f0_contract_without_math_claims(tmp_path, capsys
     assert [claim["claimDefinitionId"] for claim in output["claims"]] == [
         "axiom.core.case-outcome-claim@1"
     ]
+
+
+def test_cli_imports_a_machine_r3_trace_as_observed_evidence(tmp_path, capsys):
+    request_path = tmp_path / "machine-r3-run-spec.json"
+    request_path.write_text(
+        json.dumps(machine_r3_example_run_spec("read-only-paired-pass")),
+        encoding="utf-8",
+    )
+
+    assert main(["run", str(request_path)]) == 0
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["run"]["domainPackId"] == "machine-observation.domain-pack@1"
+    assert output["report"]["caseOutcome"] == "Passed"
+    assert output["observation"]["source"] == "ImportedArtifact"
+    assert all(claim["evidence"]["level"] == "Observed" for claim in output["claims"])
+    assert not {
+        "five-axis.device-safe-claim@1",
+        "five-axis.process-safe-claim@1",
+    }.intersection(claim["claimDefinitionId"] for claim in output["claims"])
+
+
+def test_cli_rejects_a_machine_r3_write_operation(tmp_path, capsys):
+    request_path = tmp_path / "machine-r3-write-run-spec.json"
+    request_path.write_text(
+        json.dumps(machine_r3_example_run_spec("forbidden-write-operation")),
+        encoding="utf-8",
+    )
+
+    assert main(["run", str(request_path)]) == 2
+    output = json.loads(capsys.readouterr().out)
+    assert output["report"]["caseOutcome"] == "Invalid"
+    assert output["report"]["domainFailures"][0]["code"] == "MalformedEvaluationRequest"
 
 
 def test_cli_returns_a_structured_invalid_report_with_exit_code_two(tmp_path, capsys):

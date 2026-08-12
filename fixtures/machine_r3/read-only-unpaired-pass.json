@@ -1,0 +1,75 @@
+{
+  "scenario": {
+    "scenarioId": "read-only-unpaired-pass",
+    "title": "只读未配对历史导入",
+    "description": "未绑定数学基线，但保留原始观测与设备上下文。",
+    "expectedExecutionStatus": "Succeeded",
+    "expectedCaseOutcome": "Passed"
+  },
+  "artifactFile": "captures/read-only-unpaired-pass.trace.json",
+  "subjectId": "machine-r3-sim@unpaired",
+  "deviceProfile": {
+    "profileId": "device-profile.sim-840d@1",
+    "deviceId": "sim-840d",
+    "manufacturer": "Axiom Simulation",
+    "machineModel": "vmc-5x-sim",
+    "controllerFamily": "siemens-840d",
+    "firmwareVersion": "sim-fw-1.0",
+    "exportVersion": "windows-file-json@1",
+    "allowedReadOnlyOperations": [
+      "file-import"
+    ],
+    "calibrationId": "calibration.sim-840d@1",
+    "channels": [
+      {
+        "channelId": "pos.work",
+        "kind": "position-vector",
+        "unit": "mm",
+        "coordinateFrame": "workpiece"
+      },
+      {
+        "channelId": "feed.actual",
+        "kind": "scalar",
+        "unit": "mm/min"
+      }
+    ]
+  },
+  "clockMapping": {
+    "mappingId": "clock-map.sim-840d@1",
+    "deviceId": "sim-840d",
+    "mappingMethod": "fixed-offset",
+    "deviceReferenceTimestamp": "2026-08-11T10:29:58.000Z",
+    "hostReferenceTimestamp": "2026-08-11T18:29:58.012Z",
+    "offsetMilliseconds": 12,
+    "driftBoundMilliseconds": 2
+  },
+  "coordinateAlignment": {
+    "alignmentId": "alignment.sim-840d@1",
+    "deviceId": "sim-840d",
+    "machineCoordinateFrame": "machine",
+    "workCoordinateFrame": "workpiece",
+    "sourceKind": "synthetic-reference",
+    "effectiveAt": "2026-08-11T00:00:00Z",
+    "calibrationStatus": "calibrated",
+    "calibrationId": "calibration.sim-840d@1",
+    "channelIds": [
+      "pos.work"
+    ]
+  },
+  "lineage": {
+    "machineRunId": "machine-run:unpaired-pass",
+    "pairingStatus": "unpaired"
+  },
+  "case": {
+    "caseId": "machine-r3-unpaired-pass@1",
+    "requiredMetrics": [
+      "machine-observation.raw-integrity@1",
+      "machine-observation.read-only-capture@1",
+      "machine-observation.clock-aligned@1",
+      "machine-observation.coordinate-context@1"
+    ],
+    "optionalMetrics": [
+      "machine-observation.lineage-complete@1"
+    ]
+  }
+}

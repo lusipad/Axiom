@@ -43,6 +43,7 @@ const catalog: Catalog = {
   domainPacks: [
     { domainPackId: "ordered-point.domain-pack@1", comparisonPolicyIds: [], runnerIds: [], runtimeBound: true },
     { domainPackId: "five-axis.domain-pack@2", comparisonPolicyIds: [], runnerIds: ["artifact-import@1"], runtimeBound: true },
+    { domainPackId: "machine-observation.domain-pack@1", comparisonPolicyIds: [], runnerIds: ["machine-trace-import@1"], runtimeBound: true },
   ],
   artifactAdapters: [],
 };
@@ -400,6 +401,196 @@ describe("Axiom workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F4/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
     expect(screen.getByRole("button", { name: /Five-Axis.*F4/i })).toBeInTheDocument();
+  });
+
+  it("Machine R3 入口展示只读边界而不暴露写入控件", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (url.endsWith("/machine/r3/manifest")) {
+        return Promise.resolve(jsonResponse({
+          manifestId: "machine.r3-manifest@1",
+          schemaId: "machine.r3-manifest@1",
+          schemaVersion: 1,
+          stage: "R3",
+          readOnly: true,
+          safetyBanner: "READ ONLY / NOT DEVICE SAFE",
+          suiteId: "machine-r3-fixtures@1",
+          artifactDescriptors: [{ artifactType: "machine.telemetry-trace", schemaVersion: 1, role: "run-input" }],
+          capabilityIds: ["machine-observation.trace.raw@1"],
+          claimDefinitionIds: ["machine-observation.read-only-capture-claim@1"],
+          forbiddenClaims: ["DeviceSafe", "ProcessSafe", "safe-to-run"],
+          cases: [{
+            id: "read-only-paired-pass",
+            title: "只读配对基线导入",
+            description: "冻结 F4 基线、命令身份和七项上游 claim 的只读历史导入。",
+            expectedExecutionStatus: "Succeeded",
+            expectedCaseOutcome: "Passed",
+          }],
+        }));
+      }
+      if (url.endsWith("/machine/r3/scenarios")) {
+        return Promise.resolve(jsonResponse([{
+          scenarioId: "read-only-paired-pass",
+          title: "只读配对基线导入",
+          description: "冻结 F4 基线、命令身份和七项上游 claim 的只读历史导入。",
+          expectedExecutionStatus: "Succeeded",
+          expectedCaseOutcome: "Passed",
+        }]));
+      }
+      if (url.includes("/examples/machine-r3")) {
+        return Promise.resolve(jsonResponse({
+          manifest: {
+            manifestId: "machine.r3-manifest@1",
+            schemaId: "machine.r3-manifest@1",
+            schemaVersion: 1,
+            stage: "R3",
+            readOnly: true,
+            safetyBanner: "READ ONLY / NOT DEVICE SAFE",
+            suiteId: "machine-r3-fixtures@1",
+            artifactDescriptors: [{ artifactType: "machine.telemetry-trace", schemaVersion: 1, role: "run-input" }],
+            capabilityIds: ["machine-observation.trace.raw@1"],
+            claimDefinitionIds: ["machine-observation.read-only-capture-claim@1"],
+            forbiddenClaims: ["DeviceSafe", "ProcessSafe", "safe-to-run"],
+            cases: [],
+          },
+          scenario: {
+            scenarioId: "read-only-paired-pass",
+            title: "只读配对基线导入",
+            description: "冻结 F4 基线、命令身份和七项上游 claim 的只读历史导入。",
+            expectedExecutionStatus: "Succeeded",
+            expectedCaseOutcome: "Passed",
+          },
+          artifact: {
+            artifactType: "machine.telemetry-trace",
+            schemaVersion: 1,
+            traceId: "trace:read-only-paired-pass",
+            sourceKind: "synthetic-replay",
+            captureReceipt: {
+              receiptId: "receipt:read-only-paired-pass",
+              sourceId: "axiom.windows-file-telemetry-source@1",
+              operation: "file-import",
+              transport: "windows-file-json",
+              capturedAt: "2026-08-11T09:30:00Z",
+              traceContentHash: "24c7f3c433b76765db97f31ae2ceb38bb1d54234b5e0a2d4ad88f551724cb9f6",
+            },
+            deviceIdentity: { deviceId: "sim-840d", controllerFamily: "siemens-840d", machineModel: "vmc-5x-sim" },
+            vendorMetadata: { programName: "DEMO_5X_R3", channel: "CHANNEL_1" },
+            frames: [{
+              sequenceId: 100,
+              deviceTimestamp: "2026-08-11T09:29:58.000Z",
+              samples: [
+                { channelId: "pos.work", value: [0, 0, 5], unit: "mm" },
+                { channelId: "feed.actual", value: 1200, unit: "mm/min" },
+              ],
+              alarms: [],
+            }],
+          },
+          deviceProfile: {
+            profileId: "device-profile.sim-840d@1",
+            deviceId: "sim-840d",
+            controllerFamily: "siemens-840d",
+            manufacturer: "Siemens",
+            machineModel: "vmc-5x-sim",
+            exportVersion: "sinumerik-export@1.4",
+            allowedReadOnlyOperations: ["file-import"],
+            firmwareVersion: "840D-sl-6.15",
+            calibrationId: "calibration.sim-840d@1",
+            channels: [
+              { channelId: "pos.work", kind: "position-vector", unit: "mm", coordinateFrame: "workpiece" },
+              { channelId: "feed.actual", kind: "scalar", unit: "mm/min" },
+            ],
+          },
+          clockMapping: {
+            mappingId: "clock-map.sim-840d@1",
+            deviceId: "sim-840d",
+            mappingMethod: "synchronized-export",
+            deviceReferenceTimestamp: "2026-08-11T09:29:58.000Z",
+            hostReferenceTimestamp: "2026-08-11T17:29:58.010Z",
+            offsetMilliseconds: 10,
+            driftBoundMilliseconds: 2,
+          },
+          coordinateAlignment: {
+            alignmentId: "alignment.sim-840d@1",
+            deviceId: "sim-840d",
+            sourceKind: "calibration-record",
+            effectiveAt: "2026-08-11T08:45:00Z",
+            machineCoordinateFrame: "machine",
+            workCoordinateFrame: "workpiece",
+            calibrationStatus: "calibrated",
+            calibrationId: "calibration.sim-840d@1",
+            channelIds: ["pos.work"],
+          },
+          lineage: {
+            machineRunId: "machine-run:paired-pass",
+            pairingStatus: "paired",
+            baselineKind: "reference",
+            baselineRunBundleHash: "beec29557d6bf8c22363616c65a73f4394e484c9b516478898e9c4039bc44d79",
+            sourceCommandContentHash: "085ab2047f6089fb3fa681c7a83ee3aa63c9d379b55529bbbabbd0411874d218",
+            upstreamClaims: [
+              { claimDefinitionId: "five-axis.geometry-valid-claim@1", status: "Supported" },
+              { claimDefinitionId: "five-axis.task-geometry-collision-free-claim@1", status: "Supported" },
+              { claimDefinitionId: "five-axis.kinematically-feasible-claim@1", status: "Supported" },
+              { claimDefinitionId: "five-axis.configuration-collision-free-claim@1", status: "Supported" },
+              { claimDefinitionId: "five-axis.continuously-feasible-claim@1", status: "Supported" },
+              { claimDefinitionId: "five-axis.interval-certified-claim@1", status: "Supported" },
+              { claimDefinitionId: "five-axis.model-collision-free-claim@1", status: "Supported" },
+            ],
+          },
+          runSpec: {
+            subjectId: "machine-r3-sim@paired",
+            domainPackId: "machine-observation.domain-pack@1",
+            runnerId: "machine-trace-import@1",
+            evaluatorVersion: "machine-observation-evaluator@1",
+            request: { artifact: { artifactType: "machine.telemetry-trace" }, case: { caseId: "read-only-paired-pass" } },
+          },
+        }));
+      }
+      if (url.endsWith("/runs/evaluate")) {
+        return Promise.resolve(jsonResponse({
+          run: {
+            runId: "run.machine-r3",
+            subjectId: "machine-r3-sim@paired",
+            domainPackId: "machine-observation.domain-pack@1",
+            runnerId: "machine-trace-import@1",
+            runSpecHash: "spec-hash",
+            reportContentHash: "report-hash",
+            executionStatus: "Succeeded",
+            caseOutcome: "Passed",
+            evaluatorVersion: "machine-observation-evaluator@1",
+            contentHash: "content-hash",
+          },
+          observation: { artifact: { artifactType: "machine.telemetry-trace" }, artifactHash: "artifact-hash", source: "ImportedArtifact" },
+          report: {
+            executionStatus: "Succeeded",
+            caseOutcome: "Passed",
+            metricResults: [
+              { metricId: "machine-observation.clock-aligned@1", status: "Computed", value: true, evidence: { level: "Observed", method: "clock-audit" } },
+              { metricId: "machine-observation.coordinate-context@1", status: "Computed", value: true, evidence: { level: "Observed", method: "alignment-audit" } },
+            ],
+            provenance: {
+              contextHashes: {
+                trace: "24c7f3c433b76765db97f31ae2ceb38bb1d54234b5e0a2d4ad88f551724cb9f6",
+              },
+            },
+          },
+          claims: [{ claimDefinitionId: "machine-observation.read-only-capture-claim@1", status: "Supported", predicate: "capture is read-only", evidence: { level: "Observed", method: "receipt-check" } }],
+          bundleHash: "bundle-hash",
+        }));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    }));
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Machine.*R3/i }));
+    expect(await screen.findByText("READ ONLY / NOT DEVICE SAFE")).toBeInTheDocument();
+    expect(screen.getByText("READ ONLY · NOT DEVICE SAFE")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入观测并评估" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /写入|启动|下发/i })).not.toBeInTheDocument();
   });
 
   it("运行工程化 F1 场景并在碰撞场景中拒绝标准声明", async () => {

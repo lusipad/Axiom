@@ -1,7 +1,7 @@
 # Axiom 文档入口
 
-> 状态：v0.8.0 可发布；R0/R1 契约闭合，R2 Math F4 参考求解器/SUT 验收已闭合
-> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4`
+> 状态：v0.9.0 可发布；R0–R2 已闭合，R3 Windows 只读设备观测参考链已闭合
+> 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1`
 > 更新日期：2026-08-12
 
 Axiom 的目标不是做一个只理解 CNC 术语的“语义化评分器”，而是建立一套可逐级定义、可扩展到真实设备、可沉淀训练数据，并最终支持受约束参数优化的工业评估、实验与证据框架。
@@ -28,17 +28,19 @@ flowchart LR
 | [通用评估框架规范](Axiom%20通用评估框架规范.md) | 跨领域核心对象、角色、能力协商、三状态轴、证据与执行语义 | Draft v0.5 |
 | [有序离散点领域包规范](有序离散点领域包规范.md) | 第一个最小领域包及其输入、指标和验收闭环 | Draft v0.4 |
 | [FiveAxisTrajectoryPack — CNC 五轴数学参考系统全景规范](CNC%20数学参考系统全景规范.md) | M0–M5 数学模型、进度/对应/重建契约、模型碰撞边界、证明义务和测试族 | Draft v0.8 / F4 implemented |
+| [设备接入与物理闭环规范](设备接入与物理闭环规范.md) | R3 只读设备观测、时间/坐标上下文、MachineRun 谱系和安全边界 | R3 v1 / Windows reference implemented |
 | [ADR 索引](架构决策记录/README.md) | 长期架构决策、替代方案与后果的审计历史 | Active |
 | 本文档 | 总入口、阅读路径与文档治理 | Active |
 
-除 ADR 行外的五项（含本文档）构成规范性主体；ADR 是决策记录，不复制规范正文。[implementation-notes](implementation-notes.md) 是任务过程记录，不属于正式规范，也不能作为实现依据。
+除 ADR 行外的六项（含本文档）构成规范性主体；ADR 是决策记录，不复制规范正文。[implementation-notes](implementation-notes.md) 是任务过程记录，不属于正式规范，也不能作为实现依据。
 
 ## 推荐阅读路径
 
 - 讨论产品方向：本文档 → 项目规划蓝图。
 - 设计平台内核：本文档 → 通用评估框架规范 → 有序离散点领域包规范。
 - 研究五轴数学：通用评估框架规范 → FiveAxisTrajectoryPack 全景规范。
-- 规划设备、机器学习或优化：项目规划蓝图中的对应阶段 → 通用评估框架规范的角色与安全边界。
+- 研究设备只读观测：项目规划蓝图 R3 → 设备接入与物理闭环规范 → 通用评估框架规范的证据与追溯要求。
+- 规划机器学习或优化：项目规划蓝图中的对应阶段 → 通用评估框架规范的角色与安全边界。
 - 了解为何选择当前契约：对应规范 → ADR 索引 → 具体 ADR。
 - 查看版本变化与升级边界：[CHANGELOG](CHANGELOG.md)。
 
@@ -54,28 +56,29 @@ flowchart LR
 
 ## 后续文档的创建触发条件
 
-以下文档现在**不创建空壳**，达到触发条件时再从蓝图中拆出：
+设备只读接口的创建条件已经满足，[设备接入与物理闭环规范](设备接入与物理闭环规范.md) 已进入规范主体。以下后续文档仍不创建空壳，达到触发条件时再从蓝图中拆出：
 
 | 未来文档 | 创建触发条件 |
 |---|---|
-| `设备接入与物理闭环规范.md` | 选定首个驱动器、控制器或仿真设备，开始定义只读遥测接口 |
 | `数据集与学习模型规范.md` | `Run / Observation / Evidence` 模式稳定，并开始积累可训练的成对样本 |
 | `受约束优化与安全闭环规范.md` | 参数推荐进入工程验证，需要定义搜索域、硬约束、shadow 与人工批准协议 |
 | `架构决策记录/ADR-*` | 每次新增会长期约束实现、且存在实质替代方案的技术决策 |
 
 ## 当前最近目标
 
-R1 的离散点最小闭环已经成立。v0.8.0 在不向 Core 写入五轴分支、也不改写 F2 Artifact 的前提下，把第二个领域包推进到可执行的 F4 参考求解器 / SUT 验收闭环：
+R1 的离散点最小闭环和 R2 五轴数学参考链已经成立。v0.9.0 进一步用独立领域包闭合 R3 的首个 Windows 只读设备观测参考链：
 
 > F1 的 M0→M2 几何证据链、F2 的 M3 运动学 / `Q_free` 证据，以及 F3 的 M4 连续时间律与 M5 固定周期重建都继续保留。F4 新增 `five-axis.domain-pack@5`、`five-axis.solver-adapter@1`、独立 reference / SUT in-process adapters、三类 canonical solver 拓扑闭环、`adapter-input-hash-mismatch` 与 `interval-interior-collision` 反例、M0–M5 manifest、七个数学 gate claims，以及可被网页工作台消费的 F4 example payload。
 
-F4 只发布 `GeometryValid`、`TaskGeometryCollisionFree`、`KinematicallyFeasible`、`ConfigurationCollisionFree`、`ContinuouslyFeasible`、`IntervalCertified` 和 `ModelCollisionFree` 七个数学 claims，仍然禁止 `DeviceSafe`、`ProcessSafe` 和任何上机许可。R2 现在已经闭合，下一工作面是 R3 设备只读接入，不声称驱动器或控制器写入已实现。
+F4 只发布 `GeometryValid`、`TaskGeometryCollisionFree`、`KinematicallyFeasible`、`ConfigurationCollisionFree`、`ContinuouslyFeasible`、`IntervalCertified` 和 `ModelCollisionFree` 七个数学 claims，仍然禁止 `DeviceSafe`、`ProcessSafe` 和任何上机许可。R2 保持闭合，不向数学 Artifact 塞入设备语义。
 
-## v0.8.0 快速开始
+R3 使用 `axiom.windows-file-telemetry-source@1` 读取已经落盘的 JSON capture，并以独立 `machine-observation.domain-pack@1` 保存 raw frames、DeviceProfile、时钟/坐标上下文和 paired/unpaired MachineRun 谱系。`machine-trace-import@1` 在 DomainPack 中显式声明为 import runner，因此 Observation 来源稳定记录为 `ImportedArtifact`。该参考源只证明 Windows 文件导入和数据可信性合同；它不连接真实设备、不轮询控制器、不写参数，也不产生 `DeviceSafe`、`ProcessSafe` 或上机许可。详细契约见[设备接入与物理闭环规范](设备接入与物理闭环规范.md)。下一工作面是 R4 物理模型与现实对齐。
 
-v0.8.0 保留 Point Lab、F1 Geometry Reference Workbench、F2 Kinematics Reference Workbench 与 F3 Time & Sampling Lab，并把 F4 Reference Solver / SUT 验收数据源并入同一条公开 API。F4 的五个场景覆盖三类 canonical solver 拓扑、适配器输入哈希失配，以及“端点安全但区间内部碰撞”的反例；网页工作台读取同一组 F4 example payload，展示 M0–M5 manifest、source / artifacts / evidence 和 stage acceptance report，并永久标注 `MATH ONLY / NOT DEVICE SAFE`。
+## v0.9.0 快速开始
 
-v0.8.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程和 [`constraints/acceptance.txt`](constraints/acceptance.txt) 依赖版本。其他平台暂不属于本阶段支持矩阵；portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
+v0.9.0 保留 Point Lab 与 Five-Axis F1–F4 工作台，并新增 Machine Read-only Lab。Machine Lab 读取与 Python、CLI、HTTP 相同的 R3 fixture 和 RunSpec，分开展示 raw trace、时钟/坐标对齐、paired/unpaired 谱系、Metric、Claim 与 Evidence，并永久标注 `READ ONLY / NOT DEVICE SAFE`。
+
+v0.9.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程和 [`constraints/acceptance.txt`](constraints/acceptance.txt) 依赖版本。Ubuntu/Linux 暂不属于本阶段支持矩阵；portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 F4 最短用法是先取场景 payload，再把 `runSpec` 送回公共执行接口。下面这个例子会返回 `Passed`，并保留 7 个数学 gate claims：
 
@@ -97,6 +100,25 @@ F4 的公开 API 很薄，数据面只暴露三类查询和一个回放入口：
 
 如果你在浏览器里接一个 F4 工作台，直接消费上面的 example payload 就够了，字段按 `manifest / scenario / source / artifacts / evidence / acceptanceReport` 分块，不要把 `DeviceSafe` 或 `ProcessSafe` 伪装进去。
 
+R3 也走同一条公共 Run 路径。下面的 paired 示例会保留 Windows 文件导入来源和五类 `Observed` 数据证据；它不是设备安全证明：
+
+```python
+from axiom import evaluate_run
+from axiom.machine import machine_r3_example_run_spec
+
+bundle = evaluate_run(machine_r3_example_run_spec("read-only-paired-pass"))
+assert bundle.observation.source == "ImportedArtifact"
+assert bundle.report.case_outcome.value == "Passed"
+assert all(claim.evidence.level == "Observed" for claim in bundle.claims)
+```
+
+R3 的查询面和回放入口为：
+
+- `GET /api/v1/machine/r3/manifest`
+- `GET /api/v1/machine/r3/scenarios`
+- `GET /api/v1/examples/machine-r3?scenarioId=read-only-paired-pass`
+- `POST /api/v1/runs/evaluate`
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade -c constraints\acceptance.txt pip
@@ -110,7 +132,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1、F2、F3 与 F4 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F2 机床/碰撞参考见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)，F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)，F4 三拓扑、Adapter 反例、区间内部碰撞和 Windows 环境金值见 [`fixtures/five_axis_f4`](fixtures/five_axis_f4)；这些文件是源码仓库的冻结验收资料，不承诺为 wheel 内部文件路径。安装发布包后，可由 F1/F2/F3/F4 示例 API 获取完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
+启动后访问 `http://127.0.0.1:8000`，可在 Point Lab、Five-Axis F1–F4 与 Machine R3 间切换。发布包已经内置网页资源；从源码修改 UI 时，先在 `web` 目录执行 `pnpm install` 和 `pnpm build`。单次输入契约见 [`examples/basic-evaluation.json`](examples/basic-evaluation.json)，真实双臂实验见 [`cnc-contour-true-ab.json`](fixtures/cnc_scenarios/experiments/cnc-contour-true-ab.json)。仓库验收使用的 Five-Axis F2 机床/碰撞参考见 [`fixtures/five_axis_f2`](fixtures/five_axis_f2)，F3 CL 输入、M3/M4/M5 内容身份和 Claim 金值见 [`fixtures/five_axis_f3`](fixtures/five_axis_f3)，F4 三拓扑、Adapter 反例、区间内部碰撞和 Windows 环境金值见 [`fixtures/five_axis_f4`](fixtures/five_axis_f4)，R3 Windows 文件导入、缺上下文、gap 与写操作反例见 [`fixtures/machine_r3`](fixtures/machine_r3)；这些文件是源码仓库的冻结验收资料，不承诺为 wheel 内部文件路径。安装发布包后，可由 F1/F2/F3/F4/R3 示例 API 获取完整 envelope，再交给公共 `POST /api/v1/runs/evaluate` 执行。
 
 Python 中可直接执行内建 F0 示例：
 
@@ -191,8 +213,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.8.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
+v0.9.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。R3 文件 capture 仍受统一 8 MiB CLI/API 请求预算约束，不会静默补齐缺失帧。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.8.0 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis F1 覆盖任务几何，F2 覆盖冻结 M3 数学机床及显式 `Q_free` 碰撞模型，F3 覆盖 M4/M5 数学时间与重建语义，F4 覆盖静态进程内 Reference/SUT Adapter、交叉验证与模型内 M5 碰撞总门。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、设备接入、机器学习训练和参数回写仍属于后续阶段。
+v0.9.0 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis F1–F4 覆盖数学参考链；Machine R3 只读取已落盘的 Windows JSON capture 并生成数据可信性证据。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、在线设备协议、真实控制器采集、机器学习训练和参数回写仍属于后续阶段。

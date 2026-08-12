@@ -7,9 +7,17 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from axiom.evaluator import _content_hash
-from axiom.five_axis import f1_runtime, f2_runtime, f3_runtime, f4_adapters, f4_runtime
-import axiom.five_axis.f4_scenarios as f4_scenarios
+from axiom.five_axis import (
+    f1_runtime,
+    f2_runtime,
+    f3_runtime,
+    f4_adapters,
+    f4_runtime,
+    f4_scenarios,
+)
 from axiom.five_axis.f2_collision import evaluate_configuration_q_free
 from axiom.five_axis.f2_kinematics import normalize_numeric_identity
 from axiom.five_axis.f4_scenarios import (
@@ -19,7 +27,6 @@ from axiom.five_axis.f4_scenarios import (
     validate_f4_example_run_spec,
 )
 from axiom.run import evaluate_run, validate_run_bundle_integrity
-
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "five_axis_f4"
 TARGET_ENVIRONMENT = {
@@ -211,6 +218,12 @@ def test_f4_reference_fixture_freezes_portable_hashes_claims_and_stage_report() 
 def test_f4_reference_fixture_replays_windows_environment_bound_bundle_hashes(monkeypatch: Any) -> None:
     manifest = _manifest()
     scenario_ids = [case["id"] for case in manifest["cases"] if case["countsTowardClosure"]]
+    actual_environment = f4_runtime.current_f4_numeric_environment()
+    if actual_environment != TARGET_ENVIRONMENT:
+        pytest.skip(
+            "environment-bound F4 bundle hashes require the exact Windows acceptance environment; "
+            f"actual={actual_environment!r}"
+        )
 
     with _bound_fixture_environment(monkeypatch) as target_environment:
         matching = [

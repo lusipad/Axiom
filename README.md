@@ -96,7 +96,7 @@ R7-C 新增隔离的 Windows `.NET 8` OPC UA Shadow Adapter 和 `control.domain-
 
 v0.16.0 保留既有实验室，并新增 OPC UA R7-C。它展示证书固定、加密会话、五轴订阅、通知完整性与零写操作证据；页面只允许导入 `.NET` 传输证据并下载审计，不提供任何设备操作入口。
 
-v0.16.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和 .NET 8，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
+v0.16.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 F4 最短用法是先取场景 payload，再把 `runSpec` 送回公共执行接口。下面这个例子会返回 `Passed`，并保留 7 个数学 gate claims：
 
@@ -270,8 +270,8 @@ R7-B 的查询和证据校验面为：
 R7-C 默认只显示尚未导入网络证据的开放状态；本地 Windows 虚拟服务端验收和 Adapter 构建方式如下：
 
 ```powershell
-dotnet restore adapters\opcua-shadow\Axiom.OpcUaShadow.slnx --locked-mode
-dotnet build adapters\opcua-shadow\Axiom.OpcUaShadow.slnx -c Release --no-restore
+dotnet restore adapters\opcua-shadow\Axiom.OpcUaShadow.sln --locked-mode
+dotnet build adapters\opcua-shadow\Axiom.OpcUaShadow.sln -c Release --no-restore
 dotnet run --project adapters\opcua-shadow\tests\Axiom.OpcUaShadow.Conformance -c Release --no-build
 ```
 

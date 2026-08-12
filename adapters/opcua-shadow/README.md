@@ -2,6 +2,9 @@
 
 Windows-only、只读的 OPC UA 传输验收程序。它使用 OPC Foundation 官方 .NET
 协议栈建立 `SignAndEncrypt` 会话，并且只创建订阅，不暴露 Write、Call 或设备控制命令。
+仓库根目录的 `global.json` 将构建工具链精确冻结为 .NET SDK 8.0.424。
+发布的 `win-x64` 单文件是 framework-dependent 制品，运行端需要 .NET 8.0.30
+或兼容的更高 8.0 patch runtime。
 
 本程序产生 `axiom.control.opcua-transport-evidence@1` 证据。证据只能证明一次
 OPC UA 网络采集的传输合同，不能证明真实厂商兼容、现实对齐、`DeviceSafe`、
@@ -10,8 +13,8 @@ OPC UA 网络采集的传输合同，不能证明真实厂商兼容、现实对�
 ## 构建与验收
 
 ```powershell
-dotnet restore adapters/opcua-shadow/Axiom.OpcUaShadow.slnx --locked-mode
-dotnet build adapters/opcua-shadow/Axiom.OpcUaShadow.slnx -c Release --no-restore
+dotnet restore adapters/opcua-shadow/Axiom.OpcUaShadow.sln --locked-mode
+dotnet build adapters/opcua-shadow/Axiom.OpcUaShadow.sln -c Release --no-restore
 dotnet run --project adapters/opcua-shadow/tests/Axiom.OpcUaShadow.Conformance -c Release --no-build
 ```
 

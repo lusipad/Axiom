@@ -13,7 +13,7 @@
 ### Changed
 
 - R7 从厂商无关 JSON 就绪门推进到可执行网络传输合同；生产 Adapter 源码不包含 OPC UA Write 或 Method Call 路径，密码只从命名的 Windows 进程环境变量读取。
-- CI 与发布工作流新增 .NET 8 locked restore、无警告构建、网络 conformance 和 `.NET → Python` 证据重验。
+- CI 与发布工作流新增由 `global.json` 冻结的 .NET SDK 8.0.424、locked restore、无警告构建、网络 conformance 和 `.NET → Python` 证据重验。
 
 ### Verification
 

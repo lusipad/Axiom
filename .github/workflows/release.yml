@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "8.0.x"
+          global-json-file: global.json
 
       - uses: pnpm/setup@v1
         with:
@@ -47,8 +47,8 @@ jobs:
 
       - name: Verify release source
         run: |
-          dotnet restore adapters/opcua-shadow/Axiom.OpcUaShadow.slnx --locked-mode
-          dotnet build adapters/opcua-shadow/Axiom.OpcUaShadow.slnx -c Release --no-restore
+          dotnet restore adapters/opcua-shadow/Axiom.OpcUaShadow.sln --locked-mode
+          dotnet build adapters/opcua-shadow/Axiom.OpcUaShadow.sln -c Release --no-restore
           dotnet run --project adapters/opcua-shadow/tests/Axiom.OpcUaShadow.Conformance -c Release --no-build
           pnpm --dir web test
           pnpm --dir web check

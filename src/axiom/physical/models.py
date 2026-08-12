@@ -9,7 +9,16 @@ from pydantic import Field, field_validator, model_validator
 
 from ..five_axis.f3_sampling import M5DiscreteCommand
 from ..machine.models import MachineObservationRequest
-from ..models import AxiomModel, EvaluationCase, _require_json_number
+from ..models import (
+    AxiomModel,
+    CaseOutcome,
+    ClaimStatus,
+    EvaluationCase,
+    ExecutionStatus,
+    MetricStatus,
+    RunSpec,
+    _require_json_number,
+)
 
 _HASH_PATTERN = r"^[0-9a-f]{64}$"
 _VERSIONED_ID_PATTERN = r"^.+@[0-9]+$"
@@ -387,6 +396,206 @@ class PhysicalValidationAnalysis(AxiomModel):
         return self
 
 
+class PhysicalR4ManifestModel(AxiomModel):
+    equations: tuple[str, ...] = Field(min_length=1)
+    state_ids: tuple[str, ...] = Field(alias="stateIds", min_length=1)
+    input_ids: tuple[str, ...] = Field(alias="inputIds", min_length=1)
+    output_ids: tuple[str, ...] = Field(alias="outputIds", min_length=1)
+    discretization: Literal["exact-zoh"]
+    supported_devices: tuple[str, ...] = Field(alias="supportedDevices", min_length=1)
+    operating_conditions: tuple[str, ...] = Field(alias="operatingConditions", min_length=1)
+    unmodeled_factors: tuple[str, ...] = Field(alias="unmodeledFactors", min_length=1)
+
+
+class PhysicalR4Manifest(AxiomModel):
+    manifest_id: Literal["physical.r4-manifest@1"] = Field(alias="manifestId")
+    schema_id: Literal["physical.r4-manifest@1"] = Field(alias="schemaId")
+    schema_version: Literal[1] = Field(alias="schemaVersion")
+    stage: Literal["R4"]
+    domain_pack_id: str = Field(alias="domainPackId", pattern=_VERSIONED_ID_PATTERN)
+    platform: Literal["windows"]
+    default_scenario_id: str = Field(alias="defaultScenarioId", min_length=1)
+    safety_banner: Literal["MODEL VALIDATION / NOT DEVICE SAFE"] = Field(alias="safetyBanner")
+    validation_banner: Literal["SYNTHETIC SIL / REALITY VALIDATION OPEN"] = Field(alias="validationBanner")
+    synthetic_contract_status: Literal["Passed"] = Field(alias="syntheticContractStatus")
+    reality_validation_status: Literal["Open"] = Field(alias="realityValidationStatus")
+    upstream_f4_scenario_id: str = Field(alias="upstreamF4ScenarioId", min_length=1)
+    model: PhysicalR4ManifestModel
+
+
+class PhysicalR4ScenarioSummaryPayload(AxiomModel):
+    scenario_id: str = Field(alias="scenarioId", min_length=1)
+    title: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    axis_ids: tuple[str, ...] = Field(alias="axisIds", min_length=1)
+    synthetic_contract_status: Literal["Passed"] = Field(alias="syntheticContractStatus")
+    reality_validation_status: Literal["Open"] = Field(alias="realityValidationStatus")
+
+
+class PhysicalR4DatasetSummary(AxiomModel):
+    dataset_id: str = Field(alias="datasetId", pattern=_VERSIONED_ID_PATTERN)
+    trace_id: str = Field(alias="traceId", min_length=1)
+    scenario_role: Literal["calibration", "validation"] = Field(alias="scenarioRole")
+    source_id: str = Field(alias="sourceId", pattern=_VERSIONED_ID_PATTERN)
+    captured_at: str = Field(alias="capturedAt")
+    content_hash: str = Field(alias="contentHash", pattern=_HASH_PATTERN)
+
+    @field_validator("captured_at")
+    @classmethod
+    def require_aware_capture_timestamp(cls, value: str, info: Any) -> str:
+        return _aware_timestamp(value, field_name=info.field_name)
+
+
+class PhysicalR4LeakageGuard(AxiomModel):
+    check_id: str = Field(alias="checkId", min_length=1)
+    status: Literal["pass", "blocked"]
+    message: str = Field(min_length=1)
+
+
+class PhysicalR4ValidationDataset(PhysicalR4DatasetSummary):
+    leakage_guards: tuple[PhysicalR4LeakageGuard, ...] = Field(alias="leakageGuards", min_length=1)
+
+
+class PhysicalR4SeriesPoint(AxiomModel):
+    time: float = Field(ge=0)
+    value: float
+
+    @field_validator("time", "value", mode="before")
+    @classmethod
+    def reject_invalid_numbers(cls, value: Any) -> Any:
+        return _finite_number(value)
+
+
+class PhysicalR4AxisSeries(AxiomModel):
+    command: tuple[PhysicalR4SeriesPoint, ...] = Field(min_length=1)
+    simulation: tuple[PhysicalR4SeriesPoint, ...] = Field(min_length=1)
+    observation: tuple[PhysicalR4SeriesPoint, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def require_aligned_series(self) -> "PhysicalR4AxisSeries":
+        expected = len(self.command)
+        if len(self.simulation) != expected or len(self.observation) != expected:
+            raise ValueError("command, simulation, and observation series must share the same length")
+        command_times = tuple(point.time for point in self.command)
+        if tuple(point.time for point in self.simulation) != command_times:
+            raise ValueError("simulation series must align to command timestamps")
+        if tuple(point.time for point in self.observation) != command_times:
+            raise ValueError("observation series must align to command timestamps")
+        return self
+
+
+class PhysicalR4AxisMetric(AxiomModel):
+    metric_id: str = Field(alias="metricId", min_length=1)
+    label: str = Field(min_length=1)
+    group: Literal["linear-mm", "rotary-rad"]
+    value: float | Literal["InsufficientExcitation"]
+    unit: Literal["mm", "rad"]
+    axis_id: str = Field(alias="axisId", min_length=1)
+    status: Literal["identified", "insufficient-excitation"]
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def reject_invalid_metric_value(cls, value: Any) -> Any:
+        if value == "InsufficientExcitation":
+            return value
+        return _finite_number(value)
+
+
+class PhysicalR4ResidualComponent(AxiomModel):
+    component_id: str = Field(alias="componentId", min_length=1)
+    label: str = Field(min_length=1)
+    value: float
+    unit: Literal["mm", "rad"]
+    source: Literal["command-simulation", "simulation-observation", "command-observation"]
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def reject_invalid_component_value(cls, value: Any) -> Any:
+        return _finite_number(value)
+
+
+class PhysicalR4AxisAnalysis(AxiomModel):
+    axis_id: str = Field(alias="axisId", min_length=1)
+    family: Literal["linear-mm", "rotary-rad"]
+    unit: Literal["mm", "rad"]
+    excitation_status: Literal["excited", "insufficient"] = Field(alias="excitationStatus")
+    series: PhysicalR4AxisSeries
+    metrics: tuple[PhysicalR4AxisMetric, ...] = Field(min_length=1)
+    residual_decomposition: tuple[PhysicalR4ResidualComponent, ...] = Field(
+        default_factory=tuple,
+        alias="residualDecomposition",
+    )
+
+
+class PhysicalR4MetricResult(AxiomModel):
+    metric_id: str = Field(alias="metricId", min_length=1)
+    metric_definition_id: str = Field(alias="metricDefinitionId", min_length=1)
+    label: str = Field(min_length=1)
+    group: Literal["linear-mm", "rotary-rad"]
+    status: MetricStatus
+    value: float | None = None
+    unit: str | None = None
+    threshold_passed: bool | None = Field(default=None, alias="thresholdPassed")
+    reason_code: str | None = Field(default=None, alias="reasonCode")
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def reject_invalid_group_metric_value(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _finite_number(value)
+
+
+class PhysicalR4Claim(AxiomModel):
+    claim_id: str = Field(alias="claimId", min_length=1)
+    claim_definition_id: str = Field(alias="claimDefinitionId", pattern=_VERSIONED_ID_PATTERN)
+    metric_id: str | None = Field(default=None, alias="metricId")
+    title: str = Field(min_length=1)
+    status: ClaimStatus
+    statement: str = Field(min_length=1)
+    reason_code: str | None = Field(default=None, alias="reasonCode")
+    report_content_hash: str | None = Field(default=None, alias="reportContentHash", pattern=_HASH_PATTERN)
+    evidence_level: str | None = Field(default=None, alias="evidenceLevel")
+    evidence_ids: tuple[str, ...] = Field(alias="evidenceIds", min_length=1)
+
+
+class PhysicalR4Evidence(AxiomModel):
+    evidence_id: str = Field(alias="evidenceId", min_length=1)
+    kind: Literal["validation", "fit", "lineage"]
+    title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    content_hash: str | None = Field(default=None, alias="contentHash", pattern=_HASH_PATTERN)
+
+
+class PhysicalR4AnalysisRun(AxiomModel):
+    case_outcome: CaseOutcome = Field(alias="caseOutcome")
+    execution_status: ExecutionStatus = Field(alias="executionStatus")
+    report_content_hash: str = Field(alias="reportContentHash", pattern=_HASH_PATTERN)
+    bundle_hash: str = Field(alias="bundleHash", pattern=_HASH_PATTERN)
+
+
+class PhysicalR4ExampleAnalysis(AxiomModel):
+    trace_artifact_type: Literal["five-axis.physical-response-trace"] = Field(alias="traceArtifactType")
+    analysis_content_hash: str | None = Field(default=None, alias="analysisContentHash", pattern=_HASH_PATTERN)
+    curve_mode: Literal["canonical-analysis", "diagnostic-preview"] = Field(alias="curveMode")
+    curve_notice: str | None = Field(default=None, alias="curveNotice")
+    run: PhysicalR4AnalysisRun
+    axes: tuple[PhysicalR4AxisAnalysis, ...] = Field(min_length=1)
+    metric_results: tuple[PhysicalR4MetricResult, ...] = Field(alias="metricResults")
+    claims: tuple[PhysicalR4Claim, ...] = Field(min_length=1)
+    evidence: tuple[PhysicalR4Evidence, ...] = Field(min_length=1)
+
+
+class PhysicalR4ExamplePayload(AxiomModel):
+    manifest: PhysicalR4Manifest
+    scenario: PhysicalR4ScenarioSummaryPayload
+    model: PhysicalR4ManifestModel
+    calibration: PhysicalR4DatasetSummary
+    validation: PhysicalR4ValidationDataset
+    analysis: PhysicalR4ExampleAnalysis
+    run_spec: RunSpec = Field(alias="runSpec")
+
+
 __all__ = [
     "AxisChannelBinding",
     "AxisValidationSeries",
@@ -397,6 +606,23 @@ __all__ = [
     "PhysicalEvidencePair",
     "PhysicalModelDefinition",
     "PhysicalModelValidationRequest",
+    "PhysicalR4AnalysisRun",
+    "PhysicalR4AxisAnalysis",
+    "PhysicalR4AxisMetric",
+    "PhysicalR4AxisSeries",
+    "PhysicalR4Claim",
+    "PhysicalR4DatasetSummary",
+    "PhysicalR4Evidence",
+    "PhysicalR4ExampleAnalysis",
+    "PhysicalR4ExamplePayload",
+    "PhysicalR4LeakageGuard",
+    "PhysicalR4Manifest",
+    "PhysicalR4ManifestModel",
+    "PhysicalR4MetricResult",
+    "PhysicalR4ResidualComponent",
+    "PhysicalR4ScenarioSummaryPayload",
+    "PhysicalR4SeriesPoint",
+    "PhysicalR4ValidationDataset",
     "PhysicalResponseSample",
     "PhysicalResponseTrace",
     "PhysicalRunAlignment",

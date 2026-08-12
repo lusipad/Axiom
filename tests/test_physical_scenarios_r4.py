@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from axiom.models import CaseOutcome, ExecutionStatus, MetricStatus
+from axiom.physical.models import PhysicalModelValidationRequest
 from axiom.physical.runtime import (
     ALIGNMENT_VALID_METRIC_ID,
     ALIGNMENT_VALID_CLAIM_ID,
@@ -12,6 +13,7 @@ from axiom.physical.runtime import (
     LINEAR_MATH_OBSERVATION_RMSE_METRIC_ID,
     REALITY_VALIDATED_METRIC_ID,
     ROTARY_SIMULATION_OBSERVATION_RMSE_METRIC_ID,
+    analyze_physical_validation,
 )
 from axiom.physical.scenarios import (
     build_r4_manifest,
@@ -38,6 +40,12 @@ def _payload_metric(payload: dict[str, object], metric_id: str) -> dict[str, obj
     return next(metric for metric in metrics if metric["metricId"] == metric_id)  # type: ignore[index]
 
 
+def _runtime_analysis(scenario_id: str = "in-domain-synthetic-sil"):
+    scenario = load_r4_scenario(scenario_id)
+    request = PhysicalModelValidationRequest.model_validate(scenario.runSpec["request"])
+    return analyze_physical_validation(request)
+
+
 def test_r4_catalog_freezes_default_id_and_six_windows_only_scenarios() -> None:
     manifest = build_r4_manifest()
     summaries = list_r4_scenarios()
@@ -62,12 +70,14 @@ def test_r4_catalog_freezes_default_id_and_six_windows_only_scenarios() -> None:
 
 def test_positive_r4_scenario_uses_independent_oracle_and_keeps_b_c_insufficient() -> None:
     scenario = load_r4_scenario()
+    runtime_analysis = _runtime_analysis()
 
     assert scenario.summary.scenarioId == "in-domain-synthetic-sil"
     assert scenario.summary.syntheticContractStatus == "Passed"
     assert scenario.summary.realityValidationStatus == "Open"
     assert scenario.calibrationPair.command_content_id != scenario.validationPair.command_content_id
     assert scenario.calibrationPair.trace_content_hash != scenario.validationPair.trace_content_hash
+    assert scenario.validationAnalysis == runtime_analysis
     assert scenario.validationAnalysis.leakage_free is True
     assert scenario.validationAnalysis.alignment_coverage == 1.0
     assert scenario.validationAnalysis.fit_within_tolerance is True
@@ -140,6 +150,7 @@ def test_r4_counterexample_metadata_freezes_failure_mode(
 
 def test_r4_example_payload_and_bootstrap_run_spec_are_real_and_evaluable() -> None:
     payload = r4_example_payload()
+    runtime_analysis = _runtime_analysis()
     run_spec = validate_r4_example_run_spec()
     bundle = evaluate_run(run_spec)
     linear_math_metric = _metric(bundle, LINEAR_MATH_OBSERVATION_RMSE_METRIC_ID)
@@ -156,6 +167,7 @@ def test_r4_example_payload_and_bootstrap_run_spec_are_real_and_evaluable() -> N
     assert any(axis["axisId"] == "C" and axis["excitationStatus"] == "insufficient" for axis in payload["analysis"]["axes"])
     assert payload["analysis"]["run"]["caseOutcome"] == CaseOutcome.PASSED.value
     assert payload["analysis"]["run"]["executionStatus"] == ExecutionStatus.SUCCEEDED.value
+    assert payload["analysis"]["analysisContentHash"] == runtime_analysis.content_hash
     assert payload_linear_metric["value"] == pytest.approx(linear_math_metric.value)
     assert payload_linear_metric["status"] == linear_math_metric.status.value
     assert payload_rotary_metric["status"] == MetricStatus.NOT_APPLICABLE.value

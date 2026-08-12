@@ -3,6 +3,12 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import axiom.web as web_module
+from axiom.physical import (
+    PhysicalR4ExamplePayload,
+    PhysicalR4Manifest,
+    PhysicalR4ScenarioSummaryPayload,
+    r4_example_run_spec,
+)
 from axiom.web import create_app
 
 
@@ -15,8 +21,12 @@ class _PhysicalR4Service:
             "stage": "R4",
             "domainPackId": "five-axis.domain-pack@6",
             "platform": "windows",
+            "defaultScenarioId": "in-domain-synthetic-sil",
             "safetyBanner": "MODEL VALIDATION / NOT DEVICE SAFE",
             "validationBanner": "SYNTHETIC SIL / REALITY VALIDATION OPEN",
+            "syntheticContractStatus": "Passed",
+            "realityValidationStatus": "Open",
+            "upstreamF4ScenarioId": "canonical-head-table-solver",
             "model": {
                 "equations": ["x[k+1] = Ad x[k] + Bd u[k]", "y[k] = Cd x[k] + Dd u[k]"],
                 "stateIds": ["x_pos", "x_vel"],
@@ -36,6 +46,8 @@ class _PhysicalR4Service:
                 "title": "In-Domain Synthetic SIL",
                 "description": "Synthetic SIL calibration split with held-out validation and open reality follow-up.",
                 "axisIds": ["X", "B", "C"],
+                "syntheticContractStatus": "Passed",
+                "realityValidationStatus": "Open",
             }
         ]
 
@@ -71,6 +83,14 @@ class _PhysicalR4Service:
             },
             "analysis": {
                 "traceArtifactType": "five-axis.physical-response-trace",
+                "analysisContentHash": "e" * 64,
+                "curveMode": "canonical-analysis",
+                "run": {
+                    "caseOutcome": "Passed",
+                    "executionStatus": "Succeeded",
+                    "reportContentHash": "f" * 64,
+                    "bundleHash": "1" * 64,
+                },
                 "axes": [
                     {
                         "axisId": "X",
@@ -89,6 +109,8 @@ class _PhysicalR4Service:
                                 "group": "linear-mm",
                                 "value": 0.2,
                                 "unit": "mm",
+                                "axisId": "X",
+                                "status": "identified",
                             }
                         ],
                         "residualDecomposition": [
@@ -101,63 +123,26 @@ class _PhysicalR4Service:
                             }
                         ],
                     },
-                    {
-                        "axisId": "B",
-                        "family": "rotary-rad",
-                        "unit": "rad",
-                        "excitationStatus": "insufficient",
-                        "series": {
-                            "command": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.02}],
-                            "simulation": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.02}],
-                            "observation": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.01}],
-                        },
-                        "metrics": [],
-                        "residualDecomposition": [],
-                    },
-                    {
-                        "axisId": "C",
-                        "family": "rotary-rad",
-                        "unit": "rad",
-                        "excitationStatus": "insufficient",
-                        "series": {
-                            "command": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.03}],
-                            "simulation": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.03}],
-                            "observation": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.01}],
-                        },
-                        "metrics": [],
-                        "residualDecomposition": [],
-                    },
                 ],
-                "metrics": [
+                "metricResults": [
                     {
                         "metricId": "linear.max",
+                        "metricDefinitionId": "linear.max@1",
                         "label": "Linear max abs residual",
                         "group": "linear-mm",
+                        "status": "Computed",
                         "value": 0.2,
                         "unit": "mm",
-                    },
-                    {
-                        "metricId": "rotary.max",
-                        "label": "Rotary max abs residual",
-                        "group": "rotary-rad",
-                        "value": 0.01,
-                        "unit": "rad",
                     },
                 ],
                 "claims": [
                     {
                         "claimId": "r4.validation-window",
+                        "claimDefinitionId": "five-axis.physical-model-fit-within-tolerance-claim@1",
                         "title": "Held-out validation stays bounded",
                         "status": "Supported",
                         "statement": "Residual remains within validation threshold.",
                         "evidenceIds": ["fit-report"],
-                    },
-                    {
-                        "claimId": "r4.rotary-coverage",
-                        "title": "Rotary validation coverage remains open",
-                        "status": "Inconclusive",
-                        "statement": "B/C axis excitation is insufficient for a closed validation claim.",
-                        "evidenceIds": ["coverage-note"],
                     },
                 ],
                 "evidence": [
@@ -168,16 +153,9 @@ class _PhysicalR4Service:
                         "summary": "Exact-ZOH replay stays within threshold.",
                         "contentHash": "c" * 64,
                     },
-                    {
-                        "evidenceId": "coverage-note",
-                        "kind": "validation",
-                        "title": "Rotary coverage note",
-                        "summary": "Reality validation remains open for B/C axes.",
-                        "contentHash": "d" * 64,
-                    },
                 ],
             },
-            "runSpec": None,
+            "runSpec": r4_example_run_spec(),
         }
 
 
@@ -199,9 +177,11 @@ def test_physical_r4_endpoints_expose_manifest_scenarios_and_example(monkeypatch
     assert manifest.status_code == 200
     assert manifest.json()["safetyBanner"] == "MODEL VALIDATION / NOT DEVICE SAFE"
     assert manifest.json()["model"]["discretization"] == "exact-zoh"
+    PhysicalR4Manifest.model_validate(manifest.json())
 
     assert scenarios.status_code == 200
     assert scenarios.json()[0]["scenarioId"] == "in-domain-synthetic-sil"
+    PhysicalR4ScenarioSummaryPayload.model_validate(scenarios.json()[0])
 
     assert example.status_code == 200
     payload = example.json()
@@ -209,7 +189,9 @@ def test_physical_r4_endpoints_expose_manifest_scenarios_and_example(monkeypatch
     assert payload["validation"]["scenarioRole"] == "validation"
     assert payload["analysis"]["traceArtifactType"] == "five-axis.physical-response-trace"
     assert payload["analysis"]["axes"][0]["series"]["command"][1]["value"] == 10.0
-    assert payload["analysis"]["claims"][1]["status"] == "Inconclusive"
+    assert payload["analysis"]["metricResults"][0]["status"] == "Computed"
+    assert payload["runSpec"]["domainPackId"] == "five-axis.domain-pack@6"
+    PhysicalR4ExamplePayload.model_validate(payload)
 
 
 def test_physical_r4_unknown_scenario_returns_not_found(monkeypatch) -> None:
@@ -250,3 +232,23 @@ def test_physical_r4_real_service_exposes_evaluable_windows_contract() -> None:
         if claim["claimDefinitionId"] == "five-axis.physical-model-reality-validated-claim@1"
     )
     assert reality_claim["status"] == "Inconclusive"
+
+
+def test_physical_r4_openapi_freezes_typed_responses() -> None:
+    client = _client()
+
+    openapi = client.get("/api/openapi.json").json()
+    manifest_schema = openapi["paths"]["/api/v1/physical/r4/manifest"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    scenarios_schema = openapi["paths"]["/api/v1/physical/r4/scenarios"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    example_schema = openapi["paths"]["/api/v1/examples/physical-r4"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert manifest_schema["$ref"].endswith("/PhysicalR4Manifest")
+    assert scenarios_schema["type"] == "array"
+    assert scenarios_schema["items"]["$ref"].endswith("/PhysicalR4ScenarioSummaryPayload")
+    assert example_schema["$ref"].endswith("/PhysicalR4ExamplePayload")

@@ -41,6 +41,11 @@ from .machine import (
     load_machine_r3_manifest,
     machine_r3_example_payload,
 )
+from .physical import (
+    PhysicalR4ExamplePayload,
+    PhysicalR4Manifest,
+    PhysicalR4ScenarioSummaryPayload,
+)
 from .models import ExperimentReport, ExperimentSpec, RunBundle, RunSpec
 from .run import evaluate_run
 from .runtime import find_domain_runtime_binding
@@ -273,8 +278,13 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         except (FileNotFoundError, KeyError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @app.get("/api/v1/physical/r4/manifest")
-    def physical_r4_manifest() -> Any:
+    @app.get(
+        "/api/v1/physical/r4/manifest",
+        response_model=PhysicalR4Manifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def physical_r4_manifest() -> PhysicalR4Manifest:
         physical_api = _load_physical_r4_api()
         try:
             return physical_api.load_r4_manifest()
@@ -284,8 +294,13 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
                 detail="Physical R4 manifest loader is unavailable.",
             ) from exc
 
-    @app.get("/api/v1/physical/r4/scenarios")
-    def physical_r4_scenarios() -> Any:
+    @app.get(
+        "/api/v1/physical/r4/scenarios",
+        response_model=list[PhysicalR4ScenarioSummaryPayload],
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def physical_r4_scenarios() -> list[PhysicalR4ScenarioSummaryPayload]:
         physical_api = _load_physical_r4_api()
         try:
             return physical_api.list_r4_scenarios()
@@ -295,10 +310,16 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
                 detail="Physical R4 scenario catalog is unavailable.",
             ) from exc
 
-    @app.get("/api/v1/examples/physical-r4")
+    @app.get(
+        "/api/v1/examples/physical-r4",
+        response_model=PhysicalR4ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
     def physical_r4_example(
         scenarioId: str = "in-domain-synthetic-sil",
-    ) -> Any:
+    ) -> PhysicalR4ExamplePayload:
         physical_api = _load_physical_r4_api()
         try:
             return physical_api.r4_example_payload(scenarioId)

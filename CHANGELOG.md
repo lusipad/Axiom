@@ -2,6 +2,22 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.10.1 - 2026-08-12
+
+### Fixed
+
+- R4 场景、sealed runtime 与网页示例现在由同一个 `PhysicalValidationAnalysis` 事实源生成；`analysisContentHash` 不再引用场景侧的第二套预计算结果。
+- R4 manifest、场景目录和示例接口现在使用有类型的 FastAPI response model，并在 OpenAPI 中发布稳定响应契约。
+- R4 runtime 现在执行 Windows-only 平台门禁；非 Windows 环境返回 `Skipped + Unsupported` 和 `UnsupportedRuntimePlatform`，不再形成误导性的 `Passed`。
+
+### Verification
+
+- 发布阻断环境固定为 `windows-latest + CPython 3.12.10`；Python、网页、构建、wheel 安装后 smoke 与 GitHub Release 结果以发布工作流为准。
+
+### Boundary
+
+- 本补丁不增加 Ubuntu/Linux/WSL 支持；R4 reality validation 仍为 `Open`，并继续禁止 `DeviceSafe`、`ProcessSafe`、`safe-to-run` 和上机许可。
+
 ## 0.10.0 - 2026-08-12
 
 ### Added

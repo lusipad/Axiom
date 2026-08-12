@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from axiom.models import CaseOutcome, ClaimStatus, MetricStatus, RunSpec
+import axiom.physical.scenarios as physical_scenarios
+from axiom.models import CaseOutcome, ClaimStatus, ExecutionStatus, MetricStatus, RunSpec
 from axiom.physical.models import PhysicalModelValidationRequest
 from axiom.physical.runtime import (
     ALIGNMENT_VALID_METRIC_ID,
@@ -19,8 +20,9 @@ from axiom.physical.runtime import (
     ROTARY_SIMULATION_OBSERVATION_MAX_ABSOLUTE_METRIC_ID,
     ROTARY_SIMULATION_OBSERVATION_RMSE_METRIC_ID,
     analyze_physical_validation,
+    evaluate_physical_model,
 )
-from axiom.physical.scenarios import validate_r4_example_run_spec
+from axiom.physical.scenarios import r4_example_payload, validate_r4_example_run_spec
 from axiom.run import evaluate_run, validate_run_bundle_integrity
 
 
@@ -206,3 +208,38 @@ def test_tampered_response_payload_is_rejected_before_domain_evaluation() -> Non
     assert bundle.report.domain_failures
     assert bundle.report.domain_failures[0].code == "MalformedEvaluationRequest"
     assert all(result.reason_code == "RunSpecIncompatible" for result in bundle.report.metric_results)
+
+
+def test_non_windows_runtime_is_explicitly_unsupported(monkeypatch: pytest.MonkeyPatch) -> None:
+    physical_scenarios._scenarios.cache_clear()
+    physical_scenarios._scenario_bundle.cache_clear()
+    monkeypatch.setattr("axiom.physical.runtime.platform.system", lambda: "Linux")
+
+    try:
+        run_spec = validate_r4_example_run_spec()
+        request = PhysicalModelValidationRequest.model_validate(
+            run_spec.request.model_dump(mode="json", by_alias=True, exclude_unset=True, exclude_none=True)
+        )
+        report = evaluate_physical_model(request)
+        bundle = evaluate_run(run_spec)
+        payload = r4_example_payload()
+    finally:
+        physical_scenarios._scenarios.cache_clear()
+        physical_scenarios._scenario_bundle.cache_clear()
+
+    assert report.execution_status is ExecutionStatus.SKIPPED
+    assert report.case_outcome is CaseOutcome.UNSUPPORTED
+    assert report.provenance is not None
+    assert report.provenance.numeric_environment["system"] == "Linux"
+    assert report.metric_results
+    assert all(result.status is MetricStatus.UNSUPPORTED_CAPABILITY for result in report.metric_results)
+    assert all(result.reason_code == "UnsupportedRuntimePlatform" for result in report.metric_results)
+    assert all(result.details["supportedPlatforms"] == ["Windows"] for result in report.metric_results)
+    assert bundle.run.execution_status is ExecutionStatus.SKIPPED
+    assert bundle.run.case_outcome is CaseOutcome.UNSUPPORTED
+    assert bundle.report.metric_results == report.metric_results
+    assert validate_run_bundle_integrity(bundle) == []
+    assert payload["analysis"]["run"]["executionStatus"] == ExecutionStatus.SKIPPED.value
+    assert payload["analysis"]["run"]["caseOutcome"] == CaseOutcome.UNSUPPORTED.value
+    assert payload["analysis"]["curveMode"] == "diagnostic-preview"
+    assert payload["analysis"]["analysisContentHash"] is None

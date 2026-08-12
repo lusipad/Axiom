@@ -1,6 +1,6 @@
 # Axiom 文档入口
 
-> 状态：v0.10.0 发布候选；R0–R2 已闭合，R3 Windows 只读参考链已闭合，R4.0 synthetic SIL 合同片已实现、reality gate 保持 Open
+> 状态：v0.10.1 Windows 补丁候选；R0–R2 已闭合，R3 Windows 只读参考链已闭合，R4.0 synthetic SIL 合同片已实现、reality gate 保持 Open
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL`
 > 更新日期：2026-08-12
 
@@ -78,11 +78,11 @@ R3 使用 `axiom.windows-file-telemetry-source@1` 读取已经落盘的 JSON cap
 
 R4.0 已通过 `five-axis.domain-pack@6` 建立首个轴空间物理模型参考链：F4 M5 指令、模型执行后的 `PhysicalResponseTrace` 和 R3-compatible raw observation 分别保留；校准与验证使用不同 command/trace identity；线性轴 `mm` 与旋转轴 `rad` 分开计算；未激励轴明确不可辨识。仓库提供的两级滞后 oracle 只用于 synthetic SIL，候选是一阶 lag + bias，二者结构不同以防自验证。该片可以证明模型合同和验证器可证伪性，但真实设备 reality gate 仍保持 Open。详细契约见[物理模型与现实对齐规范](物理模型与现实对齐规范.md)。
 
-## v0.10.0 快速开始
+## v0.10.1 快速开始
 
-v0.10.0 保留 Point Lab、Five-Axis F1–F4 和 Machine Read-only Lab，并新增 Physical R4 工作台。R4 工作台读取与 Python、HTTP 相同的 synthetic SIL 场景，展示物理模型合同、校准/holdout 隔离、线性/旋转轴残差、Claim 与 Evidence，并永久标注 `MODEL VALIDATION / NOT DEVICE SAFE` 和 `SYNTHETIC SIL / REALITY VALIDATION OPEN`。
+v0.10.1 保留 Point Lab、Five-Axis F1–F4 和 Machine Read-only Lab，并新增 Physical R4 工作台。R4 工作台读取与 Python、HTTP 相同的 synthetic SIL 场景，展示物理模型合同、校准/holdout 隔离、线性/旋转轴残差、Claim 与 Evidence，并永久标注 `MODEL VALIDATION / NOT DEVICE SAFE` 和 `SYNTHETIC SIL / REALITY VALIDATION OPEN`。
 
-v0.10.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程和 [`constraints/acceptance.txt`](constraints/acceptance.txt) 依赖版本。Ubuntu/Linux 不属于本阶段支持矩阵；portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
+v0.10.1 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程和 [`constraints/acceptance.txt`](constraints/acceptance.txt) 依赖版本。R4 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 F4 最短用法是先取场景 payload，再把 `runSpec` 送回公共执行接口。下面这个例子会返回 `Passed`，并保留 7 个数学 gate claims：
 
@@ -236,8 +236,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.10.0 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。R3 文件 capture 与 R4 trace 仍受统一 8 MiB CLI/API 请求预算约束，不会静默补齐缺失帧或插值。
+v0.10.1 沿用单个评估或 Run 请求最多 8 MiB、单个比较或实验文件最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。R3 文件 capture 与 R4 trace 仍受统一 8 MiB CLI/API 请求预算约束，不会静默补齐缺失帧或插值。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.10.0 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis F1–F4 覆盖数学参考链；Machine R3 只读取已落盘的 Windows JSON capture；Physical R4 仅运行 synthetic SIL 一阶轴模型验证，不连接控制器、不采集实机数据、不写参数。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、在线设备协议、真实控制器采集、机器学习训练和参数回写仍属于后续阶段。
+v0.10.1 的执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。Point Lab 对三维及更高维数据只显示明确标注的 XY 投影，数值评估仍消费全部坐标；Five-Axis F1–F4 覆盖数学参考链；Machine R3 只读取已落盘的 Windows JSON capture；Physical R4 仅运行 synthetic SIL 一阶轴模型验证，不连接控制器、不采集实机数据、不写参数。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、在线设备协议、真实控制器采集、机器学习训练和参数回写仍属于后续阶段。

@@ -644,7 +644,71 @@ def _bind_boolean_gate(result: MetricResult) -> MetricResult:
     return result
 
 
+def _physical_provenance(request: PhysicalModelValidationRequest) -> Provenance:
+    return Provenance(
+        requestHash=_content_hash(request),
+        artifactHash=_content_hash(request.artifact),
+        caseHash=_content_hash(request.case),
+        runnerId=PHYSICAL_RUNNER_ID,
+        evaluatorVersion=PHYSICAL_EVALUATOR_ID,
+        executionOutcomePolicy=request.case.execution_outcome_policy,
+        numericEnvironment={
+            "system": platform.system(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+            "numpy": package_version("numpy"),
+            "pydantic": package_version("pydantic"),
+        },
+        contextHashes={
+            "physicalModel": physical_model_content_hash(request.physical_model),
+            "calibrationCommand": request.calibration_pair.command_content_id,
+            "calibrationObservation": request.calibration_pair.trace_content_hash,
+            "validationCommand": request.validation_pair.command_content_id,
+            "validationObservation": request.validation_pair.trace_content_hash,
+            "alignment": _content_hash(request.alignment),
+        },
+    )
+
+
+def _unsupported_platform_report(
+    request: PhysicalModelValidationRequest,
+    *,
+    current_platform: str,
+) -> EvaluationReport:
+    requested = request.case.required_metrics + request.case.optional_metrics
+    results = [
+        _unavailable(
+            item.metric_id,
+            MetricStatus.UNSUPPORTED_CAPABILITY,
+            "UnsupportedRuntimePlatform",
+            currentPlatform=current_platform or "unknown",
+            supportedPlatforms=["Windows"],
+        )
+        for item in requested
+    ]
+    return _seal_evaluation_report(
+        EvaluationReport(
+            executionStatus=ExecutionStatus.SKIPPED,
+            caseOutcome=CaseOutcome.UNSUPPORTED,
+            metricResults=results,
+            capabilities=(
+                CapabilityResolution(capabilityId=CAP_RESPONSE_ARTIFACT, source="Artifact"),
+                CapabilityResolution(capabilityId=CAP_MODEL_PROFILE, source="Profile"),
+                CapabilityResolution(capabilityId=CAP_CALIBRATION_PROFILE, source="Profile"),
+                CapabilityResolution(capabilityId=CAP_ALIGNMENT_ADAPTER, source="Adapter"),
+            ),
+            contentHash="",
+            evaluatorVersion=PHYSICAL_EVALUATOR_ID,
+            provenance=_physical_provenance(request),
+        )
+    )
+
+
 def evaluate_physical_model(request: PhysicalModelValidationRequest) -> EvaluationReport:
+    current_platform = platform.system()
+    if current_platform != "Windows":
+        return _unsupported_platform_report(request, current_platform=current_platform)
+
     leakage_free = _leakage_free(request)
     model_identity_valid = request.artifact.source_model_content_hash == physical_model_content_hash(
         request.physical_model
@@ -880,29 +944,7 @@ def evaluate_physical_model(request: PhysicalModelValidationRequest) -> Evaluati
         _bind_boolean_gate(_apply_threshold(evaluated[item.metric_id], item.threshold)) for item in requested
     ]
     required_results = results[: len(request.case.required_metrics)]
-    provenance = Provenance(
-        requestHash=_content_hash(request),
-        artifactHash=_content_hash(request.artifact),
-        caseHash=_content_hash(request.case),
-        runnerId=PHYSICAL_RUNNER_ID,
-        evaluatorVersion=PHYSICAL_EVALUATOR_ID,
-        executionOutcomePolicy=request.case.execution_outcome_policy,
-        numericEnvironment={
-            "system": platform.system(),
-            "machine": platform.machine(),
-            "python": platform.python_version(),
-            "numpy": package_version("numpy"),
-            "pydantic": package_version("pydantic"),
-        },
-        contextHashes={
-            "physicalModel": physical_model_content_hash(request.physical_model),
-            "calibrationCommand": request.calibration_pair.command_content_id,
-            "calibrationObservation": request.calibration_pair.trace_content_hash,
-            "validationCommand": request.validation_pair.command_content_id,
-            "validationObservation": request.validation_pair.trace_content_hash,
-            "alignment": _content_hash(request.alignment),
-        },
-    )
+    provenance = _physical_provenance(request)
     return _seal_evaluation_report(
         EvaluationReport(
             executionStatus=ExecutionStatus.SUCCEEDED,

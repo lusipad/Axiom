@@ -119,13 +119,16 @@ jobs:
           )
           from axiom.physical import (
               FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID,
+              PhysicalModelValidationRequest,
+              analyze_physical_validation,
               load_r4_manifest,
+              r4_example_payload,
               validate_r4_example_run_spec,
           )
           from axiom.physical.runtime import REALITY_VALIDATED_CLAIM_ID
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.10.0"
+          assert version("axiom-evaluator") == "0.10.1"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -204,7 +207,16 @@ jobs:
           assert physical_manifest["platform"] == "windows"
           assert physical_manifest["safetyBanner"] == "MODEL VALIDATION / NOT DEVICE SAFE"
           assert physical_manifest["realityValidationStatus"] == "Open"
-          physical = evaluate_run(validate_r4_example_run_spec("in-domain-synthetic-sil"))
+          physical_spec = validate_r4_example_run_spec("in-domain-synthetic-sil")
+          physical_request = PhysicalModelValidationRequest.model_validate(
+              physical_spec.request.model_dump(
+                  mode="json", by_alias=True, exclude_unset=True, exclude_none=True
+              )
+          )
+          physical_analysis = analyze_physical_validation(physical_request)
+          physical_example = r4_example_payload("in-domain-synthetic-sil")
+          assert physical_example["analysis"]["analysisContentHash"] == physical_analysis.content_hash
+          physical = evaluate_run(physical_spec)
           assert validate_run_bundle_integrity(physical) == []
           assert physical.run.domain_pack_id == FIVE_AXIS_PHYSICAL_DOMAIN_PACK_ID
           assert physical.run.case_outcome.value == "Passed"
@@ -263,6 +275,10 @@ jobs:
             $physicalExample = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/physical-r4?scenarioId=in-domain-synthetic-sil"
             if ($physicalExample.runSpec.domainPackId -ne "five-axis.domain-pack@6") {
               throw "installed wheel did not expose the R4 example RunSpec"
+            }
+            $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
+              throw "installed wheel did not expose the typed R4 OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

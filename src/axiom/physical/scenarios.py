@@ -53,10 +53,12 @@ from .models import (
     CalibrationResult,
     PhysicalEvidencePair,
     PhysicalModelDefinition,
+    PhysicalModelValidationRequest,
     PhysicalResponseTrace,
     PhysicalRunAlignment,
     PhysicalValidationAnalysis,
 )
+from .runtime import analyze_physical_validation
 from .simulation import (
     fit_first_order_model,
     simulate_physical_response,
@@ -401,7 +403,29 @@ def _normalize_physical_model(model: PhysicalModelDefinition) -> PhysicalModelDe
     )
 
 
-def _build_analysis(
+def _runtime_analysis(
+    *,
+    scenario_id: str,
+    artifact: PhysicalResponseTrace,
+    physical_model: PhysicalModelDefinition,
+    calibration_pair: PhysicalEvidencePair,
+    validation_pair: PhysicalEvidencePair,
+    alignment: PhysicalRunAlignment,
+) -> PhysicalValidationAnalysis:
+    request = PhysicalModelValidationRequest.model_validate(
+        _physical_run_spec(
+            scenario_id=scenario_id,
+            artifact=artifact,
+            physical_model=physical_model,
+            calibration_pair=calibration_pair,
+            validation_pair=validation_pair,
+            alignment=alignment,
+        )["request"]
+    )
+    return analyze_physical_validation(request)
+
+
+def _build_preview_analysis(
     *,
     analysis_id: str,
     calibration: CalibrationResult,
@@ -496,6 +520,46 @@ def _build_analysis(
     payload = provisional.model_dump(mode="json", by_alias=True, exclude_none=True)
     payload["contentHash"] = _analysis_content_hash(provisional)
     return PhysicalValidationAnalysis.model_validate(payload)
+
+
+def _build_analysis(
+    *,
+    scenario_id: str,
+    analysis_id: str,
+    calibration: CalibrationResult,
+    model: PhysicalModelDefinition,
+    calibration_pair: PhysicalEvidencePair,
+    validation_pair: PhysicalEvidencePair,
+    response_trace: PhysicalResponseTrace,
+    alignment: PhysicalRunAlignment,
+    leakage_free: bool,
+    alignment_coverage: float,
+    maximum_time_error_seconds: float,
+) -> PhysicalValidationAnalysis:
+    if (
+        leakage_free
+        and alignment_coverage == 1.0
+        and validation_pair.observation.coordinate_alignment is not None
+    ):
+        return _runtime_analysis(
+            scenario_id=scenario_id,
+            artifact=response_trace,
+            physical_model=model,
+            calibration_pair=calibration_pair,
+            validation_pair=validation_pair,
+            alignment=alignment,
+        )
+    return _build_preview_analysis(
+        analysis_id=analysis_id,
+        calibration=calibration,
+        model=model,
+        calibration_pair=calibration_pair,
+        validation_pair=validation_pair,
+        response_trace=response_trace,
+        leakage_free=leakage_free,
+        alignment_coverage=alignment_coverage,
+        maximum_time_error_seconds=maximum_time_error_seconds,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -687,18 +751,21 @@ def _build_positive_base() -> PhysicalR4Scenario:
         excitation_span_minimum=_EXCITATION_SPAN_MINIMUM,
     )
     model = _normalize_physical_model(model)
+    alignment = _alignment()
     response_trace = simulate_physical_response(
         model,
         validation_command,
         response_trace_id="five-axis.r4.response.validation@1",
     )
     analysis = _build_analysis(
+        scenario_id=_DEFAULT_SCENARIO_ID,
         analysis_id="five-axis.r4.analysis.validation@1",
         calibration=calibration,
         model=model,
         calibration_pair=calibration_pair,
         validation_pair=validation_pair,
         response_trace=response_trace,
+        alignment=alignment,
         leakage_free=True,
         alignment_coverage=1.0,
         maximum_time_error_seconds=0.0,
@@ -711,7 +778,6 @@ def _build_positive_base() -> PhysicalR4Scenario:
         syntheticContractStatus="Passed",
         realityValidationStatus="Open",
     )
-    alignment = _alignment()
     return PhysicalR4Scenario(
         summary=summary,
         calibrationPair=calibration_pair,
@@ -757,12 +823,14 @@ def _build_variants() -> dict[str, PhysicalR4Scenario]:
         observation=mismatch_observation,
     )
     mismatch_analysis = _build_analysis(
+        scenario_id="model-mismatch-detected",
         analysis_id="five-axis.r4.analysis.mismatch@1",
         calibration=base.validationAnalysis.calibration,
         model=base.physicalModel,
         calibration_pair=base.calibrationPair,
         validation_pair=mismatch_pair,
         response_trace=base.validationArtifact,
+        alignment=base.alignment,
         leakage_free=True,
         alignment_coverage=1.0,
         maximum_time_error_seconds=0.0,
@@ -790,12 +858,14 @@ def _build_variants() -> dict[str, PhysicalR4Scenario]:
         observation=misaligned_observation,
     )
     misaligned_analysis = _build_analysis(
+        scenario_id="time-alignment-mismatch",
         analysis_id="five-axis.r4.analysis.time-alignment-mismatch@1",
         calibration=base.validationAnalysis.calibration,
         model=base.physicalModel,
         calibration_pair=base.calibrationPair,
         validation_pair=misaligned_pair,
         response_trace=base.validationArtifact,
+        alignment=base.alignment,
         leakage_free=True,
         alignment_coverage=0.0,
         maximum_time_error_seconds=0.02,
@@ -808,12 +878,14 @@ def _build_variants() -> dict[str, PhysicalR4Scenario]:
         response_trace_id="five-axis.r4.response.leakage@1",
     )
     leakage_analysis = _build_analysis(
+        scenario_id="calibration-validation-leakage",
         analysis_id="five-axis.r4.analysis.leakage@1",
         calibration=base.validationAnalysis.calibration,
         model=base.physicalModel,
         calibration_pair=base.calibrationPair,
         validation_pair=leakage_pair,
         response_trace=leakage_artifact,
+        alignment=base.alignment,
         leakage_free=False,
         alignment_coverage=1.0,
         maximum_time_error_seconds=0.0,
@@ -831,12 +903,14 @@ def _build_variants() -> dict[str, PhysicalR4Scenario]:
         observation=missing_coordinate_observation,
     )
     missing_coordinate_analysis = _build_analysis(
+        scenario_id="missing-coordinate-context",
         analysis_id="five-axis.r4.analysis.missing-coordinate@1",
         calibration=base.validationAnalysis.calibration,
         model=base.physicalModel,
         calibration_pair=base.calibrationPair,
         validation_pair=missing_coordinate_pair,
         response_trace=base.validationArtifact,
+        alignment=base.alignment,
         leakage_free=True,
         alignment_coverage=1.0,
         maximum_time_error_seconds=0.0,

@@ -2,6 +2,29 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.14.0 - 2026-08-12
+
+### Added
+
+- 增加 Windows-only R7-A Synthetic Shadow Contract：`control.domain-pack@1`、独立 `AcceptanceRecord`、控制包线、fail-closed admission、状态迁移、停止 receipt、基线保留 receipt 与公共 Run 重放验收。
+- 增加 nominal、包线越界、缺 deployment evidence、Controlled Trial 越权和设备写请求五个确定性场景；全部场景均保持 `deviceWriteAllowed=false` 和 `deviceWritePerformed=false`。
+- 增加 Controlled Runtime R7-A 网页工作台、manifest/scenario/example/replay API，以及 ADR-0019。
+
+### Changed
+
+- R6 Recommendation 继续保持 Offline 且不可变；R7-A 用独立处置记录绑定候选、证据快照、责任主体和 Shadow 权限，不把推荐本身改写成执行许可。
+- 阶段状态拆为 `syntheticShadowContractStatus=Passed` 与 `deploymentShadowStatus=Open`，标准符合性保持 `NotAssessed`。
+
+### Verification
+
+- Windows AMD64 / CPython 3.12.10 全量验证通过：Python `644 passed`，网页 `32 passed`，TypeScript 检查与生产构建通过。
+- 干净构建并安装的 `0.14.0` wheel 只包含当前一对 JS/CSS 与完整 `axiom/control`；R7-A RunBundle 完整性、内容身份篡改、非 Windows 结构化 Unsupported、越界停止路径、基线保留和 OpenAPI 响应契约均已验证。
+
+### Boundary
+
+- R7-A 只重放 synthetic shadow，不连接设备、不发出 stop/write 命令，也不验证设备 acknowledgment/readback；其 rollback 只证明离线基线未被修改。
+- 真实 deployment Shadow、Controlled Trial、Closed Loop、厂商协议、功能安全评估与标准符合性仍未实现；本版本不形成设备安全或工艺安全声明。
+
 ## 0.13.0 - 2026-08-12
 
 ### Added

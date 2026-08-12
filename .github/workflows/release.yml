@@ -85,6 +85,7 @@ jobs:
               "axiom/physical/fixtures/captures/in-domain-synthetic-sil.response.json",
               "axiom/intelligence/fixtures/manifest.json",
               "axiom/optimization/search.py",
+              "axiom/control/models.py",
           )
           for entry in required:
               if not any(name == entry or name.startswith(entry) for name in names):
@@ -148,9 +149,15 @@ jobs:
               r6_example_payload,
               validate_r6_example_run_spec,
           )
+          from axiom.control import (
+              R7_DOMAIN_PACK_ID,
+              build_r7_manifest,
+              r7_example_payload,
+              validate_r7_example_run_spec,
+          )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.13.0"
+          assert version("axiom-evaluator") == "0.14.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -319,6 +326,25 @@ jobs:
           assert validate_run_bundle_integrity(r6) == []
           assert r6.run.domain_pack_id == R6_DOMAIN_PACK_ID
           assert r6.run.case_outcome.value == "Passed"
+
+          r7_manifest = build_r7_manifest()
+          assert r7_manifest.domain_pack_id == R7_DOMAIN_PACK_ID
+          assert r7_manifest.permission_ceiling == "Shadow"
+          assert r7_manifest.device_write_allowed is False
+          assert r7_manifest.synthetic_shadow_contract_status == "Passed"
+          assert r7_manifest.deployment_shadow_status == "Open"
+          r7_example = r7_example_payload("synthetic-shadow-limit-breach")
+          assert r7_example.runtime_audit.final_state == "RollbackVerified"
+          assert r7_example.runtime_audit.device_write_performed is False
+          assert r7_example.runtime_audit.stop_receipt.device_stop_command_issued is False
+          assert r7_example.runtime_audit.rollback_receipt.device_write_issued is False
+          r7 = evaluate_run(validate_r7_example_run_spec())
+          assert validate_run_bundle_integrity(r7) == []
+          assert r7.run.domain_pack_id == R7_DOMAIN_PACK_ID
+          assert r7.run.case_outcome.value == "Passed"
+          r7_claims = {claim.claim_definition_id: claim.status.value for claim in r7.claims}
+          assert r7_claims["control.no-device-write-boundary-claim@1"] == "Supported"
+          assert r7_claims["control.deployment-readiness-claim@1"] == "Inconclusive"
           '@ | & .\release-smoke\Scripts\python.exe -
           $server = Start-Process `
             -FilePath .\release-smoke\Scripts\axiom.exe `
@@ -387,6 +413,14 @@ jobs:
             if ($r6Example.runSpec.domainPackId -ne "optimization.domain-pack@1" -or $r6Example.recommendationSet.candidates.Count -ne 6 -or $r6Example.recommendationSet.deviceWriteAllowed) {
               throw "installed wheel did not preserve the R6 recommendation boundary"
             }
+            $r7Manifest = Invoke-RestMethod http://127.0.0.1:8765/api/v1/control/r7/manifest
+            if ($r7Manifest.domainPackId -ne "control.domain-pack@1" -or $r7Manifest.permissionCeiling -ne "Shadow" -or $r7Manifest.deviceWriteAllowed -or $r7Manifest.deploymentShadowStatus -ne "Open") {
+              throw "installed wheel did not expose the R7-A shadow boundary"
+            }
+            $r7Example = Invoke-RestMethod "http://127.0.0.1:8765/api/v1/examples/control-r7?scenarioId=synthetic-shadow-limit-breach"
+            if ($r7Example.runSpec.domainPackId -ne "control.domain-pack@1" -or $r7Example.runtimeAudit.finalState -ne "RollbackVerified" -or $r7Example.runtimeAudit.deviceWritePerformed) {
+              throw "installed wheel did not preserve the R7-A stop and no-write contract"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
@@ -399,6 +433,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R6ExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "OptimizationSearchRequest") {
               throw "installed wheel did not expose the typed R6 OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7ExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7ReplayRequest") {
+              throw "installed wheel did not expose the typed R7-A OpenAPI contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

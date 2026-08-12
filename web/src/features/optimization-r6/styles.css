@@ -1,0 +1,50 @@
+.optimization-r6-workspace { grid-template-columns: minmax(320px, 390px) minmax(0, 1fr); }
+.optimization-r6-config { overflow-y: auto; }
+.optimization-r6-banner { border-left: 3px solid var(--amber, #d79a38); background: color-mix(in srgb, var(--panel, #151b22) 88%, #d79a38 12%); }
+.optimization-r6-banner strong { color: #f0b85d; letter-spacing: .08em; }
+.optimization-r6-field-grid { display: grid; gap: 10px; margin-top: 12px; }
+.optimization-r6-field-grid label { display: grid; gap: 5px; }
+.optimization-r6-field-grid span { color: var(--muted, #89939f); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.optimization-r6-field-grid input { width: 100%; box-sizing: border-box; }
+.optimization-r6-run { width: 100%; justify-content: center; margin-top: 14px; }
+.optimization-r6-endpoints { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.optimization-r6-endpoints article { display: grid; gap: 3px; padding: 12px; border: 1px solid var(--line, #28313b); background: var(--surface, #10161c); }
+.optimization-r6-endpoints article span { color: var(--green, #68d391); font-family: var(--mono); }
+.optimization-r6-endpoints article small, .optimization-r6-footnote { color: var(--muted, #89939f); }
+.optimization-r6-analysis { min-width: 0; overflow: hidden; }
+.optimization-r6-body { padding: 18px; display: grid; gap: 14px; overflow-y: auto; }
+.optimization-r6-hero { display: flex; justify-content: space-between; gap: 24px; align-items: center; border-top: 2px solid #d79a38; }
+.optimization-r6-hero h2 { margin: 6px 0; font-size: clamp(20px, 2.2vw, 32px); }
+.optimization-r6-count { min-width: 138px; display: grid; justify-items: end; }
+.optimization-r6-count strong { font: 600 44px/1 var(--mono); color: #f0b85d; }
+.optimization-r6-count span { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+.optimization-r6-count small { color: var(--muted, #89939f); }
+.optimization-r6-table-wrap { overflow-x: auto; }
+.optimization-r6-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+.optimization-r6-table th { color: var(--muted, #89939f); text-align: left; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+.optimization-r6-table th, .optimization-r6-table td { padding: 10px 12px; border-bottom: 1px solid var(--line, #28313b); white-space: nowrap; }
+.optimization-r6-table tbody tr { cursor: pointer; transition: background .12s ease; }
+.optimization-r6-table tbody tr:hover, .optimization-r6-table tbody tr.selected { background: color-mix(in srgb, #d79a38 10%, transparent); }
+.optimization-r6-table button { color: var(--text, #e5e9ee); background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.optimization-r6-detail-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+.optimization-r6-gates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.optimization-r6-gates article { display: flex; gap: 9px; align-items: center; min-width: 0; padding: 8px 10px; border: 1px solid var(--line, #28313b); }
+.optimization-r6-gates article div { min-width: 0; display: grid; }
+.optimization-r6-gates strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.optimization-r6-gates small { color: var(--muted, #89939f); font-family: var(--mono); }
+.compact-list { margin-top: 14px; }
+.optimization-r6-plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.optimization-r6-plan-grid ol { margin: 10px 0 0; padding-left: 20px; color: var(--muted, #89939f); }
+.optimization-r6-plan-grid li { margin: 7px 0; }
+.optimization-r6-plan footer { display: flex; gap: 12px; align-items: center; margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--line, #28313b); }
+.optimization-r6-plan footer strong { margin-left: auto; color: #f0b85d; letter-spacing: .08em; }
+.optimization-r6-statusbar { position: sticky; bottom: 0; }
+@media (max-width: 980px) {
+  .optimization-r6-workspace { grid-template-columns: 1fr; }
+  .optimization-r6-detail-grid, .optimization-r6-plan-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .optimization-r6-hero { align-items: flex-start; flex-direction: column; }
+  .optimization-r6-count { justify-items: start; }
+  .optimization-r6-gates { grid-template-columns: 1fr; }
+}

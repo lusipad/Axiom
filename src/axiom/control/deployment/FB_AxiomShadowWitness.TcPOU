@@ -37,12 +37,15 @@ VAR_OUTPUT
 END_VAR
 VAR
     bPublishedAtLeastOnce : BOOL;
+    sLastPublishedCommandContentHash : STRING(64);
     nLastPublishedSampleIndex : UDINT;
 END_VAR
 ]]></Declaration>
     <Implementation>
       <ST><![CDATA[IF bPublishEnabled AND
-   ((NOT bPublishedAtLeastOnce) OR (nSampleIndex <> nLastPublishedSampleIndex)) THEN
+   ((NOT bPublishedAtLeastOnce) OR
+    (sCommandContentHash <> sLastPublishedCommandContentHash) OR
+    (nSampleIndex <> nLastPublishedSampleIndex)) THEN
     sWitnessCommandContentHash := sCommandContentHash;
     fWitnessAxisX := fAxisX;
     fWitnessAxisY := fAxisY;
@@ -50,10 +53,12 @@ END_VAR
     fWitnessAxisB := fAxisB;
     fWitnessAxisC := fAxisC;
 
-    (* Publish the trigger only after the complete witness snapshot is latched. *)
-    nWitnessSampleIndex := nSampleIndex;
+    sLastPublishedCommandContentHash := sCommandContentHash;
     nLastPublishedSampleIndex := nSampleIndex;
     bPublishedAtLeastOnce := TRUE;
+
+    (* Publish the trigger only after the complete witness snapshot is latched. *)
+    nWitnessSampleIndex := nSampleIndex;
 END_IF
 ]]></ST>
     </Implementation>

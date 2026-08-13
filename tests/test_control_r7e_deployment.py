@@ -186,12 +186,20 @@ def test_twin_cat_template_is_read_only_and_publishes_sample_index_last() -> Non
     assert declaration.count("{attribute 'OPC.UA.DA' := '1'}") == 7
     assert declaration.count("{attribute 'OPC.UA.DA.Access' := '1'}") == 7
     assert "nWitnessSampleIndex : UDINT := 16#FFFFFFFF;" in declaration
+    assert "sLastPublishedCommandContentHash : STRING(64);" in declaration
     assert "METHOD" not in declaration
     assert "MC_" not in implementation
+    assert "sCommandContentHash <> sLastPublishedCommandContentHash" in implementation
+    assert (
+        "sLastPublishedCommandContentHash := sCommandContentHash;" in implementation
+    )
     assert "nWitnessSampleIndex := nSampleIndex;" in implementation
     assert implementation.index("fWitnessAxisC := fAxisC;") < implementation.index(
         "nWitnessSampleIndex := nSampleIndex;"
     )
+    assert implementation.index(
+        "sLastPublishedCommandContentHash := sCommandContentHash;"
+    ) < implementation.index("nWitnessSampleIndex := nSampleIndex;")
     adapter_source = (
         ROOT
         / "adapters"

@@ -72,18 +72,23 @@ def _load_r7e_assessment(path: Path, role: str) -> R7EAssessmentRequest:
 def _paired_field_evidence_request(
     args: argparse.Namespace,
 ) -> FieldEvidenceAssessmentRequest | None:
-    pair_values = (
+    required_pair_values = (
         args.calibration,
         args.validation,
         args.assessment_id,
         args.calibration_pair_id,
         args.validation_pair_id,
     )
+    pair_values = required_pair_values + (
+        args.fit_improvement_minimum,
+        args.excitation_span_minimum,
+        args.decomposition_tolerance,
+    )
     if args.request is not None:
         if any(value is not None for value in pair_values):
             raise _CliInputError({"code": "AmbiguousFieldEvidenceInput"})
         return None
-    if any(value is None for value in pair_values):
+    if any(value is None for value in required_pair_values):
         raise _CliInputError({"code": "IncompleteFieldEvidencePairInput"})
 
     calibration = _load_r7e_assessment(args.calibration, "calibration")
@@ -97,9 +102,21 @@ def _paired_field_evidence_request(
             validationPairId=args.validation_pair_id,
             calibration=calibration,
             validation=validation,
-            fitImprovementMinimum=args.fit_improvement_minimum,
-            excitationSpanMinimum=args.excitation_span_minimum,
-            decompositionTolerance=args.decomposition_tolerance,
+            fitImprovementMinimum=(
+                args.fit_improvement_minimum
+                if args.fit_improvement_minimum is not None
+                else 0.2
+            ),
+            excitationSpanMinimum=(
+                args.excitation_span_minimum
+                if args.excitation_span_minimum is not None
+                else 1e-6
+            ),
+            decompositionTolerance=(
+                args.decomposition_tolerance
+                if args.decomposition_tolerance is not None
+                else 1e-12
+            ),
         )
     except ValidationError as exc:
         raise _CliInputError(
@@ -148,13 +165,13 @@ def _parser() -> argparse.ArgumentParser:
     field_evidence_command.add_argument("--calibration-pair-id")
     field_evidence_command.add_argument("--validation-pair-id")
     field_evidence_command.add_argument(
-        "--fit-improvement-minimum", type=float, default=0.2
+        "--fit-improvement-minimum", type=float
     )
     field_evidence_command.add_argument(
-        "--excitation-span-minimum", type=float, default=1e-6
+        "--excitation-span-minimum", type=float
     )
     field_evidence_command.add_argument(
-        "--decomposition-tolerance", type=float, default=1e-12
+        "--decomposition-tolerance", type=float
     )
     deployment_command = commands.add_parser(
         "beckhoff-witness-deployment",

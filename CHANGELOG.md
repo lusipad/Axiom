@@ -17,7 +17,7 @@
 
 ### Verification
 
-- Python 全量 `765 passed / 4 skipped`；定向测试覆盖双文件配对、Malformed R7-E 输入、旧入口兼容与退出码，Windows `.NET` 跨语言测试覆盖完整对象一致性和 command 身份错配时不落文件。网页 `48 passed`，TypeScript 与生产构建通过。
+- Python 全量 `768 passed / 4 skipped`；定向测试覆盖双文件配对、缺失/混用/不可读/Malformed R7-E 输入、旧入口兼容与退出码，Windows `.NET` 跨语言测试覆盖完整对象一致性和 command 身份错配时不落文件。网页 `48 passed`，TypeScript 与生产构建通过。
 - `.NET` 解决方案在本地已用现有 SDK 完成无警告构建，localhost secure read/subscription conformance 保持零生产 Write/Call；本机缺少精确冻结的 SDK 8.0.424，因此对应三项 `dotnet run` pytest 被明确跳过，并由 Windows 发布工作流再次阻断验收。
 
 ### Boundary

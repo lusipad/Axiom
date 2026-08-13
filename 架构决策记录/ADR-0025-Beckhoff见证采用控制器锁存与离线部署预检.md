@@ -10,7 +10,7 @@ R7-E 已能按 `sampleIndex` 通知执行七节点 batch Read，但仓库此前�
 
 ## 决策
 
-1. 提供可导入的 `FB_AxiomShadowWitness.TcPOU`。功能块只消费权威 M5 identity、sample index 和五轴回读；关闭观测窗口时公开索引保持 `16#FFFFFFFF`，重新开窗后先锁存 hash/axes，最后发布 witness sample index。窗口内 command identity 变化同样保持 sentinel，必须关闭并重新打开窗口，不能把两个从索引 0 开始的命令混在同一触发序列中。
+1. 提供可导入的 `FB_AxiomShadowWitness.TcPOU`。功能块只消费权威 M5 identity、sample index 和五轴回读；关闭观测窗口时公开索引保持 `16#FFFFFFFF`。每个新快照先将公开索引置为 sentinel，使旧 payload 失效，再锁存 hash/axes，最后提交 witness sample index。窗口内 command identity 变化同样保持 sentinel，必须关闭并重新打开窗口，不能把两个从索引 0 开始的命令混在同一触发序列中。主机忽略 sentinel 通知，并要求索引前读、七节点 batch Read、索引后读三处版本完全一致。
 2. 七个输出使用 Beckhoff `OPC.UA.DA` 与 `OPC.UA.DA.Access := '1'`，生产设计不包含轴写入、设备启停或 Method Call。
 3. NodeId、vendor runtime 和 M5 command 必须通过 `axiom.control.beckhoff-shadow-witness-deployment-request@1` 显式提交；七个 NodeId 还必须附带与同一 runtime 内容身份绑定的 vendor-runtime 属性证据，逐项证明 BrowseName、Variable NodeClass、DataType 以及只读 AccessLevel/UserAccessLevel。离线评估器只在声明与运行时证据逐项闭合后生成 Bound Witness Profile。
 4. 节点检查器必须核对 config 与实际连接服务器的 endpoint、证书和 Application URI；生产采集必须重新装载节点证据，同时匹配 runtime hash、Profile hash 和七节点身份，并在同一采集 session 创建订阅前再次读取七节点属性，不能只信任 Bound Profile 或陈旧证据。

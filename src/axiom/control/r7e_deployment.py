@@ -213,7 +213,9 @@ class BeckhoffWitnessPlcTemplate(AxiomModel):
     line_ending_policy: Literal["LF-normalized"] = Field(alias="lineEndingPolicy")
     source_sha256: str = Field(alias="sourceSha256", pattern=_HASH_PATTERN)
     symbol_count: Literal[7] = Field(alias="symbolCount")
-    snapshot_policy: Literal["sample-index-published-last"] = Field(
+    snapshot_policy: Literal[
+        "sentinel-invalidated-sample-index-published-last"
+    ] = Field(
         alias="snapshotPolicy"
     )
     device_write_allowed: Literal[False] = Field(alias="deviceWriteAllowed")
@@ -356,7 +358,7 @@ def load_beckhoff_witness_plc_template() -> BeckhoffWitnessPlcTemplate:
             "lineEndingPolicy": "LF-normalized",
             "sourceSha256": source_hash,
             "symbolCount": 7,
-            "snapshotPolicy": "sample-index-published-last",
+            "snapshotPolicy": "sentinel-invalidated-sample-index-published-last",
             "deviceWriteAllowed": False,
             "methodCallAllowed": False,
             "templateValidationStatus": "ContractChecked",

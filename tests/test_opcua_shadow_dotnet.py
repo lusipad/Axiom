@@ -84,7 +84,7 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
         for frame in witness.frames
     )
     assert witness.receipt.subscribe_operation_count == 1
-    assert witness.receipt.read_operation_count == 6
+    assert witness.receipt.read_operation_count == 16
     assert witness.receipt.write_operation_count == 0
     assert witness.receipt.method_call_operation_count == 0
     assert witness.counts_toward_reality is False

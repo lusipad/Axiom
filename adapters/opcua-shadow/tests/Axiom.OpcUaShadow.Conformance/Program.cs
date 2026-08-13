@@ -995,8 +995,8 @@ internal static class Program
         Require(evidence.Frames.All(frame => frame.NotifiedSampleIndex
                 == frame.ReadSampleIndex && frame.Samples.Length == 5),
             "witness frame is incomplete");
-        Require(evidence.Receipt.ReadOperationCount == evidence.Frames.Length + 1,
-            "witness did not verify live nodes then batch-read each sample index");
+        Require(evidence.Receipt.ReadOperationCount == (evidence.Frames.Length * 3) + 1,
+            "witness did not verify live nodes and guard every snapshot Read");
         Require(evidence.Receipt.SubscribeOperationCount == 1,
             "witness must subscribe only to sample index");
         Require(evidence.Receipt.WriteOperationCount == 0

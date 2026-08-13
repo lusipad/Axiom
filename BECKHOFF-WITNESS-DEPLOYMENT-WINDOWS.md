@@ -43,7 +43,7 @@ fbAxiomShadow(
 );
 ```
 
-`bPublishEnabled=FALSE` 时，模板把公开 sample index 保持为 `16#FFFFFFFF` 并清除本次发布状态；重新开窗后，首次有效索引 0 因此一定形成值变化。若观测窗口未关闭就更换 command hash，模板也只发布并保持 sentinel，不会把新命令锁存到旧窗口；部署方必须先关闭窗口，再以新命令重新打开。正常窗口内，模板先锁存 command hash 和五轴值，最后写入公开的 witness sample index。采集端仍会在索引通知后执行一次七节点 batch Read；该次序缩小撕裂窗口，但不把 OPC UA 变成实时总线。Beckhoff 明确说明 OPC UA Client/Server 不是实时通信，无法保证请求的 sampling/publishing interval，见 [TF6100 real-time limitation](https://infosys.beckhoff.com/content/1033/tf6100_tc3_opcua_server/15551515659.html)。
+`bPublishEnabled=FALSE` 时，模板把公开 sample index 保持为 `16#FFFFFFFF` 并清除本次发布状态；重新开窗后，首次有效索引 0 因此一定形成值变化。若观测窗口未关闭就更换 command hash，模板也只发布并保持 sentinel，不会把新命令锁存到旧窗口；部署方必须先关闭窗口，再以新命令重新打开。正常窗口内，每次更新先把公开索引置为 sentinel，使旧快照失效；再锁存 command hash 和五轴值；最后提交新的 witness sample index。采集端忽略 sentinel 通知，并用“索引前读—七节点 batch Read—索引后读”保护每个快照，三处索引必须等于同一通知值，否则整次采集 fail closed。该协议检测撕裂但不把 OPC UA 变成实时总线。Beckhoff 明确说明 OPC UA Client/Server 不是实时通信，无法保证请求的 sampling/publishing interval，见 [TF6100 real-time limitation](https://infosys.beckhoff.com/content/1033/tf6100_tc3_opcua_server/15551515659.html)。
 
 模板不包含 `RETAIN`、运动控制功能块、cycle start、feed hold、reset、jog、程序传输、轴写入或 Method Call。`bPublishEnabled` 只是观测窗口开关，不是设备授权。
 

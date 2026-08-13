@@ -8,6 +8,8 @@ namespace Axiom.OpcUaShadow;
 
 internal static class BeckhoffShadowWitnessClient
 {
+    private const uint InvalidSampleIndex = uint.MaxValue;
+
     public static async Task<BeckhoffShadowRunEvidence> CaptureAsync(
         LoadedShadowConfig transport,
         ShadowWitnessCaptureInputs inputs,
@@ -112,7 +114,7 @@ internal static class BeckhoffShadowWitnessClient
             FormatTimestamp(openedAt),
             FormatTimestamp(closedAt),
             SubscribeOperationCount: 1,
-            ReadOperationCount: frames.Count + 1,
+            ReadOperationCount: (frames.Count * 3) + 1,
             WriteOperationCount: 0,
             MethodCallOperationCount: 0,
             ReceivedFrameCount: frames.Count,
@@ -174,6 +176,10 @@ internal static class BeckhoffShadowWitnessClient
                 uint notifiedIndex = RequireSampleIndex(
                     notification.Value,
                     "notified sample index");
+                if (notifiedIndex == InvalidSampleIndex)
+                {
+                    continue;
+                }
                 uint expectedIndex = checked((uint)frames.Count);
                 if (frames.Count == 0 && notifiedIndex != 0)
                 {
@@ -195,18 +201,32 @@ internal static class BeckhoffShadowWitnessClient
                         "OPC UA notification sequence is not strictly increasing");
                 }
                 previousProtocolSequence = notification.ProtocolSequenceNumber;
+                uint indexBefore = await ReadIndexAsync(
+                    session,
+                    nodes[1],
+                    linked.Token).ConfigureAwait(false);
                 DataValue[] values = await ReadBatchAsync(
                     session,
                     nodes,
+                    linked.Token).ConfigureAwait(false);
+                uint indexAfter = await ReadIndexAsync(
+                    session,
+                    nodes[1],
                     linked.Token).ConfigureAwait(false);
                 string commandHash = values[0].Value as string
                     ?? throw new ShadowContractException(
                         "command content hash node must report OPC UA String");
                 uint readIndex = RequireSampleIndex(values[1], "read sample index");
-                if (commandHash != command.ContentId || readIndex != notifiedIndex)
+                if (commandHash != command.ContentId
+                    || indexBefore == InvalidSampleIndex
+                    || readIndex == InvalidSampleIndex
+                    || indexAfter == InvalidSampleIndex
+                    || indexBefore != notifiedIndex
+                    || readIndex != notifiedIndex
+                    || indexAfter != notifiedIndex)
                 {
                     throw new ShadowContractException(
-                        "batch read command hash or sample index changed during capture");
+                        "witness snapshot changed or was invalidated during capture");
                 }
                 BeckhoffShadowAxisSample[] samples = Contract.RequiredAxes
                     .Select((axis, index) => ToAxisSample(axis, values[index + 2]))
@@ -228,6 +248,29 @@ internal static class BeckhoffShadowWitnessClient
                 + $"{frames.Count}/{command.SampleIndexes.Length} frames");
         }
         return frames;
+    }
+
+    private static async Task<uint> ReadIndexAsync(
+        ISession session,
+        NodeId node,
+        CancellationToken cancellationToken)
+    {
+        ReadResponse response = await session.ReadAsync(
+            null,
+            maxAge: 0,
+            TimestampsToReturn.Neither,
+            new ReadValueIdCollection
+            {
+                new ReadValueId { NodeId = node, AttributeId = Attributes.Value }
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (response.Results.Count != 1
+            || StatusCode.IsBad(response.Results[0].StatusCode))
+        {
+            throw new ShadowContractException(
+                "OPC UA witness index guard Read failed");
+        }
+        return RequireSampleIndex(response.Results[0], "guarded sample index");
     }
 
     private static async Task<DataValue[]> ReadBatchAsync(

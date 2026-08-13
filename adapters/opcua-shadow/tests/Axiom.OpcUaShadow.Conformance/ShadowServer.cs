@@ -209,7 +209,7 @@ internal sealed class ShadowNodeManager : CustomNodeManager2
             DateTime timestamp = DateTime.UtcNow;
             if (_sampleIndexVariable is not null)
             {
-                _sampleIndexVariable.Value = checked((uint)((tick - 1) % 5));
+                _sampleIndexVariable.Value = uint.MaxValue;
                 _sampleIndexVariable.StatusCode = StatusCodes.Good;
                 _sampleIndexVariable.Timestamp = timestamp;
                 _sampleIndexVariable.ClearChangeMasks(SystemContext, false);
@@ -224,6 +224,13 @@ internal sealed class ShadowNodeManager : CustomNodeManager2
                 variable.StatusCode = StatusCodes.Good;
                 variable.Timestamp = timestamp;
                 variable.ClearChangeMasks(SystemContext, false);
+            }
+            if (_sampleIndexVariable is not null)
+            {
+                _sampleIndexVariable.Value = checked((uint)((tick - 1) % 5));
+                _sampleIndexVariable.StatusCode = StatusCodes.Good;
+                _sampleIndexVariable.Timestamp = timestamp;
+                _sampleIndexVariable.ClearChangeMasks(SystemContext, false);
             }
         }
     }

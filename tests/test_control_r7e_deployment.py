@@ -254,7 +254,7 @@ def test_twin_cat_template_is_read_only_and_publishes_sample_index_last() -> Non
     assert "METHOD" not in declaration
     assert "MC_" not in implementation
     assert "IF NOT bPublishEnabled THEN" in implementation
-    assert implementation.count("nWitnessSampleIndex := 16#FFFFFFFF;") == 2
+    assert implementation.count("nWitnessSampleIndex := 16#FFFFFFFF;") == 3
     assert "bPublishedAtLeastOnce := FALSE;" in implementation
     assert "ELSIF bPublishedAtLeastOnce AND" in implementation
     assert "sCommandContentHash <> sLastPublishedCommandContentHash" in implementation
@@ -262,6 +262,17 @@ def test_twin_cat_template_is_read_only_and_publishes_sample_index_last() -> Non
         "sLastPublishedCommandContentHash := sCommandContentHash;" in implementation
     )
     assert "nWitnessSampleIndex := nSampleIndex;" in implementation
+    snapshot_branch = implementation.index("ELSIF (NOT bPublishedAtLeastOnce)")
+    invalidation = implementation.index(
+        "nWitnessSampleIndex := 16#FFFFFFFF;", snapshot_branch
+    )
+    payload_write = implementation.index(
+        "sWitnessCommandContentHash := sCommandContentHash;", snapshot_branch
+    )
+    publication = implementation.index(
+        "nWitnessSampleIndex := nSampleIndex;", snapshot_branch
+    )
+    assert invalidation < payload_write < publication
     assert implementation.index("fWitnessAxisC := fAxisC;") < implementation.index(
         "nWitnessSampleIndex := nSampleIndex;"
     )
@@ -277,10 +288,16 @@ def test_twin_cat_template_is_read_only_and_publishes_sample_index_last() -> Non
         / "BeckhoffShadowWitnessClient.cs"
     ).read_text(encoding="utf-8")
     assert "frames.Count == 0 && notifiedIndex != 0" in adapter_source
+    assert "notifiedIndex == InvalidSampleIndex" in adapter_source
+    assert adapter_source.count("ReadIndexAsync(") >= 3
 
     template = load_beckhoff_witness_plc_template()
     assert template.platform == "Windows"
     assert template.symbol_count == 7
+    assert (
+        template.snapshot_policy
+        == "sentinel-invalidated-sample-index-published-last"
+    )
     assert template.device_write_allowed is False
     assert template.method_call_allowed is False
     assert template.twin_cat_compile_status == "NotAssessed"

@@ -58,6 +58,9 @@ ELSIF bPublishedAtLeastOnce AND
     nWitnessSampleIndex := 16#FFFFFFFF;
 ELSIF (NOT bPublishedAtLeastOnce) OR
       (nSampleIndex <> nLastPublishedSampleIndex) THEN
+    (* Invalidate the prior snapshot before changing any public payload field. *)
+    nWitnessSampleIndex := 16#FFFFFFFF;
+
     sWitnessCommandContentHash := sCommandContentHash;
     fWitnessAxisX := fAxisX;
     fWitnessAxisY := fAxisY;

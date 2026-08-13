@@ -11,6 +11,7 @@ from ..five_axis.f3_sampling import M5DiscreteCommand
 from ..models import AxiomModel, _require_json_number
 from .models import canonical_hash
 from .r7d_models import BeckhoffRuntimeEvidence, BeckhoffTwinCatVendorProfile
+from .r7d_scenarios import assess_r7d_beckhoff
 from .r7e_models import (
     BeckhoffShadowWitnessNode,
     BeckhoffShadowWitnessProfile,
@@ -319,30 +320,35 @@ def _runtime_check(
             "Blocked",
             "BeckhoffVendorProfileMissing",
         )
-    if runtime_evidence.profile_content_hash != vendor_profile.content_hash:
-        return _check(
-            "r7e.deployment.vendor-runtime",
-            title,
-            "Blocked",
-            "RuntimeEvidenceProfileMismatch",
-        )
-    if runtime_evidence.source_kind != "vendor-runtime":
-        return _check(
-            "r7e.deployment.vendor-runtime",
-            title,
-            "Blocked",
-            "ContractFixtureNotVendorRuntime",
-        )
-    complete = (
-        vendor_profile.binding_status == "Bound"
-        and runtime_evidence.installation.status == "Passed"
-        and runtime_evidence.license.state == "Full"
-        and runtime_evidence.server_identity is not None
-        and runtime_evidence.channel_access is not None
-        and runtime_evidence.write_rejection.status == "Rejected"
-        and runtime_evidence.transport_evidence_content_hash is not None
+    readiness = assess_r7d_beckhoff(vendor_profile, runtime_evidence, None)
+    binding_check_ids = (
+        "r7d.installation",
+        "r7d.license",
+        "r7d.server-identity",
+        "r7d.node-mapping",
+        "r7d.readonly-enforcement",
     )
-    if not complete:
+    checks_by_id = {check.check_id: check for check in readiness.checks}
+    failed_binding = next(
+        (
+            checks_by_id[check_id]
+            for check_id in binding_check_ids
+            if checks_by_id[check_id].status != "Passed"
+        ),
+        None,
+    )
+    if failed_binding is not None:
+        return _check(
+            "r7e.deployment.vendor-runtime",
+            title,
+            "Blocked",
+            failed_binding.reason_code or "BeckhoffVendorRuntimeNotDeploymentReady",
+            r7dCheckId=failed_binding.check_id,
+        )
+    if (
+        runtime_evidence.license.state != "Full"
+        or runtime_evidence.transport_evidence_content_hash is None
+    ):
         return _check(
             "r7e.deployment.vendor-runtime",
             title,
@@ -354,6 +360,7 @@ def _runtime_check(
         title,
         "Passed",
         runtimeEvidenceContentHash=runtime_evidence.content_hash,
+        validatedR7DCheckIds=binding_check_ids,
     )
 
 

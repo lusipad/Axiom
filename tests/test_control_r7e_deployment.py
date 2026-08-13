@@ -20,10 +20,16 @@ from axiom.control import (
 )
 from axiom.control.models import canonical_hash
 from axiom.control.r7d_models import (
+    BeckhoffAxisSignal,
     BeckhoffChannelAccessEvidence,
     BeckhoffInstallationProbe,
     BeckhoffLicenseProbe,
+    BeckhoffNodeBinding,
+    BeckhoffPackageReceipt,
+    BeckhoffPermissionProbe,
     BeckhoffRuntimeEvidence,
+    BeckhoffServerBinaryReceipt,
+    BeckhoffServerIdentityBinding,
     BeckhoffServerIdentityEvidence,
     BeckhoffTwinCatVendorProfile,
     BeckhoffWriteRejectionReceipt,
@@ -65,20 +71,93 @@ def _nodes() -> tuple[BeckhoffWitnessDeploymentNodeBinding, ...]:
 
 
 def _complete_request() -> BeckhoffWitnessDeploymentRequest:
+    identity = BeckhoffServerIdentityBinding.model_construct(
+        endpoint_url="opc.tcp://beckhoff-controller:4840",
+        server_application_uri="urn:beckhoff-controller:TcOpcUaServer",
+        server_certificate_sha256="a" * 64,
+        product_uri="urn:beckhoff:TwinCAT:OPC-UA:Server",
+        manufacturer_name="Beckhoff Automation",
+        product_name="TwinCAT OPC UA Server",
+        software_version="4.5.2",
+        build_number="4026.17",
+    )
+    axis_bindings = tuple(
+        BeckhoffNodeBinding.model_construct(
+            namespace_uri="urn:beckhoff-controller:PLC1",
+            identifier=f"MAIN.Axis{axis}Position",
+            expected_data_type="Double",
+            required_access_level=1,
+            required_user_access_level=1,
+        )
+        for axis in "XYZBC"
+    )
     vendor = BeckhoffTwinCatVendorProfile.model_construct(
+        profile_id="axiom.control.beckhoff-twincat.test@1",
         content_hash="1" * 64,
         binding_status="Bound",
+        server_identity=identity,
+        channels=tuple(
+            BeckhoffAxisSignal.model_construct(
+                axis_id=axis,
+                canonical_signal_id=f"machine.axis.{axis}.position",
+                node_binding=binding,
+            )
+            for axis, binding in zip("XYZBC", axis_bindings, strict=True)
+        ),
+        permission_probe=BeckhoffPermissionProbe.model_construct(
+            node_binding=BeckhoffNodeBinding.model_construct(
+                namespace_uri="urn:beckhoff-controller:PLC1",
+                identifier="MAIN.AxiomReadOnlyPermissionCanary",
+            )
+        ),
     )
     runtime = BeckhoffRuntimeEvidence.model_construct(
         content_hash="2" * 64,
         profile_content_hash=vendor.content_hash,
         source_kind="vendor-runtime",
-        installation=BeckhoffInstallationProbe.model_construct(status="Passed"),
-        license=BeckhoffLicenseProbe.model_construct(state="Full"),
-        server_identity=BeckhoffServerIdentityEvidence.model_construct(),
-        channel_access=(BeckhoffChannelAccessEvidence.model_construct(),),
+        installation=BeckhoffInstallationProbe.model_construct(
+            status="Passed",
+            tcpkg_available=True,
+            tcpkg_sha256="b" * 64,
+            twincat_build=4026,
+            packages=tuple(
+                BeckhoffPackageReceipt.model_construct(package_id=package_id)
+                for package_id in (
+                    "TwinCAT.Standard.XAR",
+                    "TF6100.OpcUaServer.XAR",
+                )
+            ),
+            server_binary=BeckhoffServerBinaryReceipt.model_construct(
+                sha256="c" * 64
+            ),
+        ),
+        license=BeckhoffLicenseProbe.model_construct(
+            license_id="TF6100",
+            state="Full",
+        ),
+        server_identity=BeckhoffServerIdentityEvidence.model_construct(
+            **identity.__dict__,
+            build_date="2026-08-13T08:00:00+00:00",
+        ),
+        channel_access=tuple(
+            BeckhoffChannelAccessEvidence.model_construct(
+                axis_id=axis,
+                canonical_signal_id=f"machine.axis.{axis}.position",
+                namespace_uri=binding.namespace_uri,
+                identifier=binding.identifier,
+                data_type="Double",
+                access_level=1,
+                user_access_level=1,
+            )
+            for axis, binding in zip("XYZBC", axis_bindings, strict=True)
+        ),
         write_rejection=BeckhoffWriteRejectionReceipt.model_construct(
-            status="Rejected"
+            status="Rejected",
+            status_code="BadNotWritable",
+            server_value_unchanged=True,
+            operation_count=1,
+            probe_namespace_uri="urn:beckhoff-controller:PLC1",
+            probe_identifier="MAIN.AxiomReadOnlyPermissionCanary",
         ),
         transport_evidence_content_hash="3" * 64,
     )
@@ -225,6 +304,43 @@ def test_runtime_identity_mismatch_blocks_profile_generation() -> None:
         check.reason_code == "RuntimeEvidenceProfileMismatch"
         for check in report.checks
     )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    (
+        ("server-identity", "TwinCatServerIdentityMismatch"),
+        ("node-identifier", "BeckhoffNodeMappingMismatch"),
+        ("node-access", "BeckhoffNodeMappingMismatch"),
+        ("write-probe", "ControllerAcceptedWriteProbe"),
+    ),
+)
+def test_resealed_runtime_binding_mismatch_blocks_profile_generation(
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    request = _complete_request()
+    assert request.runtime_evidence is not None
+    runtime = request.runtime_evidence
+    if mutation == "server-identity":
+        assert runtime.server_identity is not None
+        runtime.server_identity.software_version = "4.5.3"
+    elif mutation == "node-identifier":
+        assert runtime.channel_access is not None
+        runtime.channel_access[0].identifier = "MAIN.StaleAxisXPosition"
+    elif mutation == "node-access":
+        assert runtime.channel_access is not None
+        runtime.channel_access[0].access_level = 3
+    else:
+        runtime.write_rejection.probe_identifier = "MAIN.StalePermissionCanary"
+    runtime.content_hash = canonical_hash(runtime, exclude={"content_hash"})
+
+    report = assess_beckhoff_witness_deployment(request)
+
+    assert report.runtime_precondition_status == "Blocked"
+    assert report.capture_preparation_status == "Blocked"
+    assert report.witness_profile is None
+    assert report.checks[2].reason_code == expected_reason
 
 
 def test_deployment_report_rejects_a_resealed_status_upgrade() -> None:

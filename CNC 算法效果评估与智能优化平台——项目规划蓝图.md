@@ -1,7 +1,7 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.20.0
+> 状态：Draft / 方向重整与契约闭合版 v0.21.0
 > 当前阶段：R7-E / R4.1 Windows 双运行现场验收编排、Beckhoff 控制器侧只读见证部署与离线证据组装已实现 / 当前机器缺 TwinCAT、TF6100 与经授权双运行 capture，真实 reality、受控试验与设备写入 gate 保持 Open
 > 更新日期：2026-08-13
 > 文档入口：[README](README.md)  

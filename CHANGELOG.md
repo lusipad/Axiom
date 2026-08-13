@@ -14,6 +14,7 @@
 
 - R7-E 不再只描述“控制器应提供 sample index”；现在冻结控制器锁存协议、七信号顺序、显式 namespace/identifier、同一 runtime 的 BrowseName/DataType/只读访问证据和可复算的 Bound Witness Profile 生成规则。
 - 节点检查器会把 config 与实际连接的 endpoint、证书和 Application URI 同 R7-D runtime 逐项核对；生产 `beckhoff-shadow-capture` 强制重验原始节点证据，不能以旧 Profile 绕过。
+- 生产采集在自己的 OPC UA session 中、订阅前再次读取 BrowseName/DataType/访问级别；检查后发生的 PLC 符号映射变化会 fail closed。
 - 网页可下载模板、导入部署请求并分别显示 Profile、vendor runtime、preparation、TwinCAT compile、Shadow 与 Reality 状态；仍没有 PLC 连接、写入、下发或控制入口。
 
 ### Verification

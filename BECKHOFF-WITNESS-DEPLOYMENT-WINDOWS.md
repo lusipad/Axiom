@@ -108,6 +108,6 @@ $LASTEXITCODE
 
 ## 7. 进入真实采集
 
-Bound Witness Profile 还必须与原始 `beckhoff-witness-node-verification.json`、Controller Profile、只读 authority、带 UTC 时间窗的数据所有者 capture authorization 一起交给 `.NET` `beckhoff-shadow-capture`；生产采集会重验节点证据内容哈希、runtime 哈希和七节点身份，旧的无验证哈希 Profile 会被拒绝。真实采集步骤和双运行 reality 验收见 [Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)。
+Bound Witness Profile 还必须与原始 `beckhoff-witness-node-verification.json`、Controller Profile、只读 authority、带 UTC 时间窗的数据所有者 capture authorization 一起交给 `.NET` `beckhoff-shadow-capture`；生产采集会重验节点证据内容哈希、runtime 哈希和七节点身份，并在同一采集 session 创建订阅前重新读取七节点属性。旧的无验证哈希 Profile 或检查后已变化的符号映射都会被拒绝。真实采集步骤和双运行 reality 验收见 [Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)。
 
 当前仓库没有 TwinCAT/TF6100 目标机，因此只对 `.TcPOU` XML 外形、七只读 pragma、快照赋值顺序、打包身份和应用层合同做自动验证；TwinCAT 导入、编译、激活和真实运行必须在部署方环境留证。

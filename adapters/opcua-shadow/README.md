@@ -130,7 +130,7 @@ axiom-opcua-shadow beckhoff-shadow-capture `
   --output beckhoff-shadow-calibration.json
 ```
 
-采集命令会重验节点证据与 runtime hash、Bound Witness Profile 和七个实际节点身份；缺少该证据的旧 Profile 不能进入生产采集。输出使用 CreateNew 语义且生产路径仍为零 Write/Call。仓库 conformance 的 witness 输出
+采集命令会重验节点证据与 runtime hash、Bound Witness Profile 和七个实际节点身份，并在同一采集 session 创建订阅前重新读取七节点属性；缺少或已经陈旧的证据不能进入生产采集。输出使用 CreateNew 语义且生产路径仍为零 Write/Call。仓库 conformance 的 witness 输出
 固定 `sourceKind=contract-fixture`、`declaredReal=false`，只用于跨语言合同验收；它不能计入
 deployment Shadow 或 R4.1 reality gate。真实 R4.1 验证必须另采 calibration 与 validation
 两次运行，并使用不同 capture authorization 和时间窗。

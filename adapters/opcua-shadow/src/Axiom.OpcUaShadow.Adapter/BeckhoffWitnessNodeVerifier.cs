@@ -107,7 +107,38 @@ internal static class BeckhoffWitnessNodeVerifier
             "Axiom Beckhoff Witness Node Read-Only Inspector",
             cancellationToken).ConfigureAwait(false);
         VerifyOpenedServer(opened, expectedServer);
-        ISession session = opened.Session;
+        BeckhoffWitnessNodeRuntimeObservation[] observations =
+            await ReadObservationsAsync(
+                opened.Session,
+                bindings,
+                cancellationToken).ConfigureAwait(false);
+        var evidence = new BeckhoffWitnessNodeVerificationEvidence
+        {
+            SchemaId = EvidenceSchema,
+            EvidenceId = evidenceId,
+            RuntimeEvidenceContentHash = runtimeEvidence.ContentHash,
+            SourceKind = "vendor-runtime",
+            CapturedAt = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            Nodes = observations,
+            WriteOperationCount = 0,
+            MethodCallOperationCount = 0,
+            ContentHash = string.Empty
+        };
+        evidence = evidence with
+        {
+            ContentHash = JsonSupport.ComputeCanonicalHash(evidence, "contentHash")
+        };
+        evidence.Validate();
+        return evidence;
+    }
+
+    internal static async Task<BeckhoffWitnessNodeRuntimeObservation[]>
+        ReadObservationsAsync(
+            ISession session,
+            BeckhoffWitnessDeploymentNodeBinding[] bindings,
+            CancellationToken cancellationToken)
+    {
+        ValidateBindings(bindings);
         NodeId[] nodes = bindings.Select(binding => ResolveNodeId(session, binding)).ToArray();
         ReadValueIdCollection reads = new(
             nodes.SelectMany(node => new[]
@@ -139,28 +170,10 @@ internal static class BeckhoffWitnessNodeVerifier
             }
         }
 
-        BeckhoffWitnessNodeRuntimeObservation[] observations = bindings.Select(
+        return bindings.Select(
             (binding, index) => ToObservation(
                 binding,
                 response.Results.Skip(index * 5).Take(5).ToArray())).ToArray();
-        var evidence = new BeckhoffWitnessNodeVerificationEvidence
-        {
-            SchemaId = EvidenceSchema,
-            EvidenceId = evidenceId,
-            RuntimeEvidenceContentHash = runtimeEvidence.ContentHash,
-            SourceKind = "vendor-runtime",
-            CapturedAt = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-            Nodes = observations,
-            WriteOperationCount = 0,
-            MethodCallOperationCount = 0,
-            ContentHash = string.Empty
-        };
-        evidence = evidence with
-        {
-            ContentHash = JsonSupport.ComputeCanonicalHash(evidence, "contentHash")
-        };
-        evidence.Validate();
-        return evidence;
     }
 
     private static BeckhoffWitnessNodeRuntimeObservation ToObservation(

@@ -310,6 +310,27 @@ internal static class Program
                     verifiedWitness,
                     "contract-fixture")
             };
+            bool staleNodeEvidenceRejected = false;
+            server.SetAxisBrowseName("X", "fWitnessAxisY");
+            try
+            {
+                await BeckhoffShadowWitnessClient.CaptureAsync(
+                    loaded,
+                    witnessInputs,
+                    declaredReal: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (ShadowContractException)
+            {
+                staleNodeEvidenceRejected = true;
+            }
+            finally
+            {
+                server.SetAxisBrowseName("X", "fWitnessAxisX");
+            }
+            Require(
+                staleNodeEvidenceRejected,
+                "capture accepted stale node evidence after live symbol remapping");
             BeckhoffWitnessNodeVerificationEvidence serverBNodeEvidence = nodeEvidence with
             {
                 RuntimeEvidenceContentHash = mismatchedRuntime.ContentHash,
@@ -529,6 +550,8 @@ internal static class Program
             Console.WriteLine($"Witness timeout enforced: {timeoutObserved}");
             Console.WriteLine(
                 $"Runtime server mismatch rejected: {runtimeServerMismatchRejected}");
+            Console.WriteLine(
+                $"Stale live-node evidence rejected: {staleNodeEvidenceRejected}");
             Console.WriteLine(
                 "Capture runtime server mismatch rejected: "
                 + captureRuntimeServerMismatchRejected);
@@ -972,8 +995,8 @@ internal static class Program
         Require(evidence.Frames.All(frame => frame.NotifiedSampleIndex
                 == frame.ReadSampleIndex && frame.Samples.Length == 5),
             "witness frame is incomplete");
-        Require(evidence.Receipt.ReadOperationCount == evidence.Frames.Length,
-            "witness did not batch-read each sample index");
+        Require(evidence.Receipt.ReadOperationCount == evidence.Frames.Length + 1,
+            "witness did not verify live nodes then batch-read each sample index");
         Require(evidence.Receipt.SubscribeOperationCount == 1,
             "witness must subscribe only to sample index");
         Require(evidence.Receipt.WriteOperationCount == 0

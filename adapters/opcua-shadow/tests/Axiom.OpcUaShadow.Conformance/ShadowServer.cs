@@ -6,16 +6,24 @@ namespace Axiom.OpcUaShadow.Conformance;
 
 internal sealed class ShadowServer : StandardServer
 {
+    private ShadowNodeManager? _nodeManager;
+
     protected override MasterNodeManager CreateMasterNodeManager(
         IServerInternal server,
         ApplicationConfiguration configuration)
     {
+        _nodeManager = new ShadowNodeManager(server, configuration);
         return new MasterNodeManager(
             server,
             configuration,
             null,
-            [new ShadowNodeManager(server, configuration)]);
+            [_nodeManager]);
     }
+
+    public void SetAxisBrowseName(string axis, string browseName)
+        => (_nodeManager
+            ?? throw new InvalidOperationException("node manager is not initialized"))
+            .SetAxisBrowseName(axis, browseName);
 
     protected override ServerProperties LoadServerProperties()
     {
@@ -176,6 +184,21 @@ internal sealed class ShadowNodeManager : CustomNodeManager2
             _timer = null;
         }
         base.Dispose(disposing);
+    }
+
+    public void SetAxisBrowseName(string axis, string browseName)
+    {
+        int index = Array.IndexOf(Contract.RequiredAxes, axis);
+        if (index < 0 || string.IsNullOrWhiteSpace(browseName))
+        {
+            throw new ArgumentException("axis and browseName must be valid");
+        }
+        lock (Lock)
+        {
+            BaseDataVariableState variable = _axisVariables[index];
+            variable.BrowseName = new QualifiedName(browseName, NamespaceIndex);
+            variable.ClearChangeMasks(SystemContext, false);
+        }
     }
 
     private void UpdateAxes(object? state)

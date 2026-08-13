@@ -33,6 +33,21 @@ internal static class BeckhoffShadowWitnessClient
         }
         ISession session = opened.Session;
         BeckhoffShadowWitnessProfile profile = inputs.WitnessProfile.Profile;
+        BeckhoffWitnessDeploymentNodeBinding[] bindings = profile.Nodes.Select(node =>
+            new BeckhoffWitnessDeploymentNodeBinding(
+                node.CanonicalSignalId,
+                node.NamespaceUri,
+                node.Identifier)).ToArray();
+        BeckhoffWitnessNodeRuntimeObservation[] liveNodes =
+            await BeckhoffWitnessNodeVerifier.ReadObservationsAsync(
+                session,
+                bindings,
+                cancellationToken).ConfigureAwait(false);
+        if (!liveNodes.SequenceEqual(inputs.NodeVerificationEvidence.Nodes))
+        {
+            throw new ShadowContractException(
+                "live witness node attributes changed after verification");
+        }
         NodeId[] nodes = profile.Nodes.Select(node => ResolveNodeId(session, node))
             .ToArray();
         var notifications = Channel.CreateUnbounded<IndexNotification>(
@@ -97,7 +112,7 @@ internal static class BeckhoffShadowWitnessClient
             FormatTimestamp(openedAt),
             FormatTimestamp(closedAt),
             SubscribeOperationCount: 1,
-            ReadOperationCount: frames.Count,
+            ReadOperationCount: frames.Count + 1,
             WriteOperationCount: 0,
             MethodCallOperationCount: 0,
             ReceivedFrameCount: frames.Count,

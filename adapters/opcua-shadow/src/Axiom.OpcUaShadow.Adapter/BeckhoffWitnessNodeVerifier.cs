@@ -234,7 +234,7 @@ internal static class BeckhoffWitnessNodeVerifier
         }
     }
 
-    private static BeckhoffServerIdentityBinding RequireRuntimeServerIdentity(
+    internal static BeckhoffServerIdentityBinding RequireRuntimeServerIdentity(
         LoadedContentIdentity runtimeEvidence)
     {
         JsonElement root = runtimeEvidence.Root;

@@ -173,6 +173,10 @@ def _complete_test_r7e_request(
             "profileId": f"test.{role}.witness@1",
             "vendorProfileContentHash": profile.content_hash,
             "runtimeEvidenceContentHash": runtime.content_hash,
+            "nodeVerificationEvidenceContentHash": (
+                "8" if role == "calibration" else "9"
+            )
+            * 64,
             "expectedCommandContentHash": command.content_id,
             "bindingStatus": "Bound",
             "platform": "Windows",

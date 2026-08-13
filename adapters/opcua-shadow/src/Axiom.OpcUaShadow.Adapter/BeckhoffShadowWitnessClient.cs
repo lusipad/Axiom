@@ -304,9 +304,12 @@ internal static class BeckhoffShadowWitnessClient
     {
         BeckhoffTwinCatProfile vendor = inputs.VendorProfile.Profile;
         BeckhoffShadowWitnessProfile witness = inputs.WitnessProfile.Profile;
+        BeckhoffServerIdentityBinding runtimeServer = BeckhoffWitnessNodeVerifier
+            .RequireRuntimeServerIdentity(inputs.RuntimeEvidence);
         inputs.NodeVerificationEvidence.Validate();
         if (vendor.BindingStatus != "Bound"
             || vendor.ServerIdentity is null
+            || runtimeServer != vendor.ServerIdentity
             || vendor.ContentHash != witness.VendorProfileContentHash
             || inputs.RuntimeEvidence.ContentHash != witness.RuntimeEvidenceContentHash
             || inputs.NodeVerificationEvidence.ContentHash

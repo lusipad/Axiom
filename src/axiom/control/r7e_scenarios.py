@@ -159,6 +159,10 @@ def _witness_profile_check(
         return _blocked("r7e.witness-profile", title, "WitnessVendorProfileMismatch")
     if witness_profile.binding_status == "Open":
         return _open("r7e.witness-profile", title, "WitnessNodeBindingsOpen")
+    if witness_profile.node_verification_evidence_content_hash is None:
+        return _blocked(
+            "r7e.witness-profile", title, "WitnessNodeVerificationMissing"
+        )
     if runtime_evidence is None or command_content_hash is None:
         return _blocked("r7e.witness-profile", title, "WitnessSupportMissing")
     if (
@@ -171,6 +175,9 @@ def _witness_profile_check(
         title,
         capturePolicy=witness_profile.capture_policy,
         nodeCount=len(witness_profile.nodes),
+        nodeVerificationEvidenceContentHash=(
+            witness_profile.node_verification_evidence_content_hash
+        ),
     )
 
 

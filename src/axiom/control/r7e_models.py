@@ -154,11 +154,12 @@ class BeckhoffShadowWitnessProfile(AxiomModel):
         else:
             if (
                 self.runtime_evidence_content_hash is None
+                or self.node_verification_evidence_content_hash is None
                 or self.expected_command_content_hash is None
                 or len(self.nodes) != 7
             ):
                 raise ValueError(
-                    "Bound witness profile requires runtime, command and seven nodes"
+                    "Bound witness profile requires runtime, node verification, command and seven nodes"
                 )
             roles = tuple(node.role for node in self.nodes)
             canonical = tuple(node.canonical_signal_id for node in self.nodes)

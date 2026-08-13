@@ -310,6 +310,52 @@ internal static class Program
                     verifiedWitness,
                     "contract-fixture")
             };
+            BeckhoffWitnessNodeVerificationEvidence serverBNodeEvidence = nodeEvidence with
+            {
+                RuntimeEvidenceContentHash = mismatchedRuntime.ContentHash,
+                ContentHash = string.Empty
+            };
+            serverBNodeEvidence = serverBNodeEvidence with
+            {
+                ContentHash = JsonSupport.ComputeCanonicalHash(
+                    serverBNodeEvidence,
+                    "contentHash")
+            };
+            BeckhoffShadowWitnessProfile serverBProfile = verifiedWitness with
+            {
+                RuntimeEvidenceContentHash = mismatchedRuntime.ContentHash,
+                NodeVerificationEvidenceContentHash = serverBNodeEvidence.ContentHash,
+                ContentHash = string.Empty
+            };
+            serverBProfile = serverBProfile with
+            {
+                ContentHash = JsonSupport.ComputeCanonicalHash(
+                    serverBProfile,
+                    "contentHash")
+            };
+            bool captureRuntimeServerMismatchRejected = false;
+            try
+            {
+                await BeckhoffShadowWitnessClient.CaptureAsync(
+                    loaded,
+                    witnessInputs with
+                    {
+                        RuntimeEvidence = mismatchedRuntime,
+                        NodeVerificationEvidence = serverBNodeEvidence,
+                        WitnessProfile = new LoadedBeckhoffShadowWitnessProfile(
+                            serverBProfile,
+                            "contract-fixture")
+                    },
+                    declaredReal: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (ShadowContractException)
+            {
+                captureRuntimeServerMismatchRejected = true;
+            }
+            Require(
+                captureRuntimeServerMismatchRejected,
+                "capture accepted runtime and node evidence from a different server");
             BeckhoffWitnessNodeRuntimeObservation[] invalidNodes =
                 nodeEvidence.Nodes.ToArray();
             invalidNodes[2] = invalidNodes[2] with { BrowseName = "fWitnessAxisY" };
@@ -483,6 +529,9 @@ internal static class Program
             Console.WriteLine($"Witness timeout enforced: {timeoutObserved}");
             Console.WriteLine(
                 $"Runtime server mismatch rejected: {runtimeServerMismatchRejected}");
+            Console.WriteLine(
+                "Capture runtime server mismatch rejected: "
+                + captureRuntimeServerMismatchRejected);
             Console.WriteLine(
                 $"Legacy unverified witness rejected: {legacyWitnessRejected}");
             Console.WriteLine(

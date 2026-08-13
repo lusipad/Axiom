@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from axiom.cli import main
 from axiom.control import (
+    BeckhoffShadowWitnessProfile,
     BeckhoffWitnessDeploymentReport,
     BeckhoffWitnessDeploymentNodeBinding,
     BeckhoffWitnessDeploymentRequest,
@@ -369,6 +370,19 @@ def test_runtime_verified_binding_emits_bound_profile_but_keeps_shadow_open() ->
     assert report.assessment_request.capture_authorization is None
     assert report.deployment_shadow_status == "Open"
     assert report.reality_validation_status == "Open"
+
+
+def test_bound_profile_requires_node_verification_identity() -> None:
+    report = assess_beckhoff_witness_deployment(_complete_request())
+    assert report.witness_profile is not None
+    payload = report.witness_profile.model_dump(
+        mode="json", by_alias=True, exclude={"content_hash"}
+    )
+    payload.pop("nodeVerificationEvidenceContentHash")
+    payload["contentHash"] = canonical_hash(payload)
+
+    with pytest.raises(ValidationError, match="node verification"):
+        BeckhoffShadowWitnessProfile.model_validate(payload)
 
 
 def test_declared_nodes_without_runtime_verification_keep_preparation_open() -> None:

@@ -106,6 +106,24 @@ internal static class JsonSupport
         return new LoadedBeckhoffShadowWitnessProfile(profile, fullPath);
     }
 
+    public static async Task<BeckhoffWitnessNodeVerificationEvidence>
+        LoadBeckhoffWitnessNodeVerificationEvidenceAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        byte[] payload = await File.ReadAllBytesAsync(
+            Path.GetFullPath(path),
+            cancellationToken).ConfigureAwait(false);
+        BeckhoffWitnessNodeVerificationEvidence evidence =
+            JsonSerializer.Deserialize<BeckhoffWitnessNodeVerificationEvidence>(
+                payload,
+                Options)
+            ?? throw new ShadowContractException(
+                "witness node verification evidence JSON is empty");
+        evidence.Validate();
+        return evidence;
+    }
+
     public static async Task<BeckhoffShadowCaptureAuthorization>
         LoadBeckhoffShadowCaptureAuthorizationAsync(
             string path,
@@ -181,6 +199,31 @@ internal static class JsonSupport
             throw new ShadowContractException("M5 command must contain samples");
         }
         return new M5CommandReference(contentId, indexes, fullPath);
+    }
+
+    public static async Task<BeckhoffWitnessDeploymentNodeBinding[]>
+        LoadWitnessDeploymentNodeBindingsAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        byte[] payload = await File.ReadAllBytesAsync(
+            Path.GetFullPath(path),
+            cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(payload);
+        JsonElement root = document.RootElement;
+        if (RequireStringProperty(root, "schemaId")
+                != "axiom.control.beckhoff-shadow-witness-deployment-request@1"
+            || !root.TryGetProperty("nodes", out JsonElement nodes)
+            || nodes.ValueKind != JsonValueKind.Array)
+        {
+            throw new ShadowContractException(
+                "witness deployment request schema or nodes are invalid");
+        }
+        return nodes.EnumerateArray().Select(node =>
+            new BeckhoffWitnessDeploymentNodeBinding(
+                RequireStringProperty(node, "canonicalSignalId"),
+                RequireStringProperty(node, "namespaceUri"),
+                RequireStringProperty(node, "identifier"))).ToArray();
     }
 
     internal static void ValidateWriteReceipt(BeckhoffWriteRejectionReceipt receipt)

@@ -98,6 +98,10 @@ jobs:
           Copy-Item examples/opcua-shadow.windows.example.json dist/opcua-shadow-win-x64/opcua-shadow.windows.example.json
           Copy-Item examples/beckhoff-twincat-profile.windows.json dist/opcua-shadow-win-x64/beckhoff-twincat-profile.windows.json
           Copy-Item examples/field-evidence.open-request.json dist/opcua-shadow-win-x64/field-evidence.open-request.json
+          New-Item -ItemType Directory -Force dist/opcua-shadow-win-x64/deployment | Out-Null
+          Copy-Item src/axiom/control/deployment/FB_AxiomShadowWitness.TcPOU dist/opcua-shadow-win-x64/deployment/FB_AxiomShadowWitness.TcPOU
+          Copy-Item BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md dist/opcua-shadow-win-x64/BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md
+          Copy-Item examples/beckhoff-witness-deployment.open-request.json dist/opcua-shadow-win-x64/beckhoff-witness-deployment.open-request.json
           Compress-Archive `
             -Path dist/opcua-shadow-win-x64/* `
             -DestinationPath "dist/axiom-opcua-shadow-$env:GITHUB_REF_NAME-win-x64.zip"
@@ -128,6 +132,8 @@ jobs:
               "axiom/control/models.py",
               "axiom/control/r7c_models.py",
               "axiom/control/r7d_models.py",
+              "axiom/control/r7e_deployment.py",
+              "axiom/control/deployment/FB_AxiomShadowWitness.TcPOU",
               "axiom/control/r7e_models.py",
               "axiom/field_evidence.py",
           )
@@ -207,6 +213,8 @@ jobs:
               R7C_DOMAIN_PACK_ID,
               R7D_DOMAIN_PACK_ID,
               R7E_DOMAIN_PACK_ID,
+              assess_beckhoff_witness_deployment,
+              build_default_beckhoff_witness_deployment_request,
               build_r7_manifest,
               build_r7b_manifest,
               build_r7c_manifest,
@@ -225,7 +233,7 @@ jobs:
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.19.0"
+          assert version("axiom-evaluator") == "0.20.0"
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",
@@ -296,6 +304,17 @@ jobs:
               "five-axis.device-safe-claim@1",
               "five-axis.process-safe-claim@1",
           }.intersection(r7e_claims)
+
+          deployment = assess_beckhoff_witness_deployment(
+              build_default_beckhoff_witness_deployment_request()
+          )
+          assert deployment.profile_binding_status == "Open"
+          assert deployment.capture_preparation_status == "Open"
+          assert deployment.template.symbol_count == 7
+          assert deployment.template.device_write_allowed is False
+          assert deployment.template.twin_cat_compile_status == "NotAssessed"
+          assert deployment.deployment_shadow_status == "Open"
+          assert deployment.reality_validation_status == "Open"
 
           f2 = evaluate_run(validate_f2_example_run_spec("configuration-interior-collision"))
           assert validate_run_bundle_integrity(f2) == []
@@ -640,6 +659,14 @@ jobs:
             if ($r7eExample.runSpec.domainPackId -ne "control.domain-pack@5" -or $null -ne $r7eExample.shadowEvidence -or $r7eExample.witnessProfile.bindingStatus -ne "Open" -or $r7eExample.readinessAudit.deploymentShadowStatus -ne "Open") {
               throw "installed wheel did not preserve the R7-E Open evidence boundary"
             }
+            $deployment = Invoke-RestMethod http://127.0.0.1:8765/api/v1/examples/control-r7e/deployment
+            if ($deployment.profileBindingStatus -ne "Open" -or $deployment.capturePreparationStatus -ne "Open" -or $deployment.template.symbolCount -ne 7 -or $deployment.template.twinCatCompileStatus -ne "NotAssessed" -or $deployment.deploymentShadowStatus -ne "Open" -or $deployment.realityValidationStatus -ne "Open") {
+              throw "installed wheel did not preserve the Beckhoff witness deployment boundary"
+            }
+            $template = Invoke-WebRequest http://127.0.0.1:8765/api/v1/control/r7e/deployment/template
+            if ($template.Content -notmatch "FB_AxiomShadowWitness" -or $template.Content -notmatch "OPC.UA.DA.Access") {
+              throw "installed wheel did not serve the TwinCAT witness template"
+            }
             $openApi = Invoke-RestMethod http://127.0.0.1:8765/api/openapi.json
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "PhysicalR4ExamplePayload") {
               throw "installed wheel did not expose the typed R4 OpenAPI contract"
@@ -670,6 +697,9 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7EExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7EAssessmentRequest") {
               throw "installed wheel did not expose the typed R7-E OpenAPI contract"
+            }
+            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "BeckhoffWitnessDeploymentReport" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "BeckhoffWitnessDeploymentRequest") {
+              throw "installed wheel did not expose the typed Beckhoff witness deployment contract"
             }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id }

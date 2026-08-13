@@ -93,6 +93,23 @@ R7-E 不把 OPC UA publishing interval 当作 M5 覆盖证明。Bound Witness Pr
 sample index，每个新索引触发一次七节点 batch Read。索引必须从 0 开始并与 M5 完全一致，
 缺失索引不会被插值。
 
+发布包同时提供 `deployment/FB_AxiomShadowWitness.TcPOU`。该功能块在关闭观测窗口时保持
+sentinel；每个新快照先以 sentinel 使旧快照失效，再锁存 command hash 与五轴回读，最后发布 sample index；窗口内命令
+身份变化时也保持 sentinel，避免零索引复用。它不生成索引、不写轴、不启停设备。TwinCAT
+导入、实例化、TMC 符号生成、TF6100 ACL、显式 NodeId 绑定及七节点运行时属性验证步骤见
+[`BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md`](../../BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)。
+
+七节点属性证据由同一只读 Adapter 生成：
+
+```powershell
+axiom-opcua-shadow beckhoff-witness-inspect `
+  --config opcua-shadow.json `
+  --runtime-evidence beckhoff-runtime-evidence.json `
+  --deployment-request beckhoff-witness-deployment.json `
+  --evidence-id site.beckhoff-witness-node-inspection@1 `
+  --output beckhoff-witness-node-verification.json
+```
+
 真实采集还需绑定 Vendor Profile、R7-D runtime evidence、Controller Profile、已验证的
 只读 authority 和数据所有者 capture authorization。authorization 必须包含带 UTC offset 的
 `authorizedFrom` / `authorizedUntil`，且 capture receipt 的打开、关闭与 `capturedAt` 均须落在
@@ -103,6 +120,7 @@ axiom-opcua-shadow beckhoff-shadow-capture `
   --config opcua-shadow.json `
   --vendor-profile beckhoff-bound-profile.json `
   --runtime-evidence beckhoff-runtime-evidence.json `
+  --witness-node-evidence beckhoff-witness-node-verification.json `
   --witness-profile beckhoff-shadow-witness-profile.json `
   --controller-profile controller-profile.json `
   --authority readonly-authority.json `
@@ -112,7 +130,7 @@ axiom-opcua-shadow beckhoff-shadow-capture `
   --output beckhoff-shadow-calibration.json
 ```
 
-输出使用 CreateNew 语义且生产路径仍为零 Write/Call。仓库 conformance 的 witness 输出
+采集命令会重验节点证据与 runtime hash、Bound Witness Profile 和七个实际节点身份，并在同一采集 session 创建订阅前重新读取七节点属性；每个通知再用索引前读、七节点 batch Read、索引后读检测撕裂。缺少、陈旧或读取中失效的证据不能进入生产采集。输出使用 CreateNew 语义且生产路径仍为零 Write/Call。仓库 conformance 的 witness 输出
 固定 `sourceKind=contract-fixture`、`declaredReal=false`，只用于跨语言合同验收；它不能计入
 deployment Shadow 或 R4.1 reality gate。真实 R4.1 验证必须另采 calibration 与 validation
 两次运行，并使用不同 capture authorization 和时间窗。

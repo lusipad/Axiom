@@ -2,6 +2,7 @@ import { ChangeEvent, useEffect, useRef, useState } from "react";
 
 import type { Catalog } from "../../types";
 import {
+  assessBeckhoffWitnessDeployment,
   assessFieldEvidence,
   assessR7E,
   loadR41Example,
@@ -10,6 +11,8 @@ import {
   loadR7EManifest,
 } from "./api";
 import type {
+  BeckhoffWitnessDeploymentReport,
+  BeckhoffWitnessDeploymentRequest,
   FieldEvidenceAssessmentReport,
   GateStatus,
   R41ExamplePayload,
@@ -62,6 +65,15 @@ function gateLabel(status: GateStatus | undefined): string {
   return status ?? "Open";
 }
 
+function downloadJson(fileName: string, payload: unknown): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null }) {
   const [r7eManifest, setR7EManifest] = useState<R7EManifest | null>(null);
   const [r7e, setR7E] = useState<R7EExamplePayload | null>(null);
@@ -69,10 +81,12 @@ export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null })
   const [r41Manifest, setR41Manifest] = useState<R41Manifest | null>(null);
   const [r41, setR41] = useState<R41ExamplePayload | null>(null);
   const [fieldReport, setFieldReport] = useState<FieldEvidenceAssessmentReport | null>(null);
+  const [deployment, setDeployment] = useState<BeckhoffWitnessDeploymentReport | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const r7eInput = useRef<HTMLInputElement>(null);
   const validationR7EInput = useRef<HTMLInputElement>(null);
+  const deploymentInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const active = { value: true };
@@ -115,6 +129,25 @@ export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null })
       else setValidationR7E(assessment);
     } catch (reason) {
       setError(reason instanceof Error ? `R7-E 证据校验失败：${reason.message}` : "R7-E 证据校验失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importDeployment = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    setDeployment(null);
+    setFieldReport(null);
+    setR41(null);
+    try {
+      const payload = JSON.parse(await file.text()) as BeckhoffWitnessDeploymentRequest;
+      setDeployment(await assessBeckhoffWitnessDeployment(payload));
+    } catch (reason) {
+      setError(reason instanceof Error ? `见证部署预检失败：${reason.message}` : "见证部署预检失败。");
     } finally {
       setBusy(false);
     }
@@ -180,7 +213,26 @@ export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null })
           </section>
 
           <section className="config-section">
-            <div className="section-title"><span>01</span><h2>证据入口</h2><em>JSON only</em></div>
+            <div className="section-title"><span>01</span><h2>只读见证部署</h2><em>TcPOU</em></div>
+            <a className="button button-secondary field-action" href="/api/v1/control/r7e/deployment/template" download="FB_AxiomShadowWitness.TcPOU">⇩ 下载 TwinCAT 见证模板</a>
+            <small>模板只锁存命令哈希、样本索引和 X/Y/Z/B/C；样本索引最后发布。导入、编译与实例化仍由 TwinCAT 工程责任人完成。</small>
+            <input ref={deploymentInput} hidden type="file" accept="application/json,.json" aria-label="导入 Beckhoff 见证部署请求 JSON" onChange={(event) => void importDeployment(event)} />
+            <button className="button button-secondary field-action" type="button" disabled={busy} onClick={() => deploymentInput.current?.click()}><span aria-hidden="true">⇧</span>校验部署绑定 JSON</button>
+            <dl className="data-list compact-list field-deployment-status">
+              <div><dt>Template</dt><dd>{deployment?.template.templateValidationStatus ?? "Open"}</dd></div>
+              <div><dt>Profile</dt><dd className={statusClass(deployment?.profileBindingStatus)}>{deployment?.profileBindingStatus ?? "Open"}</dd></div>
+              <div><dt>Runtime</dt><dd className={statusClass(deployment?.runtimePreconditionStatus)}>{deployment?.runtimePreconditionStatus ?? "Open"}</dd></div>
+              <div><dt>Preparation</dt><dd className={statusClass(deployment?.capturePreparationStatus)}>{deployment?.capturePreparationStatus ?? "Open"}</dd></div>
+              <div><dt>TwinCAT compile</dt><dd>{deployment?.template.twinCatCompileStatus ?? "NotAssessed"}</dd></div>
+              <div><dt>Shadow</dt><dd>{deployment?.deploymentShadowStatus ?? "Open"}</dd></div>
+            </dl>
+            {deployment?.witnessProfile && <button className="button button-secondary field-action" type="button" onClick={() => downloadJson("beckhoff-shadow-witness-profile.json", deployment.witnessProfile)}>⇩ 下载 Bound Witness Profile</button>}
+            {deployment?.assessmentRequest && <button className="button button-secondary field-action" type="button" onClick={() => downloadJson("r7e-assessment-skeleton.json", deployment.assessmentRequest)}>⇩ 下载 R7-E 请求骨架</button>}
+            <small>Preparation 通过也不代表已经采集；授权、Deployment Shadow、Reality 与安全状态不会自动升级。</small>
+          </section>
+
+          <section className="config-section">
+            <div className="section-title"><span>02</span><h2>证据入口</h2><em>JSON only</em></div>
             <input ref={r7eInput} hidden type="file" accept="application/json,.json" aria-label="导入校准 R7-E Shadow 证据 JSON" onChange={(event) => void importR7E(event, "calibration")} />
             <button className="button button-secondary field-action" type="button" disabled={busy} onClick={() => r7eInput.current?.click()}>{busy ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">⇧</span>}导入校准 Shadow 包</button>
             <small>第一次真实只读采集用于拟合；完整 R7-E payload 的 Case 身份会被保留并重验。</small>
@@ -192,7 +244,7 @@ export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null })
           </section>
 
           <section className="config-section">
-            <div className="section-title"><span>02</span><h2>冻结协议</h2><em>exact index</em></div>
+            <div className="section-title"><span>03</span><h2>冻结协议</h2><em>exact index</em></div>
             <dl className="data-list compact-list">
               <div><dt>Platform</dt><dd>{r7eManifest?.supportedPlatforms.join(", ") ?? "Windows"}</dd></div>
               <div><dt>Capture</dt><dd>{r7eManifest?.capturePolicy ?? "sample-index-triggered-batch-read"}</dd></div>
@@ -207,7 +259,7 @@ export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null })
         <section className="analysis-panel field-evidence-analysis">
           <div className="analysis-heading">
             <div className="view-tabs"><span>Shadow Witness</span><span>→</span><span>Reality Holdout</span></div>
-            <div className="run-state"><span className={statusClass(r7e?.readinessAudit.deploymentShadowStatus)}>CAL: {r7e?.readinessAudit.deploymentShadowStatus ?? "Open"}</span><span className={statusClass(validationR7E?.readinessAudit.deploymentShadowStatus)}>VAL: {validationR7E?.readinessAudit.deploymentShadowStatus ?? "Open"}</span><span className={statusClass(fieldReport?.overallStatus ?? r41?.analysis.realityValidationStatus)}>Reality: {fieldReport?.overallStatus ?? r41?.analysis.realityValidationStatus ?? "Open"}</span></div>
+            <div className="run-state"><span className={statusClass(deployment?.capturePreparationStatus)}>PREP: {deployment?.capturePreparationStatus ?? "Open"}</span><span className={statusClass(r7e?.readinessAudit.deploymentShadowStatus)}>CAL: {r7e?.readinessAudit.deploymentShadowStatus ?? "Open"}</span><span className={statusClass(validationR7E?.readinessAudit.deploymentShadowStatus)}>VAL: {validationR7E?.readinessAudit.deploymentShadowStatus ?? "Open"}</span><span className={statusClass(fieldReport?.overallStatus ?? r41?.analysis.realityValidationStatus)}>Reality: {fieldReport?.overallStatus ?? r41?.analysis.realityValidationStatus ?? "Open"}</span></div>
           </div>
 
           <div className="field-evidence-body">
@@ -219,6 +271,7 @@ export function FieldEvidenceWorkbench({ catalog }: { catalog: Catalog | null })
             <section className="report-card">
               <div className="section-title compact"><span>01</span><h2>证据链</h2><em>no implicit upgrade</em></div>
               <div className="field-chain" role="list">
+                <article className={statusClass(deployment ? "Passed" : "Open")}><b>PLC</b><strong>Witness template</strong><span>{deployment?.template.templateValidationStatus ?? "Open"}</span><small>sample index published last</small></article>
                 <article className={statusClass(r7e?.readinessAudit.deploymentShadowStatus)}><b>R7-D</b><strong>Vendor runtime</strong><span>{r7e?.runtimeEvidence ? "Bound" : "Open"}</span><small>TwinCAT / TF6100 / ACL</small></article>
                 <article className={statusClass(r7e?.readinessAudit.deploymentShadowStatus)}><b>CAL</b><strong>Calibration capture</strong><span>{r7e?.readinessAudit.deploymentShadowStatus ?? "Open"}</span><small>{calibrationReady ? shortHash(r41?.calibrationPair?.pairContentHash) : "exact sample index"}</small></article>
                 <article className={statusClass(validationR7E?.readinessAudit.deploymentShadowStatus)}><b>VAL</b><strong>Holdout capture</strong><span>{validationR7E?.readinessAudit.deploymentShadowStatus ?? "Open"}</span><small>{validationReady ? shortHash(r41?.validationPair?.pairContentHash) : "independent run"}</small></article>

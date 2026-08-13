@@ -12,6 +12,7 @@ from axiom.control import (
     BeckhoffRuntimeEvidence,
     BeckhoffShadowRunEvidence,
     BeckhoffTwinCatVendorProfile,
+    BeckhoffWitnessNodeVerificationEvidence,
     OpcUaTransportEvidence,
     assess_r7c_opcua_transport,
 )
@@ -27,6 +28,7 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
 ) -> None:
     evidence_path = tmp_path / "transport-evidence.json"
     witness_path = tmp_path / "witness-evidence.json"
+    node_evidence_path = tmp_path / "witness-node-evidence.json"
     completed = subprocess.run(
         [
             "dotnet",
@@ -45,6 +47,8 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
             str(evidence_path),
             "--witness-evidence-output",
             str(witness_path),
+            "--witness-node-evidence-output",
+            str(node_evidence_path),
         ],
         cwd=ROOT,
         capture_output=True,
@@ -80,11 +84,22 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
         for frame in witness.frames
     )
     assert witness.receipt.subscribe_operation_count == 1
-    assert witness.receipt.read_operation_count == 5
+    assert witness.receipt.read_operation_count == 16
     assert witness.receipt.write_operation_count == 0
     assert witness.receipt.method_call_operation_count == 0
     assert witness.counts_toward_reality is False
     assert witness.reality_validation_status == "Open"
+    node_evidence = BeckhoffWitnessNodeVerificationEvidence.model_validate_json(
+        node_evidence_path.read_text(encoding="utf-8")
+    )
+
+    assert node_evidence.source_kind == "vendor-runtime"
+    assert len(node_evidence.nodes) == 7
+    assert node_evidence.nodes[0].browse_name == "sWitnessCommandContentHash"
+    assert node_evidence.nodes[1].data_type == "UInt32"
+    assert all(node.node_class == "Variable" for node in node_evidence.nodes)
+    assert node_evidence.write_operation_count == 0
+    assert node_evidence.method_call_operation_count == 0
 
 
 def test_production_adapter_has_no_write_or_method_call_surface() -> None:

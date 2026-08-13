@@ -2,6 +2,31 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.20.0 - 2026-08-13
+
+### Added
+
+- 增加可导入的 TwinCAT `FB_AxiomShadowWitness.TcPOU`：关闭窗口或窗口内命令身份异常切换时保持 sentinel；每个新快照先以 sentinel 使旧快照失效，再锁存 command hash 和 X/Y/Z/B/C，最后发布 sample index；七个输出均使用 TF6100 只读 OPC UA pragma。
+- 增加 `axiom.control.beckhoff-shadow-witness-deployment-request@1` / `report@1`、`axiom beckhoff-witness-deployment`、typed HTTP API 与 Field Evidence 网页部署预检。
+- 增加 [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、Open 请求骨架与 ADR-0025；Windows Adapter ZIP 同时携带模板、指南和请求示例。
+
+### Changed
+
+- R7-E 不再只描述“控制器应提供 sample index”；现在冻结控制器锁存协议、七信号顺序、显式 namespace/identifier、同一 runtime 的 BrowseName/DataType/只读访问证据和可复算的 Bound Witness Profile 生成规则。
+- 节点检查器会把 config 与实际连接的 endpoint、证书和 Application URI 同 R7-D runtime 逐项核对；生产 `beckhoff-shadow-capture` 强制重验原始节点证据，不能以旧 Profile 绕过。
+- 生产采集在自己的 OPC UA session 中、订阅前再次读取 BrowseName/DataType/访问级别；检查后发生的 PLC 符号映射变化会 fail closed。
+- 每个有效 sample-index 通知都执行索引前读、七节点 batch Read、索引后读；sentinel 或任一版本不一致都会阻断撕裂快照。
+- 网页可下载模板、导入部署请求并分别显示 Profile、vendor runtime、preparation、TwinCAT compile、Shadow 与 Reality 状态；仍没有 PLC 连接、写入、下发或控制入口。
+
+### Verification
+
+- 自动验证 `.TcPOU` XML、七组 `OPC.UA.DA`/只读 Access pragma、索引最后赋值、零运动控制调用、绑定顺序、内容哈希、CLI/HTTP 同义和 wheel/ZIP 包含关系。
+- TwinCAT 导入、编译、激活、TF6100 ACL 与真实 capture 仍需在部署方 Windows 环境执行并留证；开发机没有伪造这些结果。
+
+### Boundary
+
+- `capturePreparationStatus=Passed` 只表示模板、runtime、command、NodeId 声明及七节点运行时属性证据闭合；capture authorization、Deployment Shadow、Reality、Controlled Trial 与 Closed Loop 仍为 `Open`，DeviceSafe/ProcessSafe 仍为 `NotAssessed`。
+
 ## 0.19.0 - 2026-08-13
 
 ### Added

@@ -77,6 +77,7 @@ def _complete_shadow_criteria_inputs() -> dict[str, SimpleNamespace]:
         content_hash="8" * 64,
         vendor_profile_content_hash=vendor.content_hash,
         runtime_evidence_content_hash=runtime.content_hash,
+        node_verification_evidence_content_hash="9" * 64,
         expected_command_content_hash=command_hash,
         binding_status="Bound",
         capture_policy="sample-index-triggered-batch-read",
@@ -243,6 +244,11 @@ def test_r7e_complete_real_criteria_support_only_case_scoped_shadow() -> None:
             "WitnessVendorProfileMismatch",
         ),
         (
+            "node-verification-missing",
+            "r7e.witness-profile",
+            "WitnessNodeVerificationMissing",
+        ),
+        (
             "command-mismatch",
             "r7e.command-binding",
             "CommandContentHashMismatch",
@@ -300,6 +306,8 @@ def test_r7e_real_shadow_criteria_fail_closed(
         )
     elif case == "profile-mismatch":
         inputs["witness_profile"].vendor_profile_content_hash = "0" * 64
+    elif case == "node-verification-missing":
+        inputs["witness_profile"].node_verification_evidence_content_hash = None
     elif case == "command-mismatch":
         evidence.command_content_hash = "0" * 64
     elif case == "sample-index-gap":

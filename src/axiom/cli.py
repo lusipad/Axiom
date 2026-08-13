@@ -9,6 +9,10 @@ from typing import Sequence
 from pydantic import ValidationError
 
 from .comparison import compare
+from .control import (
+    BeckhoffWitnessDeploymentRequest,
+    assess_beckhoff_witness_deployment,
+)
 from .evaluator import evaluate
 from .experiment import run_experiment
 from .field_evidence import FieldEvidenceAssessmentRequest, assess_field_evidence
@@ -45,6 +49,18 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an axiom.field-evidence-assessment-request@1 JSON file",
     )
+    deployment_command = commands.add_parser(
+        "beckhoff-witness-deployment",
+        help="validate a Windows TwinCAT read-only witness deployment request",
+    )
+    deployment_command.add_argument(
+        "request",
+        type=Path,
+        help=(
+            "path to an axiom.control.beckhoff-shadow-witness-"
+            "deployment-request@1 JSON file"
+        ),
+    )
     serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
     serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
@@ -69,6 +85,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         path, label, limit = args.comparison, "比较请求", MAX_COMPARISON_BYTES
     elif args.command == "field-evidence":
         path, label, limit = args.request, "现场证据请求", MAX_FIELD_EVIDENCE_BYTES
+    elif args.command == "beckhoff-witness-deployment":
+        path, label, limit = args.request, "Beckhoff 见证部署请求", MAX_REQUEST_BYTES
     else:
         path, label, limit = args.experiment, "实验请求", MAX_EXPERIMENT_BYTES
     try:
@@ -88,6 +106,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         if any(issue.code == "MalformedComparisonSpec" for issue in report.compatibility.issues):
             return 2
         return 0 if report.compatibility.compatible else 1
+
+    if args.command == "beckhoff-witness-deployment":
+        try:
+            request = BeckhoffWitnessDeploymentRequest.model_validate(payload)
+        except ValidationError as exc:
+            errors = exc.errors(
+                include_url=False, include_context=False, include_input=False
+            )
+            print(
+                json.dumps(
+                    {
+                        "code": "MalformedBeckhoffWitnessDeploymentRequest",
+                        "path": (
+                            ".".join(str(part) for part in errors[0]["loc"])
+                            if errors
+                            else None
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        report = assess_beckhoff_witness_deployment(request)
+        print(
+            report.model_dump_json(
+                indent=2, by_alias=True, exclude_none=True
+            )
+        )
+        return 0 if report.capture_preparation_status == "Passed" else 1
 
     if args.command == "field-evidence":
         try:

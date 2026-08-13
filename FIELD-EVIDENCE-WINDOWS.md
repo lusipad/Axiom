@@ -14,6 +14,8 @@
 
 仓库默认 Profile 和 [`examples/field-evidence.open-request.json`](examples/field-evidence.open-request.json) 只用于演示开放门，不包含真实 NodeId、凭据、许可证或设备数据。
 
+如果现场还没有七节点 Witness Profile，先按 [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md) 导入 `FB_AxiomShadowWitness.TcPOU`、显式绑定 namespace/NodeId，并运行 `axiom beckhoff-witness-deployment`。该预检即使通过也不代表已经采集。
+
 ## 1. 采集并验收两份 R7-E 输入
 
 在部署环境外部运行 `.NET` Witness，分别获得 calibration 与 validation 的 `shadowEvidence`。每份 R7-E assessment 输入都必须包含：

@@ -1,0 +1,9 @@
+{
+  "schemaId": "axiom.control.beckhoff-shadow-witness-deployment-request@1",
+  "schemaVersion": 1,
+  "assessmentId": "axiom.control.beckhoff-shadow-witness-deployment.open@1",
+  "caseId": "control.r7e.beckhoff-shadow-run.case@1",
+  "profileId": "axiom.control.beckhoff-shadow-witness.site@1",
+  "maximumTimestampUncertaintyMs": 20.0,
+  "nodes": []
+}

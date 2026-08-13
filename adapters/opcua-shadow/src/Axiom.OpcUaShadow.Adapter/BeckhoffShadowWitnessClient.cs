@@ -8,6 +8,8 @@ namespace Axiom.OpcUaShadow;
 
 internal static class BeckhoffShadowWitnessClient
 {
+    private const uint InvalidSampleIndex = uint.MaxValue;
+
     public static async Task<BeckhoffShadowRunEvidence> CaptureAsync(
         LoadedShadowConfig transport,
         ShadowWitnessCaptureInputs inputs,
@@ -20,8 +22,34 @@ internal static class BeckhoffShadowWitnessClient
             transport,
             "Axiom Beckhoff Shadow Witness Read Session",
             cancellationToken).ConfigureAwait(false);
+        BeckhoffServerIdentityBinding serverIdentity = inputs.VendorProfile.Profile
+            .ServerIdentity!;
+        if (opened.Endpoint.EndpointUrl != serverIdentity.EndpointUrl
+            || opened.Endpoint.Server.ApplicationUri
+                != serverIdentity.ServerApplicationUri
+            || OpcUaShadowClient.CertificateSha256(opened.ServerCertificate)
+                != serverIdentity.ServerCertificateSha256)
+        {
+            throw new ShadowContractException(
+                "connected witness server does not match the bound runtime identity");
+        }
         ISession session = opened.Session;
         BeckhoffShadowWitnessProfile profile = inputs.WitnessProfile.Profile;
+        BeckhoffWitnessDeploymentNodeBinding[] bindings = profile.Nodes.Select(node =>
+            new BeckhoffWitnessDeploymentNodeBinding(
+                node.CanonicalSignalId,
+                node.NamespaceUri,
+                node.Identifier)).ToArray();
+        BeckhoffWitnessNodeRuntimeObservation[] liveNodes =
+            await BeckhoffWitnessNodeVerifier.ReadObservationsAsync(
+                session,
+                bindings,
+                cancellationToken).ConfigureAwait(false);
+        if (!liveNodes.SequenceEqual(inputs.NodeVerificationEvidence.Nodes))
+        {
+            throw new ShadowContractException(
+                "live witness node attributes changed after verification");
+        }
         NodeId[] nodes = profile.Nodes.Select(node => ResolveNodeId(session, node))
             .ToArray();
         var notifications = Channel.CreateUnbounded<IndexNotification>(
@@ -86,7 +114,7 @@ internal static class BeckhoffShadowWitnessClient
             FormatTimestamp(openedAt),
             FormatTimestamp(closedAt),
             SubscribeOperationCount: 1,
-            ReadOperationCount: frames.Count,
+            ReadOperationCount: (frames.Count * 3) + 1,
             WriteOperationCount: 0,
             MethodCallOperationCount: 0,
             ReceivedFrameCount: frames.Count,
@@ -148,6 +176,10 @@ internal static class BeckhoffShadowWitnessClient
                 uint notifiedIndex = RequireSampleIndex(
                     notification.Value,
                     "notified sample index");
+                if (notifiedIndex == InvalidSampleIndex)
+                {
+                    continue;
+                }
                 uint expectedIndex = checked((uint)frames.Count);
                 if (frames.Count == 0 && notifiedIndex != 0)
                 {
@@ -169,18 +201,32 @@ internal static class BeckhoffShadowWitnessClient
                         "OPC UA notification sequence is not strictly increasing");
                 }
                 previousProtocolSequence = notification.ProtocolSequenceNumber;
+                uint indexBefore = await ReadIndexAsync(
+                    session,
+                    nodes[1],
+                    linked.Token).ConfigureAwait(false);
                 DataValue[] values = await ReadBatchAsync(
                     session,
                     nodes,
+                    linked.Token).ConfigureAwait(false);
+                uint indexAfter = await ReadIndexAsync(
+                    session,
+                    nodes[1],
                     linked.Token).ConfigureAwait(false);
                 string commandHash = values[0].Value as string
                     ?? throw new ShadowContractException(
                         "command content hash node must report OPC UA String");
                 uint readIndex = RequireSampleIndex(values[1], "read sample index");
-                if (commandHash != command.ContentId || readIndex != notifiedIndex)
+                if (commandHash != command.ContentId
+                    || indexBefore == InvalidSampleIndex
+                    || readIndex == InvalidSampleIndex
+                    || indexAfter == InvalidSampleIndex
+                    || indexBefore != notifiedIndex
+                    || readIndex != notifiedIndex
+                    || indexAfter != notifiedIndex)
                 {
                     throw new ShadowContractException(
-                        "batch read command hash or sample index changed during capture");
+                        "witness snapshot changed or was invalidated during capture");
                 }
                 BeckhoffShadowAxisSample[] samples = Contract.RequiredAxes
                     .Select((axis, index) => ToAxisSample(axis, values[index + 2]))
@@ -202,6 +248,29 @@ internal static class BeckhoffShadowWitnessClient
                 + $"{frames.Count}/{command.SampleIndexes.Length} frames");
         }
         return frames;
+    }
+
+    private static async Task<uint> ReadIndexAsync(
+        ISession session,
+        NodeId node,
+        CancellationToken cancellationToken)
+    {
+        ReadResponse response = await session.ReadAsync(
+            null,
+            maxAge: 0,
+            TimestampsToReturn.Neither,
+            new ReadValueIdCollection
+            {
+                new ReadValueId { NodeId = node, AttributeId = Attributes.Value }
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (response.Results.Count != 1
+            || StatusCode.IsBad(response.Results[0].StatusCode))
+        {
+            throw new ShadowContractException(
+                "OPC UA witness index guard Read failed");
+        }
+        return RequireSampleIndex(response.Results[0], "guarded sample index");
     }
 
     private static async Task<DataValue[]> ReadBatchAsync(
@@ -293,10 +362,18 @@ internal static class BeckhoffShadowWitnessClient
     {
         BeckhoffTwinCatProfile vendor = inputs.VendorProfile.Profile;
         BeckhoffShadowWitnessProfile witness = inputs.WitnessProfile.Profile;
+        BeckhoffServerIdentityBinding runtimeServer = BeckhoffWitnessNodeVerifier
+            .RequireRuntimeServerIdentity(inputs.RuntimeEvidence);
+        inputs.NodeVerificationEvidence.Validate();
         if (vendor.BindingStatus != "Bound"
             || vendor.ServerIdentity is null
+            || runtimeServer != vendor.ServerIdentity
             || vendor.ContentHash != witness.VendorProfileContentHash
             || inputs.RuntimeEvidence.ContentHash != witness.RuntimeEvidenceContentHash
+            || inputs.NodeVerificationEvidence.ContentHash
+                != witness.NodeVerificationEvidenceContentHash
+            || inputs.NodeVerificationEvidence.RuntimeEvidenceContentHash
+                != inputs.RuntimeEvidence.ContentHash
             || inputs.Command.ContentId != witness.ExpectedCommandContentHash
             || inputs.CaptureAuthorization.ControllerProfileContentHash
                 != inputs.ControllerProfile.ContentHash
@@ -308,6 +385,7 @@ internal static class BeckhoffShadowWitnessClient
             throw new ShadowContractException(
                 "witness capture support identities or endpoint binding mismatch");
         }
+        VerifyNodeEvidenceBinding(witness, inputs.NodeVerificationEvidence);
         JsonElement runtime = inputs.RuntimeEvidence.Root;
         JsonElement controller = inputs.ControllerProfile.Root;
         JsonElement authority = inputs.Authority.Root;
@@ -330,6 +408,29 @@ internal static class BeckhoffShadowWitnessClient
             inputs.CaptureAuthorization,
             DateTime.UtcNow,
             DateTime.UtcNow);
+    }
+
+    private static void VerifyNodeEvidenceBinding(
+        BeckhoffShadowWitnessProfile witness,
+        BeckhoffWitnessNodeVerificationEvidence evidence)
+    {
+        for (int index = 0; index < witness.Nodes.Length; index++)
+        {
+            BeckhoffShadowWitnessNode declared = witness.Nodes[index];
+            BeckhoffWitnessNodeRuntimeObservation observed = evidence.Nodes[index];
+            if (observed.CanonicalSignalId != declared.CanonicalSignalId
+                || observed.NamespaceUri != declared.NamespaceUri
+                || observed.Identifier != declared.Identifier
+                || observed.BrowseName
+                    != BeckhoffShadowWitnessContract.ExpectedBrowseNames[index]
+                || observed.DataType != declared.ExpectedDataType
+                || observed.AccessLevel != declared.RequiredAccessLevel
+                || observed.UserAccessLevel != declared.RequiredUserAccessLevel)
+            {
+                throw new ShadowContractException(
+                    $"witness node evidence does not match {declared.CanonicalSignalId}");
+            }
+        }
     }
 
     private static void RequireAuthorizedCaptureWindow(

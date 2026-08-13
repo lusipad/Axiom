@@ -34,6 +34,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0022](ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md) | R7-D 锁定 Beckhoff TwinCAT 3 / TF6100 厂商验收链，并把 Profile、运行时、现实与安全 gate 分开 | Accepted |
 | [ADR-0023](ADR-0023-R7E样本索引采集与R41双运行现实门.md) | R7-E 用样本索引触发七节点只读采集，R4.1 用独立 calibration/holdout 双运行关闭 case-scoped 现实门 | Accepted |
 | [ADR-0024](ADR-0024-现场证据采用应用层双运行编排.md) | 现场验收在应用层编排两个 R7-E 与既有 R4.1，不新增重复的 R7-F DomainPack 或安全 Claim | Accepted |
+| [ADR-0025](ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md) | Beckhoff 见证使用控制器锁存、索引最后发布和显式 NodeId 离线预检，不引入自动 PLC 部署 | Accepted |
 
 ## 生命周期规则
 

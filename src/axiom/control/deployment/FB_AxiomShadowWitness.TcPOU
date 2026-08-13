@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_AxiomShadowWitness" Id="{791cd82e-4dd0-4bd9-8459-03e67ad51d27}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_AxiomShadowWitness
+VAR_INPUT
+    bPublishEnabled : BOOL;
+    sCommandContentHash : STRING(64);
+    nSampleIndex : UDINT;
+    fAxisX : LREAL;
+    fAxisY : LREAL;
+    fAxisZ : LREAL;
+    fAxisB : LREAL;
+    fAxisC : LREAL;
+END_VAR
+VAR_OUTPUT
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'sWitnessCommandContentHash'}
+    sWitnessCommandContentHash : STRING(64);
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'nWitnessSampleIndex'}
+    nWitnessSampleIndex : UDINT := 16#FFFFFFFF;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisX'}
+    fWitnessAxisX : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisY'}
+    fWitnessAxisY : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisZ'}
+    fWitnessAxisZ : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisB'}
+    fWitnessAxisB : LREAL;
+    {attribute 'OPC.UA.DA' := '1'}
+    {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisC'}
+    fWitnessAxisC : LREAL;
+END_VAR
+VAR
+    bPublishedAtLeastOnce : BOOL;
+    sLastPublishedCommandContentHash : STRING(64);
+    nLastPublishedSampleIndex : UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF NOT bPublishEnabled THEN
+    nWitnessSampleIndex := 16#FFFFFFFF;
+    bPublishedAtLeastOnce := FALSE;
+ELSIF bPublishedAtLeastOnce AND
+      (sCommandContentHash <> sLastPublishedCommandContentHash) THEN
+    (* Hold the sentinel until the observation window is closed and reopened. *)
+    nWitnessSampleIndex := 16#FFFFFFFF;
+ELSIF (NOT bPublishedAtLeastOnce) OR
+      (nSampleIndex <> nLastPublishedSampleIndex) THEN
+    (* Invalidate the prior snapshot before changing any public payload field. *)
+    nWitnessSampleIndex := 16#FFFFFFFF;
+
+    sWitnessCommandContentHash := sCommandContentHash;
+    fWitnessAxisX := fAxisX;
+    fWitnessAxisY := fAxisY;
+    fWitnessAxisZ := fAxisZ;
+    fWitnessAxisB := fAxisB;
+    fWitnessAxisC := fAxisC;
+
+    sLastPublishedCommandContentHash := sCommandContentHash;
+    nLastPublishedSampleIndex := nSampleIndex;
+    bPublishedAtLeastOnce := TRUE;
+
+    (* Publish the trigger only after the complete witness snapshot is latched. *)
+    nWitnessSampleIndex := nSampleIndex;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

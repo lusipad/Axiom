@@ -114,12 +114,15 @@ internal static class Program
                 Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
                 return 0;
             }
-            if (args.Length >= 21 && args[0] == "beckhoff-shadow-capture")
+            if (args.Length >= 23 && args[0] == "beckhoff-shadow-capture")
             {
                 Dictionary<string, string> options = ParseNamedOptions(args, 1);
                 string configPath = RequireOption(options, "--config");
                 string vendorProfilePath = RequireOption(options, "--vendor-profile");
                 string runtimeEvidencePath = RequireOption(options, "--runtime-evidence");
+                string witnessNodeEvidencePath = RequireOption(
+                    options,
+                    "--witness-node-evidence");
                 string witnessProfilePath = RequireOption(options, "--witness-profile");
                 string controllerProfilePath = RequireOption(options, "--controller-profile");
                 string authorityPath = RequireOption(options, "--authority");
@@ -139,6 +142,9 @@ internal static class Program
                         witnessCancellation.Token).ConfigureAwait(false),
                     await JsonSupport.LoadContentIdentityAsync(
                         runtimeEvidencePath,
+                        witnessCancellation.Token).ConfigureAwait(false),
+                    await JsonSupport.LoadBeckhoffWitnessNodeVerificationEvidenceAsync(
+                        witnessNodeEvidencePath,
                         witnessCancellation.Token).ConfigureAwait(false),
                     await JsonSupport.LoadBeckhoffShadowWitnessProfileAsync(
                         witnessProfilePath,
@@ -237,7 +243,7 @@ internal static class Program
         Console.Error.WriteLine(
             "  axiom-opcua-shadow beckhoff-witness-inspect --config <config.json> --runtime-evidence <runtime.json> --deployment-request <request.json> --evidence-id <id@1> --output <evidence.json>");
         Console.Error.WriteLine(
-            "  axiom-opcua-shadow beckhoff-shadow-capture --config <config.json> --vendor-profile <bound-profile.json> --runtime-evidence <runtime.json> --witness-profile <witness.json> --controller-profile <controller.json> --authority <authority.json> --capture-authorization <authorization.json> --command <m5.json> --evidence-id <id@1> --output <evidence.json>");
+            "  axiom-opcua-shadow beckhoff-shadow-capture --config <config.json> --vendor-profile <bound-profile.json> --runtime-evidence <runtime.json> --witness-node-evidence <nodes.json> --witness-profile <witness.json> --controller-profile <controller.json> --authority <authority.json> --capture-authorization <authorization.json> --command <m5.json> --evidence-id <id@1> --output <evidence.json>");
     }
 
     private static Dictionary<string, string> ParseNamedOptions(
@@ -261,6 +267,7 @@ internal static class Program
                 or "--vendor-profile"
                 or "--runtime-evidence"
                 or "--deployment-request"
+                or "--witness-node-evidence"
                 or "--witness-profile"
                 or "--controller-profile"
                 or "--authority"

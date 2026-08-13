@@ -380,6 +380,7 @@ axiom-opcua-shadow beckhoff-shadow-capture `
   --config .\opcua-shadow.json `
   --vendor-profile .\beckhoff-bound-profile.json `
   --runtime-evidence .\beckhoff-runtime-evidence.json `
+  --witness-node-evidence .\beckhoff-witness-node-verification.json `
   --witness-profile .\beckhoff-shadow-witness-profile.json `
   --controller-profile .\controller-profile.json `
   --authority .\readonly-authority.json `

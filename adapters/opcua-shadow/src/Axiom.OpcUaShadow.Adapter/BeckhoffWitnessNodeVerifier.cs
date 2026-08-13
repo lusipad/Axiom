@@ -31,6 +31,54 @@ internal sealed record BeckhoffWitnessNodeVerificationEvidence
     public required int WriteOperationCount { get; init; }
     public required int MethodCallOperationCount { get; init; }
     public required string ContentHash { get; init; }
+
+    public void Validate()
+    {
+        if (SchemaId != BeckhoffWitnessNodeVerifier.EvidenceSchema
+            || !Contract.VersionedIdPattern().IsMatch(EvidenceId)
+            || !Contract.Sha256Pattern().IsMatch(RuntimeEvidenceContentHash)
+            || SourceKind != "vendor-runtime"
+            || !HasExplicitOffset(CapturedAt)
+            || !DateTimeOffset.TryParse(
+                CapturedAt,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out _)
+            || Nodes.Length != BeckhoffShadowWitnessContract.CanonicalSignals.Length
+            || !Nodes.Select(node => node.CanonicalSignalId).SequenceEqual(
+                BeckhoffShadowWitnessContract.CanonicalSignals,
+                StringComparer.Ordinal)
+            || Nodes.Select(node => (node.NamespaceUri, node.Identifier)).Distinct().Count()
+                != Nodes.Length
+            || WriteOperationCount != 0
+            || MethodCallOperationCount != 0
+            || ContentHash != JsonSupport.ComputeCanonicalHash(this, "contentHash"))
+        {
+            throw new ShadowContractException(
+                "witness node verification evidence identity is invalid");
+        }
+        for (int index = 0; index < Nodes.Length; index++)
+        {
+            BeckhoffWitnessNodeRuntimeObservation node = Nodes[index];
+            if (!Uri.TryCreate(node.NamespaceUri, UriKind.Absolute, out _)
+                || string.IsNullOrWhiteSpace(node.Identifier)
+                || node.BrowseName != BeckhoffShadowWitnessContract.ExpectedBrowseNames[index]
+                || node.NodeClass != "Variable"
+                || node.DataType != BeckhoffShadowWitnessContract.ExpectedDataTypes[index]
+                || node.AccessLevel != AccessLevels.CurrentRead
+                || node.UserAccessLevel != AccessLevels.CurrentRead)
+            {
+                throw new ShadowContractException(
+                    $"witness node evidence for {node.CanonicalSignalId} is invalid");
+            }
+        }
+    }
+
+    private static bool HasExplicitOffset(string value)
+        => value.EndsWith('Z')
+            || (value.Length >= 6
+                && (value[^6] == '+' || value[^6] == '-')
+                && value[^3] == ':');
 }
 
 internal static class BeckhoffWitnessNodeVerifier
@@ -45,17 +93,20 @@ internal static class BeckhoffWitnessNodeVerifier
         string evidenceId,
         CancellationToken cancellationToken)
     {
-        if (!Contract.VersionedIdPattern().IsMatch(evidenceId)
-            || ReadString(runtimeEvidence.Root, "sourceKind") != "vendor-runtime")
+        if (!Contract.VersionedIdPattern().IsMatch(evidenceId))
         {
             throw new ShadowContractException(
-                "witness node inspection requires versioned evidenceId and vendor runtime evidence");
+                "witness node inspection requires a versioned evidenceId");
         }
         ValidateBindings(bindings);
+        BeckhoffServerIdentityBinding expectedServer = RequireRuntimeServerIdentity(
+            runtimeEvidence);
+        VerifyConfigBinding(transport.Config, expectedServer);
         await using OpenedShadowSession opened = await OpcUaShadowClient.OpenReadSessionAsync(
             transport,
             "Axiom Beckhoff Witness Node Read-Only Inspector",
             cancellationToken).ConfigureAwait(false);
+        VerifyOpenedServer(opened, expectedServer);
         ISession session = opened.Session;
         NodeId[] nodes = bindings.Select(binding => ResolveNodeId(session, binding)).ToArray();
         ReadValueIdCollection reads = new(
@@ -104,10 +155,12 @@ internal static class BeckhoffWitnessNodeVerifier
             MethodCallOperationCount = 0,
             ContentHash = string.Empty
         };
-        return evidence with
+        evidence = evidence with
         {
             ContentHash = JsonSupport.ComputeCanonicalHash(evidence, "contentHash")
         };
+        evidence.Validate();
+        return evidence;
     }
 
     private static BeckhoffWitnessNodeRuntimeObservation ToObservation(
@@ -181,9 +234,69 @@ internal static class BeckhoffWitnessNodeVerifier
         }
     }
 
-    private static string ReadString(JsonElement root, string propertyName)
-        => root.TryGetProperty(propertyName, out JsonElement value)
-            && value.ValueKind == JsonValueKind.String
-            ? value.GetString() ?? string.Empty
-            : string.Empty;
+    private static BeckhoffServerIdentityBinding RequireRuntimeServerIdentity(
+        LoadedContentIdentity runtimeEvidence)
+    {
+        JsonElement root = runtimeEvidence.Root;
+        if (ReadRequiredString(root, "schemaId") != BeckhoffContract.EvidenceSchema
+            || ReadRequiredString(root, "sourceKind") != "vendor-runtime"
+            || !root.TryGetProperty("serverIdentity", out JsonElement identity)
+            || identity.ValueKind != JsonValueKind.Object)
+        {
+            throw new ShadowContractException(
+                "witness node inspection requires vendor runtime server identity evidence");
+        }
+        return new BeckhoffServerIdentityBinding
+        {
+            EndpointUrl = ReadRequiredString(identity, "endpointUrl"),
+            ServerApplicationUri = ReadRequiredString(identity, "serverApplicationUri"),
+            ServerCertificateSha256 = ReadRequiredString(
+                identity,
+                "serverCertificateSha256"),
+            ProductUri = ReadRequiredString(identity, "productUri"),
+            ManufacturerName = ReadRequiredString(identity, "manufacturerName"),
+            ProductName = ReadRequiredString(identity, "productName"),
+            SoftwareVersion = ReadRequiredString(identity, "softwareVersion"),
+            BuildNumber = ReadRequiredString(identity, "buildNumber")
+        };
+    }
+
+    private static void VerifyConfigBinding(
+        ShadowAdapterConfig config,
+        BeckhoffServerIdentityBinding expected)
+    {
+        if (config.EndpointUrl != expected.EndpointUrl
+            || config.TrustedServerCertificateSha256
+                != expected.ServerCertificateSha256)
+        {
+            throw new ShadowContractException(
+                "OPC UA config does not match the runtime evidence server identity");
+        }
+    }
+
+    private static void VerifyOpenedServer(
+        OpenedShadowSession opened,
+        BeckhoffServerIdentityBinding expected)
+    {
+        if (opened.Endpoint.EndpointUrl != expected.EndpointUrl
+            || opened.Endpoint.Server.ApplicationUri != expected.ServerApplicationUri
+            || OpcUaShadowClient.CertificateSha256(opened.ServerCertificate)
+                != expected.ServerCertificateSha256)
+        {
+            throw new ShadowContractException(
+                "connected OPC UA server does not match the runtime evidence server identity");
+        }
+    }
+
+    private static string ReadRequiredString(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out JsonElement value)
+            || value.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            throw new ShadowContractException(
+                $"runtime evidence {propertyName} must be a non-empty String");
+        }
+        return value.GetString()!;
+    }
 }

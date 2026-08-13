@@ -95,7 +95,7 @@ def test_dotnet_conformance_evidence_crosses_the_python_boundary(
 
     assert node_evidence.source_kind == "vendor-runtime"
     assert len(node_evidence.nodes) == 7
-    assert node_evidence.nodes[0].browse_name == "CommandContentHash"
+    assert node_evidence.nodes[0].browse_name == "sWitnessCommandContentHash"
     assert node_evidence.nodes[1].data_type == "UInt32"
     assert all(node.node_class == "Variable" for node in node_evidence.nodes)
     assert node_evidence.write_operation_count == 0

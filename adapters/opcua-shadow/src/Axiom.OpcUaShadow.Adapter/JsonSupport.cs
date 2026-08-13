@@ -106,6 +106,24 @@ internal static class JsonSupport
         return new LoadedBeckhoffShadowWitnessProfile(profile, fullPath);
     }
 
+    public static async Task<BeckhoffWitnessNodeVerificationEvidence>
+        LoadBeckhoffWitnessNodeVerificationEvidenceAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        byte[] payload = await File.ReadAllBytesAsync(
+            Path.GetFullPath(path),
+            cancellationToken).ConfigureAwait(false);
+        BeckhoffWitnessNodeVerificationEvidence evidence =
+            JsonSerializer.Deserialize<BeckhoffWitnessNodeVerificationEvidence>(
+                payload,
+                Options)
+            ?? throw new ShadowContractException(
+                "witness node verification evidence JSON is empty");
+        evidence.Validate();
+        return evidence;
+    }
+
     public static async Task<BeckhoffShadowCaptureAuthorization>
         LoadBeckhoffShadowCaptureAuthorizationAsync(
             string path,

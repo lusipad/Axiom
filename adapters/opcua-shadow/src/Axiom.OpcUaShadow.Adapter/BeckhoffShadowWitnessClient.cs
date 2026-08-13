@@ -20,6 +20,17 @@ internal static class BeckhoffShadowWitnessClient
             transport,
             "Axiom Beckhoff Shadow Witness Read Session",
             cancellationToken).ConfigureAwait(false);
+        BeckhoffServerIdentityBinding serverIdentity = inputs.VendorProfile.Profile
+            .ServerIdentity!;
+        if (opened.Endpoint.EndpointUrl != serverIdentity.EndpointUrl
+            || opened.Endpoint.Server.ApplicationUri
+                != serverIdentity.ServerApplicationUri
+            || OpcUaShadowClient.CertificateSha256(opened.ServerCertificate)
+                != serverIdentity.ServerCertificateSha256)
+        {
+            throw new ShadowContractException(
+                "connected witness server does not match the bound runtime identity");
+        }
         ISession session = opened.Session;
         BeckhoffShadowWitnessProfile profile = inputs.WitnessProfile.Profile;
         NodeId[] nodes = profile.Nodes.Select(node => ResolveNodeId(session, node))
@@ -293,10 +304,15 @@ internal static class BeckhoffShadowWitnessClient
     {
         BeckhoffTwinCatProfile vendor = inputs.VendorProfile.Profile;
         BeckhoffShadowWitnessProfile witness = inputs.WitnessProfile.Profile;
+        inputs.NodeVerificationEvidence.Validate();
         if (vendor.BindingStatus != "Bound"
             || vendor.ServerIdentity is null
             || vendor.ContentHash != witness.VendorProfileContentHash
             || inputs.RuntimeEvidence.ContentHash != witness.RuntimeEvidenceContentHash
+            || inputs.NodeVerificationEvidence.ContentHash
+                != witness.NodeVerificationEvidenceContentHash
+            || inputs.NodeVerificationEvidence.RuntimeEvidenceContentHash
+                != inputs.RuntimeEvidence.ContentHash
             || inputs.Command.ContentId != witness.ExpectedCommandContentHash
             || inputs.CaptureAuthorization.ControllerProfileContentHash
                 != inputs.ControllerProfile.ContentHash
@@ -308,6 +324,7 @@ internal static class BeckhoffShadowWitnessClient
             throw new ShadowContractException(
                 "witness capture support identities or endpoint binding mismatch");
         }
+        VerifyNodeEvidenceBinding(witness, inputs.NodeVerificationEvidence);
         JsonElement runtime = inputs.RuntimeEvidence.Root;
         JsonElement controller = inputs.ControllerProfile.Root;
         JsonElement authority = inputs.Authority.Root;
@@ -330,6 +347,29 @@ internal static class BeckhoffShadowWitnessClient
             inputs.CaptureAuthorization,
             DateTime.UtcNow,
             DateTime.UtcNow);
+    }
+
+    private static void VerifyNodeEvidenceBinding(
+        BeckhoffShadowWitnessProfile witness,
+        BeckhoffWitnessNodeVerificationEvidence evidence)
+    {
+        for (int index = 0; index < witness.Nodes.Length; index++)
+        {
+            BeckhoffShadowWitnessNode declared = witness.Nodes[index];
+            BeckhoffWitnessNodeRuntimeObservation observed = evidence.Nodes[index];
+            if (observed.CanonicalSignalId != declared.CanonicalSignalId
+                || observed.NamespaceUri != declared.NamespaceUri
+                || observed.Identifier != declared.Identifier
+                || observed.BrowseName
+                    != BeckhoffShadowWitnessContract.ExpectedBrowseNames[index]
+                || observed.DataType != declared.ExpectedDataType
+                || observed.AccessLevel != declared.RequiredAccessLevel
+                || observed.UserAccessLevel != declared.RequiredUserAccessLevel)
+            {
+                throw new ShadowContractException(
+                    $"witness node evidence does not match {declared.CanonicalSignalId}");
+            }
+        }
     }
 
     private static void RequireAuthorizedCaptureWindow(

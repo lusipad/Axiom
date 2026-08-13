@@ -28,6 +28,20 @@ internal static class BeckhoffShadowWitnessContract
         "machine.axis.B.position",
         "machine.axis.C.position"
     ];
+
+    public static readonly string[] ExpectedBrowseNames =
+    [
+        "sWitnessCommandContentHash",
+        "nWitnessSampleIndex",
+        "fWitnessAxisX",
+        "fWitnessAxisY",
+        "fWitnessAxisZ",
+        "fWitnessAxisB",
+        "fWitnessAxisC"
+    ];
+
+    public static readonly string[] ExpectedDataTypes =
+        ["String", "UInt32", "Double", "Double", "Double", "Double", "Double"];
 }
 
 public sealed record BeckhoffShadowWitnessNode
@@ -90,11 +104,9 @@ public sealed record BeckhoffShadowWitnessProfile
         Require(RuntimeEvidenceContentHash is not null
                 && Contract.Sha256Pattern().IsMatch(RuntimeEvidenceContentHash),
             "runtimeEvidenceContentHash is required");
-        if (NodeVerificationEvidenceContentHash is not null)
-        {
-            Require(Contract.Sha256Pattern().IsMatch(NodeVerificationEvidenceContentHash),
-                "nodeVerificationEvidenceContentHash must be lowercase SHA-256 hex");
-        }
+        Require(NodeVerificationEvidenceContentHash is not null
+                && Contract.Sha256Pattern().IsMatch(NodeVerificationEvidenceContentHash),
+            "nodeVerificationEvidenceContentHash is required");
         Require(ExpectedCommandContentHash is not null
                 && Contract.Sha256Pattern().IsMatch(ExpectedCommandContentHash),
             "expectedCommandContentHash is required");
@@ -258,6 +270,7 @@ internal sealed record M5CommandReference(
 internal sealed record ShadowWitnessCaptureInputs(
     LoadedBeckhoffProfile VendorProfile,
     LoadedContentIdentity RuntimeEvidence,
+    BeckhoffWitnessNodeVerificationEvidence NodeVerificationEvidence,
     LoadedBeckhoffShadowWitnessProfile WitnessProfile,
     LoadedContentIdentity ControllerProfile,
     LoadedContentIdentity Authority,

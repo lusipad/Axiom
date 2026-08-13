@@ -34,6 +34,8 @@ def test_builtin_domain_packs_runtime_bindings_and_adapter_are_publicly_register
     assert hasattr(axiom, "R5BManifest")
     assert hasattr(axiom, "build_r5b_manifest")
     assert hasattr(axiom, "r5b_example_run_spec")
+    assert hasattr(axiom, "RealHoldoutIntakeRequest")
+    assert hasattr(axiom, "assess_real_holdout_intake")
 
 
 def test_five_axis_f0_public_example_runs_without_math_or_device_claims():

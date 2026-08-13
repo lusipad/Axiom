@@ -98,7 +98,7 @@ R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订�
 
 ## v0.22.0 快速开始
 
-v0.22.0 的 Field Evidence 工作台可先下载 TwinCAT 见证模板并导入部署绑定请求，再分别导入 calibration 与 validation 两份 R7-E payload，由统一服务端编排器重验 Case、内容身份、独立性和 R4.1 holdout gate；R5-B 工作台随后可导入治理记录与多个独立 Case 文件，生成可直接执行的真实 holdout RunSpec。Windows CLI 同样支持多文件入口。页面和离线组装器都不提供 PLC 连接、写入、启动或控制入口。
+v0.22.0 的 Field Evidence 工作台可先下载 TwinCAT 见证模板并导入部署绑定请求，再分别导入 calibration 与 validation 两份 R7-E payload，由统一服务端编排器重验 Case、内容身份、独立性和 R4.1 holdout gate；R5-B 工作台随后可导入治理记录与多个独立 Case 文件，生成并分别下载 `RealPairedHoldoutSet` 和可直接执行的真实 holdout RunSpec。Windows CLI 同样支持多文件入口。页面和离线组装器都不提供 PLC 连接、写入、启动或控制入口。
 
 v0.22.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 

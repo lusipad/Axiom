@@ -179,6 +179,6 @@ axiom real-holdout-intake `
 $LASTEXITCODE
 ```
 
-退出码为 `0=Passed`、`1=Open/Blocked`、`2=Malformed`。完整 `axiom.intelligence.real-holdout-intake-request@1` 文件也可作为位置参数提交。HTTP 入口是 `POST /api/v1/intelligence/r5b/intake/assess`；网页 **Intelligence R5-B** 工作台可多选 Case 文件、导入一个治理文件，并使用内置 Open 基线或先导入的 R5-B RunSpec。
+退出码为 `0=Passed`、`1=Open/Blocked`、`2=Malformed`。完整 `axiom.intelligence.real-holdout-intake-request@1` 文件也可作为位置参数提交。HTTP 入口是 `POST /api/v1/intelligence/r5b/intake/assess`；网页 **Intelligence R5-B** 工作台可多选 Case 文件、导入一个治理文件，并使用内置 Open 基线或先导入的 R5-B RunSpec。Intake 通过后，网页可分别下载投影后的 `RealPairedHoldoutSet` 和可执行 R5-B RunSpec。
 
 `intakeStatus=Passed` 只表示报告包含可执行的 `r5bRunSpec`。继续执行该 RunSpec 后，R5-B 才会计算 improvement、conformal coverage、alignment coverage 与 OOD abstention，并决定是否支持仅限所提交 Case 的泛化 Claim。Intake 和 R5-B 都不会开放 Controlled Trial、Closed Loop、DeviceSafe 或 ProcessSafe。

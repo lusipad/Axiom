@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import platform
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -14,15 +16,41 @@ from axiom.control import (
     BeckhoffTwinCatVendorProfile,
     BeckhoffWitnessNodeVerificationEvidence,
     OpcUaTransportEvidence,
+    R7EAssessmentRequest,
     assess_r7c_opcua_transport,
 )
+from tests.test_field_evidence import _complete_test_r7e_request
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "adapters" / "opcua-shadow"
 
 
+def _pinned_dotnet_sdk_available() -> bool:
+    if shutil.which("dotnet") is None:
+        return False
+    pinned = json.loads((ROOT / "global.json").read_text(encoding="utf-8"))["sdk"][
+        "version"
+    ]
+    completed = subprocess.run(
+        ["dotnet", "--list-sdks"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+    return completed.returncode == 0 and any(
+        line.startswith(f"{pinned} ") for line in completed.stdout.splitlines()
+    )
+
+
+PINNED_DOTNET_SDK_AVAILABLE = _pinned_dotnet_sdk_available()
+
+
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only conformance")
-@pytest.mark.skipif(shutil.which("dotnet") is None, reason=".NET SDK is unavailable")
+@pytest.mark.skipif(
+    not PINNED_DOTNET_SDK_AVAILABLE, reason="pinned .NET SDK is unavailable"
+)
 def test_dotnet_conformance_evidence_crosses_the_python_boundary(
     tmp_path: Path,
 ) -> None:
@@ -126,8 +154,118 @@ def test_production_adapter_has_no_write_or_method_call_surface() -> None:
     assert "--acknowledge-non-actuating-probe" in permission_verifier
 
 
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only assembler")
+@pytest.mark.skipif(
+    not PINNED_DOTNET_SDK_AVAILABLE, reason="pinned .NET SDK is unavailable"
+)
+def test_dotnet_assembles_a_python_valid_r7e_assessment_without_network(
+    tmp_path: Path,
+) -> None:
+    request = _complete_test_r7e_request(
+        role="calibration",
+        start=datetime(2026, 8, 13, 8, tzinfo=timezone.utc),
+        shift=0,
+    )
+    assert request.vendor_profile is not None
+    assert request.runtime_evidence is not None
+    assert request.witness_profile is not None
+    assert request.controller_profile is not None
+    assert request.authority is not None
+    assert request.capture_authorization is not None
+    assert request.command is not None
+    assert request.shadow_evidence is not None
+    inputs = {
+        "vendor-profile": request.vendor_profile,
+        "runtime-evidence": request.runtime_evidence,
+        "witness-profile": request.witness_profile,
+        "controller-profile": request.controller_profile,
+        "authority": request.authority,
+        "capture-authorization": request.capture_authorization,
+        "command": request.command,
+        "shadow-evidence": request.shadow_evidence,
+    }
+    paths: dict[str, Path] = {}
+    for name, value in inputs.items():
+        path = tmp_path / f"{name}.json"
+        path.write_text(
+            value.model_dump_json(indent=2, by_alias=True, exclude_none=True),
+            encoding="utf-8",
+        )
+        paths[name] = path
+    output_path = tmp_path / "calibration.r7e.json"
+    command = [
+        "dotnet",
+        "run",
+        "--project",
+        str(
+            ADAPTER
+            / "src"
+            / "Axiom.OpcUaShadow.Adapter"
+            / "Axiom.OpcUaShadow.Adapter.csproj"
+        ),
+        "-c",
+        "Release",
+        "--",
+        "beckhoff-shadow-assessment",
+        "--case-id",
+        request.case_id,
+    ]
+    for name, path in paths.items():
+        command.extend((f"--{name}", str(path)))
+    command.extend(("--output", str(output_path)))
+
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=120,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assembled = R7EAssessmentRequest.model_validate_json(
+        output_path.read_text(encoding="utf-8")
+    )
+    assert assembled == request
+    assert json.loads(output_path.read_text(encoding="utf-8"))["caseId"] == (
+        "site.test-case@1"
+    )
+
+    mismatched = _complete_test_r7e_request(
+        role="validation",
+        start=datetime(2026, 8, 13, 9, tzinfo=timezone.utc),
+        shift=1,
+    )
+    assert mismatched.command is not None
+    mismatched_path = tmp_path / "mismatched-command.json"
+    mismatched_path.write_text(
+        mismatched.command.model_dump_json(indent=2, by_alias=True),
+        encoding="utf-8",
+    )
+    mismatched_command = list(command)
+    command_index = mismatched_command.index("--command") + 1
+    mismatched_command[command_index] = str(mismatched_path)
+    mismatched_command[-1] = str(tmp_path / "mismatched.r7e.json")
+
+    rejected = subprocess.run(
+        mismatched_command,
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=120,
+    )
+
+    assert rejected.returncode == 1
+    assert "command" in rejected.stderr.lower()
+    assert not (tmp_path / "mismatched.r7e.json").exists()
+
+
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only preflight")
-@pytest.mark.skipif(shutil.which("dotnet") is None, reason=".NET SDK is unavailable")
+@pytest.mark.skipif(
+    not PINNED_DOTNET_SDK_AVAILABLE, reason="pinned .NET SDK is unavailable"
+)
 def test_beckhoff_preflight_emits_hash_closed_open_boundary(tmp_path: Path) -> None:
     profile_path = ROOT / "examples" / "beckhoff-twincat-profile.windows.json"
     evidence_path = tmp_path / "beckhoff-runtime-evidence.json"

@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from .comparison import compare
 from .control import (
     BeckhoffWitnessDeploymentRequest,
+    R7EAssessmentRequest,
     assess_beckhoff_witness_deployment,
 )
 from .evaluator import evaluate
@@ -24,6 +25,89 @@ MAX_REQUEST_BYTES = 8 * 1024 * 1024
 MAX_COMPARISON_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_EXPERIMENT_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_FIELD_EVIDENCE_BYTES = 2 * MAX_REQUEST_BYTES
+
+
+class _CliInputError(Exception):
+    def __init__(self, payload: dict[str, object]) -> None:
+        super().__init__(str(payload.get("code", "MalformedInput")))
+        self.payload = payload
+
+
+def _validation_path(exc: ValidationError) -> str | None:
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    return ".".join(str(part) for part in errors[0]["loc"]) if errors else None
+
+
+def _load_r7e_assessment(path: Path, role: str) -> R7EAssessmentRequest:
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_REQUEST_BYTES + 1)
+        if len(raw) > MAX_REQUEST_BYTES:
+            raise _CliInputError(
+                {"code": "R7EAssessmentRequestTooLarge", "role": role}
+            )
+        payload = json.loads(raw.decode("utf-8"))
+    except _CliInputError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _CliInputError(
+            {
+                "code": "UnreadableR7EAssessmentRequest",
+                "role": role,
+                "message": str(exc),
+            }
+        ) from exc
+    try:
+        return R7EAssessmentRequest.model_validate(payload)
+    except ValidationError as exc:
+        raise _CliInputError(
+            {
+                "code": "MalformedR7EAssessmentRequest",
+                "role": role,
+                "path": _validation_path(exc),
+            }
+        ) from exc
+
+
+def _paired_field_evidence_request(
+    args: argparse.Namespace,
+) -> FieldEvidenceAssessmentRequest | None:
+    pair_values = (
+        args.calibration,
+        args.validation,
+        args.assessment_id,
+        args.calibration_pair_id,
+        args.validation_pair_id,
+    )
+    if args.request is not None:
+        if any(value is not None for value in pair_values):
+            raise _CliInputError({"code": "AmbiguousFieldEvidenceInput"})
+        return None
+    if any(value is None for value in pair_values):
+        raise _CliInputError({"code": "IncompleteFieldEvidencePairInput"})
+
+    calibration = _load_r7e_assessment(args.calibration, "calibration")
+    validation = _load_r7e_assessment(args.validation, "validation")
+    try:
+        return FieldEvidenceAssessmentRequest(
+            schemaId="axiom.field-evidence-assessment-request@1",
+            schemaVersion=1,
+            assessmentId=args.assessment_id,
+            calibrationPairId=args.calibration_pair_id,
+            validationPairId=args.validation_pair_id,
+            calibration=calibration,
+            validation=validation,
+            fitImprovementMinimum=args.fit_improvement_minimum,
+            excitationSpanMinimum=args.excitation_span_minimum,
+            decompositionTolerance=args.decomposition_tolerance,
+        )
+    except ValidationError as exc:
+        raise _CliInputError(
+            {
+                "code": "MalformedFieldEvidenceAssessmentRequest",
+                "path": _validation_path(exc),
+            }
+        ) from exc
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -46,8 +130,31 @@ def _parser() -> argparse.ArgumentParser:
     )
     field_evidence_command.add_argument(
         "request",
+        nargs="?",
         type=Path,
         help="path to an axiom.field-evidence-assessment-request@1 JSON file",
+    )
+    field_evidence_command.add_argument(
+        "--calibration",
+        type=Path,
+        help="path to a ready R7-E calibration assessment JSON file",
+    )
+    field_evidence_command.add_argument(
+        "--validation",
+        type=Path,
+        help="path to a ready R7-E validation assessment JSON file",
+    )
+    field_evidence_command.add_argument("--assessment-id")
+    field_evidence_command.add_argument("--calibration-pair-id")
+    field_evidence_command.add_argument("--validation-pair-id")
+    field_evidence_command.add_argument(
+        "--fit-improvement-minimum", type=float, default=0.2
+    )
+    field_evidence_command.add_argument(
+        "--excitation-span-minimum", type=float, default=1e-6
+    )
+    field_evidence_command.add_argument(
+        "--decomposition-tolerance", type=float, default=1e-12
     )
     deployment_command = commands.add_parser(
         "beckhoff-witness-deployment",
@@ -76,6 +183,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         uvicorn.run(create_app(), host=args.host, port=args.port)
         return 0
+
+    if args.command == "field-evidence":
+        try:
+            paired_field_request = _paired_field_evidence_request(args)
+        except _CliInputError as exc:
+            print(json.dumps(exc.payload, ensure_ascii=False), file=sys.stderr)
+            return 2
+        if paired_field_request is not None:
+            report = assess_field_evidence(paired_field_request)
+            print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+            return 0 if report.overall_status == "Passed" else 1
 
     if args.command == "evaluate":
         path, label, limit = args.request, "评估请求", MAX_REQUEST_BYTES
@@ -141,18 +259,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             request = FieldEvidenceAssessmentRequest.model_validate(payload)
         except ValidationError as exc:
-            errors = exc.errors(
-                include_url=False, include_context=False, include_input=False
-            )
             print(
                 json.dumps(
                     {
                         "code": "MalformedFieldEvidenceAssessmentRequest",
-                        "path": (
-                            ".".join(str(part) for part in errors[0]["loc"])
-                            if errors
-                            else None
-                        ),
+                        "path": _validation_path(exc),
                     },
                     ensure_ascii=False,
                 ),

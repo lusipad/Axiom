@@ -427,6 +427,72 @@ def test_field_evidence_cli_returns_one_for_open_gate(
     assert output == expected
 
 
+def test_field_evidence_cli_pairs_two_ready_r7e_assessments(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = _open_request()
+    calibration_path = tmp_path / "calibration.r7e.json"
+    validation_path = tmp_path / "validation.r7e.json"
+    calibration_path.write_text(
+        json.dumps(payload["calibration"]), encoding="utf-8"
+    )
+    validation_path.write_text(
+        json.dumps(payload["validation"]), encoding="utf-8"
+    )
+    expected = assess_field_evidence(
+        FieldEvidenceAssessmentRequest.model_validate(payload)
+    ).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    exit_code = main(
+        [
+            "field-evidence",
+            "--calibration",
+            str(calibration_path),
+            "--validation",
+            str(validation_path),
+            "--assessment-id",
+            str(payload["assessmentId"]),
+            "--calibration-pair-id",
+            str(payload["calibrationPairId"]),
+            "--validation-pair-id",
+            str(payload["validationPairId"]),
+        ]
+    )
+
+    assert exit_code == 1
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_field_evidence_cli_pair_mode_rejects_malformed_r7e_input(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calibration_path = tmp_path / "calibration.r7e.json"
+    validation_path = tmp_path / "validation.r7e.json"
+    calibration_path.write_text('{"caseId":"site.case@1","unexpected":true}', encoding="utf-8")
+    validation_path.write_text('{"caseId":"site.case@1"}', encoding="utf-8")
+
+    exit_code = main(
+        [
+            "field-evidence",
+            "--calibration",
+            str(calibration_path),
+            "--validation",
+            str(validation_path),
+            "--assessment-id",
+            "field.assessment@1",
+            "--calibration-pair-id",
+            "field.calibration@1",
+            "--validation-pair-id",
+            "field.validation@1",
+        ]
+    )
+
+    assert exit_code == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["code"] == "MalformedR7EAssessmentRequest"
+    assert error["role"] == "calibration"
+
+
 def test_field_evidence_cli_returns_two_for_malformed_request(
     tmp_path, capsys: pytest.CaptureFixture[str]
 ) -> None:

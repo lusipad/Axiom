@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -99,10 +101,12 @@ internal static class JsonSupport
         string fullPath = Path.GetFullPath(path);
         byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
             .ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(payload);
+        ValidateRawContentHash(document.RootElement, "witness profile", fullPath);
         BeckhoffShadowWitnessProfile profile =
             JsonSerializer.Deserialize<BeckhoffShadowWitnessProfile>(payload, Options)
             ?? throw new ShadowContractException("witness profile JSON is empty");
-        profile.Validate();
+        profile.Validate(requireContentHash: false);
         return new LoadedBeckhoffShadowWitnessProfile(profile, fullPath);
     }
 
@@ -152,13 +156,16 @@ internal static class JsonSupport
             || !root.TryGetProperty("contentHash", out JsonElement property)
             || property.ValueKind != JsonValueKind.String)
         {
-            throw new ShadowContractException("support JSON must contain contentHash");
+            throw new ShadowContractException(
+                $"support JSON '{fullPath}' must contain contentHash");
         }
         string contentHash = property.GetString() ?? string.Empty;
+        string computedHash = ComputeCanonicalHash(root, "contentHash");
         if (!Contract.Sha256Pattern().IsMatch(contentHash)
-            || contentHash != ComputeCanonicalHash(root, "contentHash"))
+            || contentHash != computedHash)
         {
-            throw new ShadowContractException("support contentHash is invalid");
+            throw new ShadowContractException(
+                $"support contentHash is invalid for '{fullPath}' (computed {computedHash})");
         }
         return new LoadedContentIdentity(contentHash, fullPath, root.Clone());
     }
@@ -178,6 +185,7 @@ internal static class JsonSupport
         if (artifactType != "five-axis.m5-discrete-command"
             || schemaId != "five-axis.m5-discrete-command@1"
             || !Contract.Sha256Pattern().IsMatch(contentId)
+            || contentId != ComputeM5ContentId(root)
             || !root.TryGetProperty("samples", out JsonElement samples)
             || samples.ValueKind != JsonValueKind.Array)
         {
@@ -198,7 +206,26 @@ internal static class JsonSupport
         {
             throw new ShadowContractException("M5 command must contain samples");
         }
-        return new M5CommandReference(contentId, indexes, fullPath);
+        return new M5CommandReference(contentId, indexes, fullPath, root.Clone());
+    }
+
+    public static async Task<BeckhoffShadowRunEvidence>
+        LoadBeckhoffShadowRunEvidenceAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(
+            fullPath,
+            cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(payload);
+        ValidateRawContentHash(document.RootElement, "Shadow evidence", fullPath);
+        ValidateRawTranscriptHash(document.RootElement, fullPath);
+        BeckhoffShadowRunEvidence evidence =
+            JsonSerializer.Deserialize<BeckhoffShadowRunEvidence>(payload, Options)
+            ?? throw new ShadowContractException("Shadow evidence JSON is empty");
+        evidence.Validate(requirePortableHashes: false);
+        return evidence;
     }
 
     public static async Task<BeckhoffWitnessDeploymentNodeBinding[]>
@@ -248,9 +275,31 @@ internal static class JsonSupport
     {
         JsonElement root = JsonSerializer.SerializeToElement(value, Options);
         using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
+        using (var writer = new Utf8JsonWriter(
+            stream,
+            new JsonWriterOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                Indented = false
+            }))
         {
             WriteCanonical(writer, root, isRoot: true, excludedRootProperty);
+        }
+        return ToLowerHex(SHA256.HashData(stream.ToArray()));
+    }
+
+    private static string ComputeM5ContentId(JsonElement root)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(
+            stream,
+            new JsonWriterOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                Indented = false
+            }))
+        {
+            WriteM5Canonical(writer, root, isRoot: true);
         }
         return ToLowerHex(SHA256.HashData(stream.ToArray()));
     }
@@ -294,6 +343,40 @@ internal static class JsonSupport
             throw new ShadowContractException($"support JSON property '{name}' is missing");
         }
         return property.GetString()!;
+    }
+
+    private static void ValidateRawContentHash(
+        JsonElement root,
+        string label,
+        string fullPath)
+    {
+        string contentHash = RequireStringProperty(root, "contentHash");
+        string computedHash = ComputeCanonicalHash(root, "contentHash");
+        if (!Contract.Sha256Pattern().IsMatch(contentHash) || contentHash != computedHash)
+        {
+            throw new ShadowContractException(
+                $"{label} contentHash is invalid for '{fullPath}' (computed {computedHash})");
+        }
+    }
+
+    private static void ValidateRawTranscriptHash(JsonElement root, string fullPath)
+    {
+        if (!root.TryGetProperty("frames", out JsonElement frames)
+            || frames.ValueKind != JsonValueKind.Array
+            || !root.TryGetProperty("receipt", out JsonElement receipt)
+            || receipt.ValueKind != JsonValueKind.Object)
+        {
+            throw new ShadowContractException(
+                $"Shadow evidence frames or receipt are missing from '{fullPath}'");
+        }
+        string transcriptHash = RequireStringProperty(receipt, "transcriptContentHash");
+        string computedHash = ComputeCanonicalHash(frames);
+        if (!Contract.Sha256Pattern().IsMatch(transcriptHash)
+            || transcriptHash != computedHash)
+        {
+            throw new ShadowContractException(
+                $"Shadow evidence transcriptContentHash is invalid for '{fullPath}'");
+        }
     }
 
     public static string ToLowerHex(byte[] value)
@@ -355,5 +438,91 @@ internal static class JsonSupport
             default:
                 throw new ShadowContractException($"unsupported JSON token {element.ValueKind}");
         }
+    }
+
+    private static void WriteM5Canonical(
+        Utf8JsonWriter writer,
+        JsonElement element,
+        bool isRoot)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (JsonProperty property in element.EnumerateObject()
+                    .Where(property => !(isRoot && property.Name == "contentId"))
+                    .OrderBy(property => property.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteM5Canonical(writer, property.Value, isRoot: false);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (JsonElement item in element.EnumerateArray())
+                {
+                    WriteM5Canonical(writer, item, isRoot: false);
+                }
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.Number:
+                string raw = element.GetRawText();
+                writer.WriteRawValue(
+                    raw.Contains('.') || raw.Contains('e') || raw.Contains('E')
+                        ? NormalizeM5Float(raw)
+                        : raw,
+                    skipInputValidation: false);
+                break;
+            case JsonValueKind.String:
+                writer.WriteStringValue(element.GetString());
+                break;
+            case JsonValueKind.True:
+                writer.WriteBooleanValue(true);
+                break;
+            case JsonValueKind.False:
+                writer.WriteBooleanValue(false);
+                break;
+            case JsonValueKind.Null:
+                writer.WriteNullValue();
+                break;
+            default:
+                throw new ShadowContractException(
+                    $"unsupported M5 JSON token {element.ValueKind}");
+        }
+    }
+
+    private static string NormalizeM5Float(string raw)
+    {
+        if (!double.TryParse(
+                raw,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out double value)
+            || !double.IsFinite(value))
+        {
+            throw new ShadowContractException("M5 command contains an invalid number");
+        }
+        if (value == 0)
+        {
+            return "0.0";
+        }
+        double normalized = double.Parse(
+            value.ToString("G8", CultureInfo.InvariantCulture),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture);
+        string formatted = normalized.ToString("R", CultureInfo.InvariantCulture);
+        int exponentIndex = formatted.IndexOf('E');
+        if (exponentIndex >= 0)
+        {
+            string mantissa = formatted[..exponentIndex];
+            int exponent = int.Parse(
+                formatted[(exponentIndex + 1)..],
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture);
+            string sign = exponent >= 0 ? "+" : "-";
+            return $"{mantissa}e{sign}{Math.Abs(exponent):00}";
+        }
+        return formatted.Contains('.') ? formatted : $"{formatted}.0";
     }
 }

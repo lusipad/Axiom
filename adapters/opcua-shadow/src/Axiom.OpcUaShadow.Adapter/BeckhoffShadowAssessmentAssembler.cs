@@ -15,6 +15,123 @@ internal sealed record R7EAssessmentRequestDocument
     public required BeckhoffShadowRunEvidence ShadowEvidence { get; init; }
 }
 
+internal sealed record DeploymentControllerProfileDocument
+{
+    public required string ProfileId { get; init; }
+    public required string Vendor { get; init; }
+    public required string ControllerFamily { get; init; }
+    public required string ControllerModel { get; init; }
+    public required string SoftwareVersion { get; init; }
+    public required string MachineId { get; init; }
+    public required string InterfaceType { get; init; }
+    public required string TargetStatus { get; init; }
+    public required string ContentHash { get; init; }
+
+    public void Validate()
+    {
+        Require(Contract.VersionedIdPattern().IsMatch(ProfileId),
+            "controller profileId must be versioned");
+        Require(new[]
+            {
+                Vendor,
+                ControllerFamily,
+                ControllerModel,
+                SoftwareVersion,
+                MachineId
+            }.All(value => !string.IsNullOrWhiteSpace(value)),
+            "controller profile fields must not be empty");
+        Require(InterfaceType is "opc-ua" or "focas2" or "heidenhain-dnc"
+                or "controller-export",
+            "controller interfaceType is invalid");
+        Require(TargetStatus is "Unselected" or "Selected",
+            "controller targetStatus is invalid");
+        Require(ContentHash == JsonSupport.ComputeCanonicalHash(this, "contentHash"),
+            "controller profile contentHash mismatch");
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new ShadowContractException(message);
+        }
+    }
+}
+
+internal sealed record ReadOnlyAuthorityEvidenceDocument
+{
+    private static readonly string[] FrozenDeniedOperations =
+    [
+        "parameter-write",
+        "program-transfer",
+        "cycle-start",
+        "feed-hold",
+        "reset",
+        "jog",
+        "safety-bypass"
+    ];
+
+    public required string EvidenceId { get; init; }
+    public required string ControllerProfileContentHash { get; init; }
+    public required string PrincipalId { get; init; }
+    public required string EnforcementPoint { get; init; }
+    public required string[] GrantedOperations { get; init; }
+    public required string[] DeniedOperations { get; init; }
+    public required string AttestationKind { get; init; }
+    public required string AttestationContentHash { get; init; }
+    public required string VerificationStatus { get; init; }
+    public string? TrustAnchorContentHash { get; init; }
+    public required string ContentHash { get; init; }
+
+    public void Validate()
+    {
+        Require(Contract.VersionedIdPattern().IsMatch(EvidenceId),
+            "authority evidenceId must be versioned");
+        Require(Contract.Sha256Pattern().IsMatch(ControllerProfileContentHash),
+            "authority controllerProfileContentHash is invalid");
+        Require(!string.IsNullOrWhiteSpace(PrincipalId),
+            "authority principalId is required");
+        Require(EnforcementPoint == "controller",
+            "authority enforcementPoint must be controller");
+        Require(GrantedOperations is { Length: > 0 }
+                && GrantedOperations.All(value => value is "read" or "subscribe")
+                && GrantedOperations.Distinct(StringComparer.Ordinal).Count()
+                    == GrantedOperations.Length,
+            "authority grantedOperations are invalid");
+        Require(DeniedOperations is not null
+                && DeniedOperations.SequenceEqual(
+                    FrozenDeniedOperations,
+                    StringComparer.Ordinal),
+            "authority deniedOperations are invalid");
+        Require(AttestationKind is "controller-signed" or "vendor-signed"
+                or "independent-audit" or "unverified-contract-fixture",
+            "authority attestationKind is invalid");
+        Require(Contract.Sha256Pattern().IsMatch(AttestationContentHash),
+            "authority attestationContentHash is invalid");
+        Require(VerificationStatus is "Verified" or "Unverified",
+            "authority verificationStatus is invalid");
+        Require(TrustAnchorContentHash is null
+                || Contract.Sha256Pattern().IsMatch(TrustAnchorContentHash),
+            "authority trustAnchorContentHash is invalid");
+        Require(VerificationStatus != "Verified"
+                || TrustAnchorContentHash is not null,
+            "Verified authority requires trustAnchorContentHash");
+        Require(VerificationStatus != "Verified"
+                || AttestationKind != "unverified-contract-fixture",
+            "contract fixture authority cannot be Verified");
+        Require(ContentHash == JsonSupport.ComputeCanonicalHash(this, "contentHash"),
+            "authority contentHash mismatch");
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new ShadowContractException(message);
+        }
+    }
+}
+
 internal static class BeckhoffShadowAssessmentAssembler
 {
     public static async Task<R7EAssessmentRequestDocument> BuildAsync(
@@ -42,10 +159,12 @@ internal static class BeckhoffShadowAssessmentAssembler
             await JsonSupport.LoadBeckhoffShadowWitnessProfileAsync(
                 witnessProfilePath,
                 cancellationToken).ConfigureAwait(false);
-        LoadedContentIdentity controller = await JsonSupport.LoadContentIdentityAsync(
+        LoadedContentIdentity controller =
+            await JsonSupport.LoadDeploymentControllerProfileAsync(
             controllerProfilePath,
             cancellationToken).ConfigureAwait(false);
-        LoadedContentIdentity authority = await JsonSupport.LoadContentIdentityAsync(
+        LoadedContentIdentity authority =
+            await JsonSupport.LoadReadOnlyAuthorityEvidenceAsync(
             authorityPath,
             cancellationToken).ConfigureAwait(false);
         BeckhoffShadowCaptureAuthorization authorization =

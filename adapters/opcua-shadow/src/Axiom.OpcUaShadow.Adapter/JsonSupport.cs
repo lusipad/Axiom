@@ -9,6 +9,25 @@ namespace Axiom.OpcUaShadow;
 
 internal static class JsonSupport
 {
+    private static readonly HashSet<string> M5IntegerPropertyNames =
+        new(StringComparer.Ordinal)
+        {
+            "axisOrder",
+            "column",
+            "cycle",
+            "degree",
+            "endSampleIndex",
+            "intervalCount",
+            "intervalIndex",
+            "line",
+            "order",
+            "profileVersion",
+            "sampleIndex",
+            "schemaVersion",
+            "startSampleIndex",
+            "statementIndex"
+        };
+
     public static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -170,6 +189,63 @@ internal static class JsonSupport
         return new LoadedContentIdentity(contentHash, fullPath, root.Clone());
     }
 
+    public static async Task<LoadedContentIdentity>
+        LoadDeploymentControllerProfileAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            DeploymentControllerProfileDocument profile =
+                JsonSerializer.Deserialize<DeploymentControllerProfileDocument>(
+                    payload,
+                    Options)
+                ?? throw new ShadowContractException("controller profile JSON is empty");
+            profile.Validate();
+            using JsonDocument document = JsonDocument.Parse(payload);
+            return new LoadedContentIdentity(
+                profile.ContentHash,
+                fullPath,
+                document.RootElement.Clone());
+        }
+        catch (JsonException exception)
+        {
+            throw new ShadowContractException(
+                $"controller profile JSON is invalid: {exception.Message}");
+        }
+    }
+
+    public static async Task<LoadedContentIdentity> LoadReadOnlyAuthorityEvidenceAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        string fullPath = Path.GetFullPath(path);
+        byte[] payload = await File.ReadAllBytesAsync(fullPath, cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            ReadOnlyAuthorityEvidenceDocument authority =
+                JsonSerializer.Deserialize<ReadOnlyAuthorityEvidenceDocument>(
+                    payload,
+                    Options)
+                ?? throw new ShadowContractException("authority JSON is empty");
+            authority.Validate();
+            using JsonDocument document = JsonDocument.Parse(payload);
+            return new LoadedContentIdentity(
+                authority.ContentHash,
+                fullPath,
+                document.RootElement.Clone());
+        }
+        catch (JsonException exception)
+        {
+            throw new ShadowContractException(
+                $"authority JSON is invalid: {exception.Message}");
+        }
+    }
+
     public static async Task<M5CommandReference> LoadM5CommandReferenceAsync(
         string path,
         CancellationToken cancellationToken)
@@ -299,7 +375,11 @@ internal static class JsonSupport
                 Indented = false
             }))
         {
-            WriteM5Canonical(writer, root, isRoot: true);
+            WriteM5Canonical(
+                writer,
+                root,
+                isRoot: true,
+                preserveIntegerNumbers: false);
         }
         return ToLowerHex(SHA256.HashData(stream.ToArray()));
     }
@@ -443,7 +523,8 @@ internal static class JsonSupport
     private static void WriteM5Canonical(
         Utf8JsonWriter writer,
         JsonElement element,
-        bool isRoot)
+        bool isRoot,
+        bool preserveIntegerNumbers)
     {
         switch (element.ValueKind)
         {
@@ -454,7 +535,13 @@ internal static class JsonSupport
                     .OrderBy(property => property.Name, StringComparer.Ordinal))
                 {
                     writer.WritePropertyName(property.Name);
-                    WriteM5Canonical(writer, property.Value, isRoot: false);
+                    WriteM5Canonical(
+                        writer,
+                        property.Value,
+                        isRoot: false,
+                        preserveIntegerNumbers: IsM5IntegerProperty(
+                            element,
+                            property.Name));
                 }
                 writer.WriteEndObject();
                 break;
@@ -462,17 +549,26 @@ internal static class JsonSupport
                 writer.WriteStartArray();
                 foreach (JsonElement item in element.EnumerateArray())
                 {
-                    WriteM5Canonical(writer, item, isRoot: false);
+                    WriteM5Canonical(
+                        writer,
+                        item,
+                        isRoot: false,
+                        preserveIntegerNumbers);
                 }
                 writer.WriteEndArray();
                 break;
             case JsonValueKind.Number:
                 string raw = element.GetRawText();
-                writer.WriteRawValue(
-                    raw.Contains('.') || raw.Contains('e') || raw.Contains('E')
-                        ? NormalizeM5Float(raw)
-                        : raw,
-                    skipInputValidation: false);
+                if (preserveIntegerNumbers)
+                {
+                    writer.WriteNumberValue(ParseM5Integer(raw));
+                }
+                else
+                {
+                    writer.WriteRawValue(
+                        NormalizeM5Float(raw),
+                        skipInputValidation: false);
+                }
                 break;
             case JsonValueKind.String:
                 writer.WriteStringValue(element.GetString());
@@ -490,6 +586,37 @@ internal static class JsonSupport
                 throw new ShadowContractException(
                     $"unsupported M5 JSON token {element.ValueKind}");
         }
+    }
+
+    private static bool IsM5IntegerProperty(JsonElement parent, string propertyName)
+    {
+        if (M5IntegerPropertyNames.Contains(propertyName))
+        {
+            return true;
+        }
+        if (propertyName != "turns")
+        {
+            return false;
+        }
+        return !parent.TryGetProperty("segmentType", out JsonElement segmentType)
+            || segmentType.ValueKind != JsonValueKind.String
+            || segmentType.GetString() != "helix";
+    }
+
+    private static long ParseM5Integer(string raw)
+    {
+        if (!decimal.TryParse(
+                raw,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out decimal value)
+            || value != decimal.Truncate(value)
+            || value < long.MinValue
+            || value > long.MaxValue)
+        {
+            throw new ShadowContractException("M5 command contains an invalid integer");
+        }
+        return decimal.ToInt64(value);
     }
 
     private static string NormalizeM5Float(string raw)

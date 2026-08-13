@@ -47,6 +47,31 @@ def _pinned_dotnet_sdk_available() -> bool:
 PINNED_DOTNET_SDK_AVAILABLE = _pinned_dotnet_sdk_available()
 
 
+def _reseal_content_hash(payload: dict[str, object]) -> None:
+    payload.pop("contentHash", None)
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    payload["contentHash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _use_integer_lexemes_for_whole_floats(value):
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_use_integer_lexemes_for_whole_floats(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _use_integer_lexemes_for_whole_floats(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only conformance")
 @pytest.mark.skipif(
     not PINNED_DOTNET_SDK_AVAILABLE, reason="pinned .NET SDK is unavailable"
@@ -214,14 +239,25 @@ def test_dotnet_assembles_a_python_valid_r7e_assessment_without_network(
         command.extend((f"--{name}", str(path)))
     command.extend(("--output", str(output_path)))
 
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=120,
-    )
+    def run_assembler(
+        output: Path,
+        *,
+        overrides: dict[str, Path] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        invocation = list(command)
+        invocation[-1] = str(output)
+        for name, path in (overrides or {}).items():
+            invocation[invocation.index(f"--{name}") + 1] = str(path)
+        return subprocess.run(
+            invocation,
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=120,
+        )
+
+    completed = run_assembler(output_path)
 
     assert completed.returncode == 0, completed.stderr
     assembled = R7EAssessmentRequest.model_validate_json(
@@ -243,23 +279,143 @@ def test_dotnet_assembles_a_python_valid_r7e_assessment_without_network(
         mismatched.command.model_dump_json(indent=2, by_alias=True),
         encoding="utf-8",
     )
-    mismatched_command = list(command)
-    command_index = mismatched_command.index("--command") + 1
-    mismatched_command[command_index] = str(mismatched_path)
-    mismatched_command[-1] = str(tmp_path / "mismatched.r7e.json")
-
-    rejected = subprocess.run(
-        mismatched_command,
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=120,
+    mismatched_output = tmp_path / "mismatched.r7e.json"
+    rejected = run_assembler(
+        mismatched_output,
+        overrides={"command": mismatched_path},
     )
 
     assert rejected.returncode == 1
     assert "command" in rejected.stderr.lower()
-    assert not (tmp_path / "mismatched.r7e.json").exists()
+    assert not mismatched_output.exists()
+
+    original_command_payload = json.loads(
+        request.command.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    integer_float_command = _use_integer_lexemes_for_whole_floats(
+        original_command_payload
+    )
+    assert type(original_command_payload["samples"][0]["q"][0]) is float
+    assert type(integer_float_command["samples"][0]["q"][0]) is int
+    integer_float_path = tmp_path / "integer-float-command.json"
+    integer_float_path.write_text(
+        json.dumps(integer_float_command, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    integer_float_output = tmp_path / "integer-float.r7e.json"
+
+    integer_float_result = run_assembler(
+        integer_float_output,
+        overrides={"command": integer_float_path},
+    )
+
+    assert integer_float_result.returncode == 0, integer_float_result.stderr
+    assert R7EAssessmentRequest.model_validate_json(
+        integer_float_output.read_text(encoding="utf-8")
+    ) == request
+
+    invalid_authority = json.loads(
+        request.authority.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    invalid_authority.pop("grantedOperations")
+    _reseal_content_hash(invalid_authority)
+    invalid_authority_path = tmp_path / "invalid-authority.json"
+    invalid_authority_path.write_text(
+        json.dumps(invalid_authority, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    authority_evidence = json.loads(
+        request.shadow_evidence.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    authority_evidence["authorityContentHash"] = invalid_authority["contentHash"]
+    _reseal_content_hash(authority_evidence)
+    authority_evidence_path = tmp_path / "invalid-authority-evidence.json"
+    authority_evidence_path.write_text(
+        json.dumps(authority_evidence, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    invalid_authority_output = tmp_path / "invalid-authority.r7e.json"
+
+    invalid_authority_result = run_assembler(
+        invalid_authority_output,
+        overrides={
+            "authority": invalid_authority_path,
+            "shadow-evidence": authority_evidence_path,
+        },
+    )
+
+    assert invalid_authority_result.returncode == 1
+    assert "authority" in invalid_authority_result.stderr.lower()
+    assert not invalid_authority_output.exists()
+
+    invalid_controller = json.loads(
+        request.controller_profile.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    invalid_controller.pop("vendor")
+    _reseal_content_hash(invalid_controller)
+    invalid_controller_path = tmp_path / "invalid-controller.json"
+    invalid_controller_path.write_text(
+        json.dumps(invalid_controller, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    rebound_authority = json.loads(
+        request.authority.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    rebound_authority["controllerProfileContentHash"] = invalid_controller[
+        "contentHash"
+    ]
+    _reseal_content_hash(rebound_authority)
+    rebound_authority_path = tmp_path / "rebound-authority.json"
+    rebound_authority_path.write_text(
+        json.dumps(rebound_authority, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    rebound_authorization = json.loads(
+        request.capture_authorization.model_dump_json(
+            by_alias=True,
+            exclude_none=True,
+        )
+    )
+    rebound_authorization["controllerProfileContentHash"] = invalid_controller[
+        "contentHash"
+    ]
+    _reseal_content_hash(rebound_authorization)
+    rebound_authorization_path = tmp_path / "rebound-authorization.json"
+    rebound_authorization_path.write_text(
+        json.dumps(rebound_authorization, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    controller_evidence = json.loads(
+        request.shadow_evidence.model_dump_json(by_alias=True, exclude_none=True)
+    )
+    controller_evidence["controllerProfileContentHash"] = invalid_controller[
+        "contentHash"
+    ]
+    controller_evidence["authorityContentHash"] = rebound_authority["contentHash"]
+    controller_evidence["captureAuthorizationContentHash"] = rebound_authorization[
+        "contentHash"
+    ]
+    _reseal_content_hash(controller_evidence)
+    controller_evidence_path = tmp_path / "invalid-controller-evidence.json"
+    controller_evidence_path.write_text(
+        json.dumps(controller_evidence, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    invalid_controller_output = tmp_path / "invalid-controller.r7e.json"
+
+    invalid_controller_result = run_assembler(
+        invalid_controller_output,
+        overrides={
+            "controller-profile": invalid_controller_path,
+            "authority": rebound_authority_path,
+            "capture-authorization": rebound_authorization_path,
+            "shadow-evidence": controller_evidence_path,
+        },
+    )
+
+    assert invalid_controller_result.returncode == 1
+    assert "controller" in invalid_controller_result.stderr.lower()
+    assert not invalid_controller_output.exists()
 
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only preflight")

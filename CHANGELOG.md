@@ -12,13 +12,14 @@
 ### Changed
 
 - 离线组装器重算 portable 内容身份并逐项核对 runtime/Profile、authority/controller、authorization/command 和 Shadow evidence 的绑定，同时要求 `controller-live-read + declaredReal`、有效授权时间窗、成功采集与零 Write/Call；失败和已存在输出都不会被覆盖。
+- controller 与 authority 会按 Python 侧完整强类型合同验收；M5 canonical hash 按 schema 区分整数与浮点字段，因此合法序列化器写出的 `0` 与模型中的 `0.0` 不再产生伪身份冲突。
 - C# portable JSON 哈希使用与 Python `ensure_ascii=false` 一致的字符编码，并按 Five-Axis M5 合同执行 8 位有效数字规范化，避免 UTC offset 和浮点表示造成跨语言身份漂移。
 - 现场推荐流程变为“不可变原始采集 → 离线 R7-E 组装 → 两文件双运行验收”；没有新增 DomainPack、第二套网页工作台或任意外部进程执行入口。
 
 ### Verification
 
-- Python 全量 `768 passed / 4 skipped`；定向测试覆盖双文件配对、缺失/混用/不可读/Malformed R7-E 输入、旧入口兼容与退出码，Windows `.NET` 跨语言测试覆盖完整对象一致性和 command 身份错配时不落文件。网页 `48 passed`，TypeScript 与生产构建通过。
-- `.NET` 解决方案在本地已用现有 SDK 完成无警告构建，localhost secure read/subscription conformance 保持零生产 Write/Call；本机缺少精确冻结的 SDK 8.0.424，因此对应三项 `dotnet run` pytest 被明确跳过，并由 Windows 发布工作流再次阻断验收。
+- Python 全量 `771 passed / 1 skipped`；定向测试覆盖双文件配对、缺失/混用/不可读/Malformed R7-E 输入、旧入口兼容与退出码，Windows `.NET` 跨语言测试覆盖完整对象一致性、强类型 support 反例、M5 整数词法兼容和 command 身份错配时不落文件。网页 `48 passed`，TypeScript 与生产构建通过。
+- `.NET` 解决方案使用精确 SDK 8.0.424 完成无警告构建和四项跨语言/localhost 验收，secure read/subscription conformance 保持零生产 Write/Call；剩余一项 skip 是本地 CPython 3.14 不满足冻结的 CPython 3.12.10 数值环境金值，由 Windows CI 与发布工作流再次阻断验收。
 
 ### Boundary
 

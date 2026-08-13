@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { Catalog, Claim, MetricResult, RunBundle, RunSpec } from "../../types";
-import { executeR5BRunSpec, loadR5BExample, loadR5BManifest, loadR5BScenarios } from "./api";
+import {
+  assessRealHoldoutIntake,
+  executeR5BRunSpec,
+  loadR5BExample,
+  loadR5BManifest,
+  loadR5BScenarios,
+} from "./api";
 import type {
   R5BExamplePayload,
   R5BManifest,
   R5BReadinessCheck,
   R5BRunSpec,
   R5BScenarioSummary,
+  RealHoldoutIntakeReport,
+  RealHoldoutIntakeRequest,
 } from "./types";
 import "./styles.css";
 
@@ -28,6 +36,7 @@ function statusClass(value?: string | boolean | null): string {
   if (
     value === false ||
     value === "Failed" ||
+    value === "Blocked" ||
     value === "Invalid" ||
     value === "Skipped" ||
     value === "Unsupported" ||
@@ -114,8 +123,33 @@ function parseImportedRunSpec(payload: string): R5BRunSpec {
   return parsed;
 }
 
+function parseImportedObject(payload: string, label: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    throw new Error(`导入失败：${label} 不是有效 JSON。`);
+  }
+  if (!isObject(parsed)) {
+    throw new Error(`导入失败：${label} 必须是 JSON object。`);
+  }
+  return parsed;
+}
+
 async function readFileAsText(file: File): Promise<string> {
   return file.text();
+}
+
+function downloadJson(filename: string, value: unknown): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function openChecks(checks: R5BReadinessCheck[]): R5BReadinessCheck[] {
@@ -129,12 +163,18 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
   const [example, setExample] = useState<R5BExamplePayload | null>(null);
   const [bundle, setBundle] = useState<RunBundle | null>(null);
   const [busy, setBusy] = useState(true);
-  const [executing, setExecuting] = useState<"builtin" | "import" | null>(null);
+  const [executing, setExecuting] = useState<"builtin" | "import" | "intake" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importedSpec, setImportedSpec] = useState<R5BRunSpec | null>(null);
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [submittedRealHoldout, setSubmittedRealHoldout] = useState<boolean | null>(null);
+  const [intakeCases, setIntakeCases] = useState<Record<string, unknown>[]>([]);
+  const [intakeCaseFiles, setIntakeCaseFiles] = useState<string[]>([]);
+  const [intakeGovernance, setIntakeGovernance] = useState<Record<string, unknown> | null>(null);
+  const [intakeGovernanceFile, setIntakeGovernanceFile] = useState("");
+  const [intakeReport, setIntakeReport] = useState<RealHoldoutIntakeReport | null>(null);
+  const [intakeBusy, setIntakeBusy] = useState(false);
 
   const displayedManifest = example?.manifest ?? manifest;
   const runtimeBound = Boolean(
@@ -163,14 +203,16 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
     [bundle],
   );
   const candidateHasRealHoldout = isObject(importedSpec?.request.realHoldoutSet);
+  const intakeBaseRunSpec = importedSpec ?? example?.runSpec ?? null;
   const holdoutPresent = bundle
     ? submittedRealHoldout === true
-    : candidateHasRealHoldout || Boolean(example?.realHoldoutSet);
+    : Boolean(intakeReport?.realHoldoutSet) || candidateHasRealHoldout || Boolean(example?.realHoldoutSet);
 
   const loadScenario = async (nextId: string, active?: { value: boolean }) => {
     setBusy(true);
     setBundle(null);
     setSubmittedRealHoldout(null);
+    setIntakeReport(null);
     setError(null);
     try {
       const next = await loadR5BExample(nextId);
@@ -188,7 +230,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
     }
   };
 
-  const executeRun = async (runSpec: RunSpec, source: "builtin" | "import") => {
+  const executeRun = async (runSpec: RunSpec, source: "builtin" | "import" | "intake") => {
     setExecuting(source);
     setError(null);
     try {
@@ -212,6 +254,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
     const file = event.target.files?.[0];
     if (!file) return;
     setImportError(null);
+    setIntakeReport(null);
     setImportedSpec(null);
     setImportedFileName(file.name);
     try {
@@ -222,6 +265,70 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
       setImportError(reason instanceof Error ? reason.message : "导入失败：无法读取 RunSpec 文件。");
     } finally {
       event.target.value = "";
+    }
+  };
+
+  const handleGovernanceImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setIntakeReport(null);
+    setIntakeGovernance(null);
+    setIntakeGovernanceFile(file.name);
+    try {
+      setIntakeGovernance(parseImportedObject(await readFileAsText(file), "governance 文件"));
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : "导入失败：无法读取 governance 文件。");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleCaseImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+    setImportError(null);
+    setIntakeReport(null);
+    setIntakeCases([]);
+    setIntakeCaseFiles(files.map((file) => file.name));
+    try {
+      const cases = await Promise.all(
+        files.map(async (file) => parseImportedObject(await readFileAsText(file), `Case ${file.name}`)),
+      );
+      setIntakeCases(cases);
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : "导入失败：无法读取 Case 文件。");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const assessIntake = async () => {
+    if (!intakeBaseRunSpec || !intakeGovernance || intakeCases.length === 0) return;
+    setIntakeBusy(true);
+    setImportError(null);
+    setIntakeReport(null);
+    const request: RealHoldoutIntakeRequest = {
+      schemaId: "axiom.intelligence.real-holdout-intake-request@1",
+      schemaVersion: 1,
+      intakeId: "field.real-holdout-intake@1",
+      holdoutSetId: "field.real-holdout-set@1",
+      selectionId: "field.real-holdout-selection@1",
+      selectedBeforeEvaluation: true,
+      baseRunSpec: intakeBaseRunSpec,
+      governance: intakeGovernance,
+      cases: intakeCases,
+    };
+    try {
+      setIntakeReport(await assessRealHoldoutIntake(request));
+    } catch (reason) {
+      setImportError(
+        reason instanceof Error
+          ? `Intake 评估失败：${reason.message}`
+          : "Intake 评估失败：服务返回未知错误。",
+      );
+    } finally {
+      setIntakeBusy(false);
     }
   };
 
@@ -296,7 +403,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
             <select
               id="r5b-scenario"
               value={scenarioId}
-              disabled={busy || Boolean(executing)}
+              disabled={busy || intakeBusy || Boolean(executing)}
               onChange={(event) => void loadScenario(event.target.value)}
             >
               {scenarios.map((scenario) => (
@@ -323,7 +430,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
               className="button button-primary top-gap"
               type="button"
               onClick={() => example?.runSpec && void executeRun(example.runSpec, "builtin")}
-              disabled={busy || Boolean(executing) || !example?.runSpec}
+              disabled={busy || intakeBusy || Boolean(executing) || !example?.runSpec}
             >
               {executing === "builtin" ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">▶</span>}
               {executing === "builtin" ? "执行中" : "执行内置 Open 场景"}
@@ -398,12 +505,92 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
           </section>
 
           <section className="config-section">
-            <div className="section-title"><span>06</span><h2>导入 RunSpec</h2><em>client-side JSON</em></div>
+            <div className="section-title"><span>06</span><h2>现场证据 Intake</h2><em>R7-E → R5-B</em></div>
+            <label className="field-label" htmlFor="r5b-governance-file">导入治理记录 JSON</label>
+            <input
+              id="r5b-governance-file"
+              type="file"
+              accept="application/json,.json"
+              disabled={intakeBusy || Boolean(executing)}
+              onChange={(event) => void handleGovernanceImport(event)}
+            />
+            <p>
+              {intakeGovernanceFile
+                ? `治理记录：${intakeGovernanceFile}`
+                : "需要外部 owner、许可、用途、保留策略、授权和采集完成后的 attestation。"}
+            </p>
+            <label className="field-label" htmlFor="r5b-intake-case-files">导入 Case JSON（可多选）</label>
+            <input
+              id="r5b-intake-case-files"
+              type="file"
+              accept="application/json,.json"
+              multiple
+              disabled={intakeBusy || Boolean(executing)}
+              onChange={(event) => void handleCaseImport(event)}
+            />
+            <p>
+              {intakeCaseFiles.length > 0
+                ? `已选择 ${intakeCaseFiles.length} 个 Case：${intakeCaseFiles.join("、")}`
+                : "每个文件包含一个现场报告及显式 device/clock/coordinate/lineage/bindings 上下文。"}
+            </p>
+            <dl className="identity-list intelligence-r5b-import-summary">
+              <div><dt>Base RunSpec</dt><dd>{importedSpec ? "imported" : example ? "built-in Open baseline" : "—"}</dd></div>
+              <div><dt>Selection</dt><dd>before evaluation</dd></div>
+              <div><dt>Cases</dt><dd>{intakeCases.length}</dd></div>
+              <div><dt>Safety</dt><dd>NotAssessed</dd></div>
+            </dl>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => void assessIntake()}
+              disabled={intakeBusy || Boolean(executing) || !intakeBaseRunSpec || !intakeGovernance || intakeCases.length === 0}
+            >
+              {intakeBusy ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">⌁</span>}
+              {intakeBusy ? "投影中" : "评估并生成 R5-B RunSpec"}
+            </button>
+            {intakeReport && (
+              <div className="intelligence-r5b-intake-result" role="status">
+                <strong className={statusClass(intakeReport.intakeStatus)}>{intakeReport.intakeStatus}</strong>
+                <span>{intakeReport.projectedCases.length} cases · {shortHash(intakeReport.contentHash)}</span>
+              </div>
+            )}
+            <div className="intelligence-r5b-intake-downloads">
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => intakeReport?.realHoldoutSet && downloadJson("r5b-real-holdout-set.json", intakeReport.realHoldoutSet)}
+                disabled={!intakeReport?.realHoldoutSet}
+              >
+                ⇩ 下载 HoldoutSet
+              </button>
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => intakeReport?.r5bRunSpec && downloadJson("r5b-real-holdout-run-spec.json", intakeReport.r5bRunSpec)}
+                disabled={!intakeReport?.r5bRunSpec}
+              >
+                ⇩ 下载 RunSpec
+              </button>
+            </div>
+            <button
+              className="button"
+              type="button"
+              onClick={() => intakeReport?.r5bRunSpec && void executeRun(intakeReport.r5bRunSpec, "intake")}
+              disabled={intakeBusy || Boolean(executing) || !intakeReport?.r5bRunSpec}
+            >
+              {executing === "intake" ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">▶</span>}
+              {executing === "intake" ? "执行中" : "执行生成的 R5-B RunSpec"}
+            </button>
+          </section>
+
+          <section className="config-section">
+            <div className="section-title"><span>07</span><h2>导入 RunSpec</h2><em>client-side JSON</em></div>
             <label className="field-label" htmlFor="r5b-runspec-file">导入 RunSpec JSON</label>
             <input
               id="r5b-runspec-file"
               type="file"
               accept="application/json,.json"
+              disabled={intakeBusy || Boolean(executing)}
               onChange={(event) => void handleImport(event)}
             />
             <p>
@@ -423,7 +610,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
               className="button"
               type="button"
               onClick={() => importedSpec && void executeRun(importedSpec, "import")}
-              disabled={Boolean(executing) || !importedSpec}
+              disabled={intakeBusy || Boolean(executing) || !importedSpec}
             >
               {executing === "import" ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">⇪</span>}
               {executing === "import" ? "执行中" : "执行导入 RunSpec"}
@@ -464,6 +651,58 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
                 </p>
               </div>
             </section>
+
+            {intakeReport && (
+              <section className="report-card intelligence-r5b-intake-report">
+                <div className="section-title compact"><span>IN</span><h2>现场证据投影</h2><em>submitted cases only</em></div>
+                <div className="intelligence-r5b-intake-summary">
+                  <article>
+                    <span>Intake</span>
+                    <strong className={statusClass(intakeReport.intakeStatus)}>{intakeReport.intakeStatus}</strong>
+                    <small>{intakeReport.countsTowardReality ? "可进入 R5-B 评估；尚非泛化结论" : "不可计入 R5-B 现实评估"}</small>
+                  </article>
+                  <article>
+                    <span>Projected cases</span>
+                    <strong>{intakeReport.projectedCases.length}</strong>
+                    <small>{intakeReport.validationScope}</small>
+                  </article>
+                  <article>
+                    <span>Controlled trial</span>
+                    <strong className="status-neutral">{intakeReport.controlledTrialStatus}</strong>
+                    <small>closed loop: {intakeReport.closedLoopStatus}</small>
+                  </article>
+                  <article>
+                    <span>Safety</span>
+                    <strong className="status-neutral">{intakeReport.deviceSafetyStatus}</strong>
+                    <small>process: {intakeReport.processSafetyStatus}</small>
+                  </article>
+                </div>
+                <div className="intelligence-r5b-intake-checks">
+                  {intakeReport.checks.map((check) => (
+                    <article key={check.checkId}>
+                      <header>
+                        <strong>{check.title}</strong>
+                        <span className={statusClass(check.status)}>{check.status}</span>
+                      </header>
+                      <code>{check.reasonCode ?? "—"}</code>
+                    </article>
+                  ))}
+                </div>
+                <div className="intelligence-r5b-intake-receipts">
+                  {intakeReport.projectedCases.map((receipt) => (
+                    <article key={receipt.contentHash}>
+                      <header>
+                        <strong>{receipt.caseId}</strong>
+                        <span className={statusClass(receipt.status)}>{receipt.status}</span>
+                      </header>
+                      <small>source {shortHash(receipt.sourceReportContentHash)}</small>
+                      <small>case {shortHash(receipt.caseEvidenceContentHash)}</small>
+                      <code>{receipt.reasonCode ?? receipt.timestampPolicyId}</code>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="report-card">
               <div className="section-title compact"><span>01</span><h2>运行结论</h2><em>case-scoped only</em></div>

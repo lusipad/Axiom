@@ -189,6 +189,58 @@ export interface TargetParityReceipt {
 
 export type R5BRunSpec = RunSpec & { subjectVersion?: string };
 
+export interface RealHoldoutIntakeRequest {
+  schemaId: "axiom.intelligence.real-holdout-intake-request@1";
+  schemaVersion: 1;
+  intakeId: string;
+  holdoutSetId: string;
+  selectionId: string;
+  selectedBeforeEvaluation: true;
+  baseRunSpec: R5BRunSpec;
+  governance: Record<string, unknown>;
+  cases: Record<string, unknown>[];
+}
+
+export interface RealHoldoutIntakeCheck {
+  checkId: string;
+  title: string;
+  status: "Passed" | "Open" | "Blocked";
+  reasonCode?: string;
+  details: Record<string, unknown>;
+}
+
+export interface RealHoldoutProjectionReceipt {
+  caseId: string;
+  status: "Passed" | "Open" | "Blocked";
+  reasonCode?: string;
+  sourceReportContentHash: string;
+  sourceShadowEvidenceContentHash?: string;
+  sourceRealityAnalysisContentHash: string;
+  observationContentHash?: string;
+  responseTraceContentHash?: string;
+  caseEvidenceContentHash?: string;
+  timestampPolicyId: "axiom.r7e.x-source-timestamp@1";
+  contentHash: string;
+}
+
+export interface RealHoldoutIntakeReport {
+  schemaId: "axiom.intelligence.real-holdout-intake-report@1";
+  schemaVersion: 1;
+  intakeId: string;
+  checks: RealHoldoutIntakeCheck[];
+  projectedCases: RealHoldoutProjectionReceipt[];
+  realHoldoutSet?: Record<string, unknown>;
+  r5bRunSpec?: R5BRunSpec;
+  intakeStatus: "Passed" | "Open" | "Blocked";
+  countsTowardReality: boolean;
+  validationScope: "submitted-cases-only";
+  controlledTrialStatus: "Open";
+  closedLoopStatus: "Open";
+  deviceSafetyStatus: "NotAssessed";
+  processSafetyStatus: "NotAssessed";
+  contentHash: string;
+}
+
 export interface R5BExamplePayload {
   manifest: R5BManifest;
   scenario: R5BScenarioSummary;

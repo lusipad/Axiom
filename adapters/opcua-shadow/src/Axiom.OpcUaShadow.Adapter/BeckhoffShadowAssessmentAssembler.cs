@@ -29,7 +29,8 @@ internal sealed record DeploymentControllerProfileDocument
 
     public void Validate()
     {
-        Require(Contract.VersionedIdPattern().IsMatch(ProfileId),
+        Require(!string.IsNullOrWhiteSpace(ProfileId)
+                && Contract.VersionedIdPattern().IsMatch(ProfileId),
             "controller profileId must be versioned");
         Require(new[]
             {
@@ -85,9 +86,11 @@ internal sealed record ReadOnlyAuthorityEvidenceDocument
 
     public void Validate()
     {
-        Require(Contract.VersionedIdPattern().IsMatch(EvidenceId),
+        Require(!string.IsNullOrWhiteSpace(EvidenceId)
+                && Contract.VersionedIdPattern().IsMatch(EvidenceId),
             "authority evidenceId must be versioned");
-        Require(Contract.Sha256Pattern().IsMatch(ControllerProfileContentHash),
+        Require(!string.IsNullOrWhiteSpace(ControllerProfileContentHash)
+                && Contract.Sha256Pattern().IsMatch(ControllerProfileContentHash),
             "authority controllerProfileContentHash is invalid");
         Require(!string.IsNullOrWhiteSpace(PrincipalId),
             "authority principalId is required");
@@ -106,7 +109,8 @@ internal sealed record ReadOnlyAuthorityEvidenceDocument
         Require(AttestationKind is "controller-signed" or "vendor-signed"
                 or "independent-audit" or "unverified-contract-fixture",
             "authority attestationKind is invalid");
-        Require(Contract.Sha256Pattern().IsMatch(AttestationContentHash),
+        Require(!string.IsNullOrWhiteSpace(AttestationContentHash)
+                && Contract.Sha256Pattern().IsMatch(AttestationContentHash),
             "authority attestationContentHash is invalid");
         Require(VerificationStatus is "Verified" or "Unverified",
             "authority verificationStatus is invalid");

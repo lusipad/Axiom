@@ -15,24 +15,31 @@ END_VAR
 VAR_OUTPUT
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'sWitnessCommandContentHash'}
     sWitnessCommandContentHash : STRING(64);
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'nWitnessSampleIndex'}
     nWitnessSampleIndex : UDINT := 16#FFFFFFFF;
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisX'}
     fWitnessAxisX : LREAL;
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisY'}
     fWitnessAxisY : LREAL;
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisZ'}
     fWitnessAxisZ : LREAL;
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisB'}
     fWitnessAxisB : LREAL;
     {attribute 'OPC.UA.DA' := '1'}
     {attribute 'OPC.UA.DA.Access' := '1'}
+    {attribute 'OPC.UA.DA.Alias' := 'fWitnessAxisC'}
     fWitnessAxisC : LREAL;
 END_VAR
 VAR
@@ -42,10 +49,15 @@ VAR
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[IF bPublishEnabled AND
-   ((NOT bPublishedAtLeastOnce) OR
-    (sCommandContentHash <> sLastPublishedCommandContentHash) OR
-    (nSampleIndex <> nLastPublishedSampleIndex)) THEN
+      <ST><![CDATA[IF NOT bPublishEnabled THEN
+    nWitnessSampleIndex := 16#FFFFFFFF;
+    bPublishedAtLeastOnce := FALSE;
+ELSIF bPublishedAtLeastOnce AND
+      (sCommandContentHash <> sLastPublishedCommandContentHash) THEN
+    (* Hold the sentinel until the observation window is closed and reopened. *)
+    nWitnessSampleIndex := 16#FFFFFFFF;
+ELSIF (NOT bPublishedAtLeastOnce) OR
+      (nSampleIndex <> nLastPublishedSampleIndex) THEN
     sWitnessCommandContentHash := sCommandContentHash;
     fWitnessAxisX := fAxisX;
     fWitnessAxisY := fAxisY;

@@ -109,6 +109,11 @@ class BeckhoffShadowWitnessProfile(AxiomModel):
     runtime_evidence_content_hash: str | None = Field(
         default=None, alias="runtimeEvidenceContentHash", pattern=_HASH_PATTERN
     )
+    node_verification_evidence_content_hash: str | None = Field(
+        default=None,
+        alias="nodeVerificationEvidenceContentHash",
+        pattern=_HASH_PATTERN,
+    )
     expected_command_content_hash: str | None = Field(
         default=None, alias="expectedCommandContentHash", pattern=_HASH_PATTERN
     )
@@ -141,6 +146,7 @@ class BeckhoffShadowWitnessProfile(AxiomModel):
         if self.binding_status == "Open":
             if (
                 self.runtime_evidence_content_hash is not None
+                or self.node_verification_evidence_content_hash is not None
                 or self.expected_command_content_hash is not None
                 or self.nodes
             ):

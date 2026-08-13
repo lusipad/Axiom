@@ -81,6 +81,39 @@ internal static class Program
                 Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
                 return 0;
             }
+            if (args.Length >= 11 && args[0] == "beckhoff-witness-inspect")
+            {
+                Dictionary<string, string> options = ParseNamedOptions(args, 1);
+                string configPath = RequireOption(options, "--config");
+                string runtimeEvidencePath = RequireOption(options, "--runtime-evidence");
+                string deploymentRequestPath = RequireOption(
+                    options,
+                    "--deployment-request");
+                string evidenceId = RequireOption(options, "--evidence-id");
+                string outputPath = RequireOption(options, "--output");
+                using var nodeCancellation = new CancellationTokenSource();
+                BeckhoffWitnessNodeVerificationEvidence evidence =
+                    await BeckhoffWitnessNodeVerifier.InspectAsync(
+                        await JsonSupport.LoadConfigAsync(
+                            configPath,
+                            nodeCancellation.Token).ConfigureAwait(false),
+                        await JsonSupport.LoadContentIdentityAsync(
+                            runtimeEvidencePath,
+                            nodeCancellation.Token).ConfigureAwait(false),
+                        await JsonSupport.LoadWitnessDeploymentNodeBindingsAsync(
+                            deploymentRequestPath,
+                            nodeCancellation.Token).ConfigureAwait(false),
+                        evidenceId,
+                        nodeCancellation.Token).ConfigureAwait(false);
+                await JsonSupport.WriteNewAsync(
+                    outputPath,
+                    evidence,
+                    nodeCancellation.Token).ConfigureAwait(false);
+                Console.WriteLine(
+                    $"Beckhoff witness node evidence: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
+                return 0;
+            }
             if (args.Length >= 21 && args[0] == "beckhoff-shadow-capture")
             {
                 Dictionary<string, string> options = ParseNamedOptions(args, 1);
@@ -202,6 +235,8 @@ internal static class Program
         Console.Error.WriteLine(
             "  axiom-opcua-shadow beckhoff-inspect --profile <bound-profile.json> --config <config.json> [--transport <capture.json>] [--write-receipt <receipt.json>] --output <evidence.json>");
         Console.Error.WriteLine(
+            "  axiom-opcua-shadow beckhoff-witness-inspect --config <config.json> --runtime-evidence <runtime.json> --deployment-request <request.json> --evidence-id <id@1> --output <evidence.json>");
+        Console.Error.WriteLine(
             "  axiom-opcua-shadow beckhoff-shadow-capture --config <config.json> --vendor-profile <bound-profile.json> --runtime-evidence <runtime.json> --witness-profile <witness.json> --controller-profile <controller.json> --authority <authority.json> --capture-authorization <authorization.json> --command <m5.json> --evidence-id <id@1> --output <evidence.json>");
     }
 
@@ -225,6 +260,7 @@ internal static class Program
                 or "--write-receipt"
                 or "--vendor-profile"
                 or "--runtime-evidence"
+                or "--deployment-request"
                 or "--witness-profile"
                 or "--controller-profile"
                 or "--authority"

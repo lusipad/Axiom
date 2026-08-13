@@ -25,7 +25,7 @@ internal static class Program
             return 0;
         }
 
-        (string? Evidence, string? Witness) outputs;
+        (string? Evidence, string? Witness, string? NodeEvidence) outputs;
         try
         {
             outputs = ParseOutputs(args);
@@ -35,7 +35,8 @@ internal static class Program
             Console.Error.WriteLine(exception.Message);
             Console.Error.WriteLine(
                 "Usage: Axiom.OpcUaShadow.Conformance [--evidence-output <path>] "
-                + "[--witness-evidence-output <path>]");
+                + "[--witness-evidence-output <path>] "
+                + "[--witness-node-evidence-output <path>]");
             return 2;
         }
 
@@ -67,6 +68,15 @@ internal static class Program
                     CancellationToken.None).ConfigureAwait(false);
                 Console.WriteLine(
                     $"Witness evidence: {Path.GetFullPath(outputs.Witness)}");
+            }
+            if (outputs.NodeEvidence is not null)
+            {
+                await JsonSupport.WriteNewAsync(
+                    outputs.NodeEvidence,
+                    result.NodeVerification,
+                    CancellationToken.None).ConfigureAwait(false);
+                Console.WriteLine(
+                    $"Witness node evidence: {Path.GetFullPath(outputs.NodeEvidence)}");
             }
             Directory.Delete(workspace, recursive: true);
             Console.WriteLine("PASS: Windows OPC UA secure read/subscription conformance");
@@ -203,6 +213,37 @@ internal static class Program
                 config,
                 loaded,
                 serverCertificate);
+            BeckhoffWitnessDeploymentNodeBinding[] witnessBindings = witnessInputs
+                .WitnessProfile.Profile.Nodes
+                .Select(node => new BeckhoffWitnessDeploymentNodeBinding(
+                    node.CanonicalSignalId,
+                    node.NamespaceUri,
+                    node.Identifier))
+                .ToArray();
+            BeckhoffWitnessNodeVerificationEvidence nodeEvidence =
+                await BeckhoffWitnessNodeVerifier.InspectAsync(
+                    loaded,
+                    witnessInputs.RuntimeEvidence,
+                    witnessBindings,
+                    "axiom.control.beckhoff-witness-node-verification.conformance@1",
+                    cancellationToken).ConfigureAwait(false);
+            Require(
+                nodeEvidence.RuntimeEvidenceContentHash
+                    == witnessInputs.RuntimeEvidence.ContentHash
+                && nodeEvidence.Nodes.Length == 7
+                && nodeEvidence.Nodes[0].BrowseName == "CommandContentHash"
+                && nodeEvidence.Nodes[1].DataType == "UInt32"
+                && nodeEvidence.Nodes.Skip(2).All(node =>
+                    node.NodeClass == "Variable"
+                    && node.DataType == "Double"
+                    && node.AccessLevel == AccessLevels.CurrentRead
+                    && node.UserAccessLevel == AccessLevels.CurrentRead)
+                && nodeEvidence.WriteOperationCount == 0
+                && nodeEvidence.MethodCallOperationCount == 0
+                && nodeEvidence.ContentHash == JsonSupport.ComputeCanonicalHash(
+                    nodeEvidence,
+                    "contentHash"),
+                "witness node inspection evidence is incomplete");
             BeckhoffShadowCaptureAuthorization expiredAuthorization =
                 witnessInputs.CaptureAuthorization with
                 {
@@ -297,9 +338,10 @@ internal static class Program
                 $"Expired capture authorization rejected: {expiredAuthorizationRejected}");
             Console.WriteLine($"Cancelled witness capture stopped: {cancellationObserved}");
             Console.WriteLine($"Witness timeout enforced: {timeoutObserved}");
+            Console.WriteLine($"Witness nodes inspected: {nodeEvidence.Nodes.Length}");
             Console.WriteLine($"Witness frames: {witness.Receipt.ReceivedFrameCount}");
             Console.WriteLine($"Witness writes issued: {witness.Receipt.WriteOperationCount}");
-            return new ConformanceResult(evidence, witness);
+            return new ConformanceResult(evidence, witness, nodeEvidence);
         }
         finally
         {
@@ -307,7 +349,8 @@ internal static class Program
         }
     }
 
-    private static (string? Evidence, string? Witness) ParseOutputs(string[] args)
+    private static (string? Evidence, string? Witness, string? NodeEvidence) ParseOutputs(
+        string[] args)
     {
         if (args.Length % 2 != 0)
         {
@@ -315,6 +358,7 @@ internal static class Program
         }
         string? evidence = null;
         string? witness = null;
+        string? nodeEvidence = null;
         for (int index = 0; index < args.Length; index += 2)
         {
             string name = args[index];
@@ -331,12 +375,16 @@ internal static class Program
             {
                 witness = value;
             }
+            else if (name == "--witness-node-evidence-output" && nodeEvidence is null)
+            {
+                nodeEvidence = value;
+            }
             else
             {
                 throw new ArgumentException("invalid conformance arguments", nameof(args));
             }
         }
-        return (evidence, witness);
+        return (evidence, witness, nodeEvidence);
     }
 
     private static async Task<(ApplicationInstance, ApplicationConfiguration)>
@@ -856,5 +904,6 @@ internal static class Program
 
     private sealed record ConformanceResult(
         OpcUaTransportEvidence Transport,
-        BeckhoffShadowRunEvidence Witness);
+        BeckhoffShadowRunEvidence Witness,
+        BeckhoffWitnessNodeVerificationEvidence NodeVerification);
 }

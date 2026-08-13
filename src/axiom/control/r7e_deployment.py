@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from importlib import resources
 from typing import Any, Literal, TypeVar
 from urllib.parse import urlparse
@@ -39,6 +40,24 @@ _CANONICAL_SIGNALS = (
     "machine.axis.B.position",
     "machine.axis.C.position",
 )
+_EXPECTED_BROWSE_NAMES = (
+    "sWitnessCommandContentHash",
+    "nWitnessSampleIndex",
+    "fWitnessAxisX",
+    "fWitnessAxisY",
+    "fWitnessAxisZ",
+    "fWitnessAxisB",
+    "fWitnessAxisC",
+)
+_EXPECTED_DATA_TYPES = (
+    "String",
+    "UInt32",
+    "Double",
+    "Double",
+    "Double",
+    "Double",
+    "Double",
+)
 _CHECK_IDS = (
     "r7e.deployment.template",
     "r7e.deployment.vendor-profile",
@@ -69,6 +88,76 @@ class BeckhoffWitnessDeploymentNodeBinding(AxiomModel):
         return value
 
 
+class BeckhoffWitnessNodeRuntimeObservation(AxiomModel):
+    canonical_signal_id: Literal[
+        "command.content-hash",
+        "command.sample-index",
+        "machine.axis.X.position",
+        "machine.axis.Y.position",
+        "machine.axis.Z.position",
+        "machine.axis.B.position",
+        "machine.axis.C.position",
+    ] = Field(alias="canonicalSignalId")
+    namespace_uri: str = Field(alias="namespaceUri", min_length=1)
+    identifier: str = Field(min_length=1)
+    browse_name: str = Field(alias="browseName", min_length=1)
+    node_class: str = Field(alias="nodeClass", min_length=1)
+    data_type: str = Field(alias="dataType", min_length=1)
+    access_level: int = Field(alias="accessLevel", ge=0, le=255)
+    user_access_level: int = Field(alias="userAccessLevel", ge=0, le=255)
+
+    @field_validator("namespace_uri")
+    @classmethod
+    def require_absolute_namespace(cls, value: str) -> str:
+        if urlparse(value).scheme not in {"urn", "http", "https"}:
+            raise ValueError("namespaceUri must be absolute")
+        return value
+
+
+class BeckhoffWitnessNodeVerificationEvidence(AxiomModel):
+    schema_id: Literal[
+        "axiom.control.beckhoff-witness-node-verification-evidence@1"
+    ] = Field(alias="schemaId")
+    evidence_id: str = Field(alias="evidenceId", pattern=r"^.+@[0-9]+$")
+    runtime_evidence_content_hash: str = Field(
+        alias="runtimeEvidenceContentHash", pattern=_HASH_PATTERN
+    )
+    source_kind: Literal["vendor-runtime", "contract-fixture"] = Field(
+        alias="sourceKind"
+    )
+    captured_at: str = Field(alias="capturedAt", min_length=1)
+    nodes: tuple[BeckhoffWitnessNodeRuntimeObservation, ...] = Field(
+        min_length=7, max_length=7
+    )
+    write_operation_count: Literal[0] = Field(alias="writeOperationCount")
+    method_call_operation_count: Literal[0] = Field(alias="methodCallOperationCount")
+    content_hash: str = Field(alias="contentHash", pattern=_HASH_PATTERN)
+
+    @field_validator("captured_at")
+    @classmethod
+    def require_aware_timestamp(cls, value: str) -> str:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("capturedAt must include an explicit UTC offset")
+        return value
+
+    @model_validator(mode="after")
+    def verify_evidence(self) -> BeckhoffWitnessNodeVerificationEvidence:
+        signals = tuple(node.canonical_signal_id for node in self.nodes)
+        if signals != _CANONICAL_SIGNALS:
+            raise ValueError(
+                "verified nodes must use the frozen canonical signal order"
+            )
+        identities = tuple((node.namespace_uri, node.identifier) for node in self.nodes)
+        if len(set(identities)) != len(identities):
+            raise ValueError("verified witness node identities must be unique")
+        if self.content_hash != canonical_hash(self, exclude={"content_hash"}):
+            raise ValueError(
+                "BeckhoffWitnessNodeVerificationEvidence contentHash must match content"
+            )
+        return self
+
+
 class BeckhoffWitnessDeploymentRequest(AxiomModel):
     schema_id: Literal[
         "axiom.control.beckhoff-shadow-witness-deployment-request@1"
@@ -85,6 +174,9 @@ class BeckhoffWitnessDeploymentRequest(AxiomModel):
     )
     runtime_evidence: BeckhoffRuntimeEvidence | None = Field(
         default=None, alias="runtimeEvidence"
+    )
+    witness_node_verification: BeckhoffWitnessNodeVerificationEvidence | None = Field(
+        default=None, alias="witnessNodeVerification"
     )
     command: M5DiscreteCommand | None = None
     nodes: tuple[BeckhoffWitnessDeploymentNodeBinding, ...] = ()
@@ -364,6 +456,89 @@ def _runtime_check(
     )
 
 
+def _node_check(
+    request: BeckhoffWitnessDeploymentRequest,
+) -> BeckhoffWitnessDeploymentCheck:
+    title = "Runtime-verified read-only witness node bindings"
+    if not request.nodes:
+        return _check(
+            "r7e.deployment.nodes",
+            title,
+            "Open",
+            "WitnessNodeBindingsMissing",
+        )
+    verification = request.witness_node_verification
+    if verification is None:
+        return _check(
+            "r7e.deployment.nodes",
+            title,
+            "Open",
+            "WitnessNodeRuntimeVerificationMissing",
+        )
+    if request.runtime_evidence is None:
+        return _check(
+            "r7e.deployment.nodes",
+            title,
+            "Blocked",
+            "BeckhoffRuntimeEvidenceMissing",
+        )
+    if (
+        verification.runtime_evidence_content_hash
+        != request.runtime_evidence.content_hash
+    ):
+        return _check(
+            "r7e.deployment.nodes",
+            title,
+            "Blocked",
+            "WitnessNodeVerificationRuntimeMismatch",
+        )
+    if verification.source_kind != "vendor-runtime":
+        return _check(
+            "r7e.deployment.nodes",
+            title,
+            "Blocked",
+            "WitnessNodeContractFixtureNotVendorRuntime",
+        )
+    for index, (declared, observed) in enumerate(
+        zip(request.nodes, verification.nodes, strict=True)
+    ):
+        if (
+            declared.canonical_signal_id != observed.canonical_signal_id
+            or declared.namespace_uri != observed.namespace_uri
+            or declared.identifier != observed.identifier
+        ):
+            return _check(
+                "r7e.deployment.nodes",
+                title,
+                "Blocked",
+                "WitnessNodeIdentityMismatch",
+                canonicalSignalId=declared.canonical_signal_id,
+            )
+        if (
+            observed.browse_name != _EXPECTED_BROWSE_NAMES[index]
+            or observed.node_class != "Variable"
+            or observed.data_type != _EXPECTED_DATA_TYPES[index]
+            or observed.access_level != 1
+            or observed.user_access_level != 1
+        ):
+            return _check(
+                "r7e.deployment.nodes",
+                title,
+                "Blocked",
+                "WitnessNodeAttributeMismatch",
+                canonicalSignalId=declared.canonical_signal_id,
+                observedBrowseName=observed.browse_name,
+                expectedBrowseName=_EXPECTED_BROWSE_NAMES[index],
+            )
+    return _check(
+        "r7e.deployment.nodes",
+        title,
+        "Passed",
+        nodeCount=len(request.nodes),
+        verificationEvidenceContentHash=verification.content_hash,
+    )
+
+
 def _request_content_hash(request: BeckhoffWitnessDeploymentRequest) -> str:
     return canonical_hash(
         {
@@ -385,6 +560,11 @@ def _request_content_hash(request: BeckhoffWitnessDeploymentRequest) -> str:
                 if request.runtime_evidence is not None
                 else None
             ),
+            "witnessNodeVerificationContentHash": (
+                request.witness_node_verification.content_hash
+                if request.witness_node_verification is not None
+                else None
+            ),
             "commandContentId": (
                 request.command.content_id if request.command is not None else None
             ),
@@ -400,6 +580,7 @@ def _build_witness_profile(
 ) -> BeckhoffShadowWitnessProfile:
     assert request.vendor_profile is not None
     assert request.runtime_evidence is not None
+    assert request.witness_node_verification is not None
     assert request.command is not None
     roles = (
         ("command-content-hash", None, "String", "sha256"),
@@ -433,6 +614,9 @@ def _build_witness_profile(
             "profileId": request.profile_id,
             "vendorProfileContentHash": request.vendor_profile.content_hash,
             "runtimeEvidenceContentHash": request.runtime_evidence.content_hash,
+            "nodeVerificationEvidenceContentHash": (
+                request.witness_node_verification.content_hash
+            ),
             "expectedCommandContentHash": request.command.content_id,
             "bindingStatus": "Bound",
             "platform": "Windows",
@@ -491,21 +675,7 @@ def assess_beckhoff_witness_deployment(
             commandContentId=request.command.content_id,
         )
     )
-    node_check = (
-        _check(
-            "r7e.deployment.nodes",
-            "Seven explicit read-only witness node bindings",
-            "Open",
-            "WitnessNodeBindingsMissing",
-        )
-        if not request.nodes
-        else _check(
-            "r7e.deployment.nodes",
-            "Seven explicit read-only witness node bindings",
-            "Passed",
-            nodeCount=len(request.nodes),
-        )
-    )
+    node_check = _node_check(request)
     checks = (
         _check(
             "r7e.deployment.template",
@@ -579,6 +749,8 @@ __all__ = [
     "BeckhoffWitnessDeploymentNodeBinding",
     "BeckhoffWitnessDeploymentReport",
     "BeckhoffWitnessDeploymentRequest",
+    "BeckhoffWitnessNodeRuntimeObservation",
+    "BeckhoffWitnessNodeVerificationEvidence",
     "BeckhoffWitnessPlcTemplate",
     "assess_beckhoff_witness_deployment",
     "build_default_beckhoff_witness_deployment_request",

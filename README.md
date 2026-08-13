@@ -94,7 +94,7 @@ R7-C 新增隔离的 Windows `.NET 8` OPC UA Shadow Adapter 和 `control.domain-
 
 R7-D 选择 Beckhoff TwinCAT 3 Build 4026+ / TF6100 作为首个具体厂商路径，并新增 `control.domain-pack@4`、版本化 Vendor Profile、Windows `tcpkg`/二进制预检、标准 BuildInfo、TF6100 许可证结果、五轴节点访问级别与独立非执行 canary 拒写证据。生产 Adapter 继续零 Write/Call；权限验证器是单独程序集，只有部署责任人明确授权专用 canary 时才允许执行一次同值 Write。当前开发机没有 TwinCAT/TF6100，因此默认只证明 Profile 合同并返回 `vendorRuntimeStatus=Open`；现实与安全 gate 不升级。详细边界见[ADR-0022](架构决策记录/ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md)。
 
-R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订阅控制器端 `sampleIndex`，每个新索引触发一次 command hash、sample index、X/Y/Z/B/C 七节点 batch Read；M5 索引必须完整连续，不插值，Write/Call 固定为 0。R4.1 使用 `five-axis.domain-pack@7` 消费两个不同授权、不同时间窗的 R7-E calibration/validation pair，冻结参数后在 holdout 上分别验证线性 `mm` 与旋转 `rad` 残差。v0.19.0 增加统一现场验收编排；v0.20.0 再补可导入的 `FB_AxiomShadowWitness.TcPOU`、控制器侧索引最后发布快照协议和显式 NodeId 离线预检。仓库只提供 Open 场景和合同 conformance，不内置伪真实正例；详细边界见[Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、[Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)与[ADR-0025](架构决策记录/ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md)。
+R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订阅控制器端 `sampleIndex`，每个新索引触发一次 command hash、sample index、X/Y/Z/B/C 七节点 batch Read；M5 索引必须完整连续，不插值，Write/Call 固定为 0。R4.1 使用 `five-axis.domain-pack@7` 消费两个不同授权、不同时间窗的 R7-E calibration/validation pair，冻结参数后在 holdout 上分别验证线性 `mm` 与旋转 `rad` 残差。v0.19.0 增加统一现场验收编排；v0.20.0 再补可导入的 `FB_AxiomShadowWitness.TcPOU`、窗口 sentinel/索引最后发布协议、七 NodeId 只读属性检查和离线绑定评估。仓库只提供 Open 场景和合同 conformance，不内置伪真实正例；详细边界见[Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、[Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)与[ADR-0025](架构决策记录/ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md)。
 
 ## v0.20.0 快速开始
 
@@ -195,7 +195,7 @@ axiom beckhoff-witness-deployment .\examples\beckhoff-witness-deployment.open-re
   Set-Content -Encoding utf8 .\beckhoff-witness-deployment-report.json
 ```
 
-CLI 与 `POST /api/v1/control/r7e/deployment/assess` 同义；模板下载入口为 `GET /api/v1/control/r7e/deployment/template`。完整 TwinCAT 导入、实例化、TMC/ACL 与 NodeId 绑定步骤见 [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)。
+CLI 与 `POST /api/v1/control/r7e/deployment/assess` 同义；模板下载入口为 `GET /api/v1/control/r7e/deployment/template`。七节点运行时属性由 `.NET` `beckhoff-witness-inspect` 只读采集，未附该证据时 NodeId 门保持 `Open`。完整 TwinCAT 导入、实例化、TMC/ACL 与 NodeId 绑定步骤见 [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)。
 
 R5-A 同样走公共 Run 路径。正例只支持 synthetic learning Claim，真实泛化 Claim 必须保持 `Inconclusive`：
 

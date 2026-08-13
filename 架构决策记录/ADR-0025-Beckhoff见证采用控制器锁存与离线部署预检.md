@@ -10,15 +10,15 @@ R7-E 已能按 `sampleIndex` 通知执行七节点 batch Read，但仓库此前�
 
 ## 决策
 
-1. 提供可导入的 `FB_AxiomShadowWitness.TcPOU`。功能块只消费权威 M5 identity、sample index 和五轴回读；公开索引以 `16#FFFFFFFF` 为订阅哨兵，发现首次有效索引或索引变化时先锁存 hash/axes，最后发布 witness sample index。
+1. 提供可导入的 `FB_AxiomShadowWitness.TcPOU`。功能块只消费权威 M5 identity、sample index 和五轴回读；关闭观测窗口时公开索引保持 `16#FFFFFFFF`，重新开窗后先锁存 hash/axes，最后发布 witness sample index。窗口内 command identity 变化同样保持 sentinel，必须关闭并重新打开窗口，不能把两个从索引 0 开始的命令混在同一触发序列中。
 2. 七个输出使用 Beckhoff `OPC.UA.DA` 与 `OPC.UA.DA.Access := '1'`，生产设计不包含轴写入、设备启停或 Method Call。
-3. NodeId、vendor runtime 和 M5 command 必须通过 `axiom.control.beckhoff-shadow-witness-deployment-request@1` 显式提交；离线评估器只在所有身份闭合后生成 Bound Witness Profile。
+3. NodeId、vendor runtime 和 M5 command 必须通过 `axiom.control.beckhoff-shadow-witness-deployment-request@1` 显式提交；七个 NodeId 还必须附带与同一 runtime 内容身份绑定的 vendor-runtime 属性证据，逐项证明 BrowseName、Variable NodeClass、DataType 以及只读 AccessLevel/UserAccessLevel。离线评估器只在声明与运行时证据逐项闭合后生成 Bound Witness Profile。
 4. 部署评估是应用层工具，不创建 R7-F DomainPack，不重写 R7-E Claim，也不连接或配置 PLC。
 5. `capturePreparationStatus=Passed` 不能升级 capture authorization、Deployment Shadow、Reality、Controlled Trial、Closed Loop、DeviceSafe 或 ProcessSafe。
 
 ## 后果
 
-- 控制器侧快照协议与主机侧采集协议形成可审计闭环，静态绑定可由 Python、CLI、HTTP 和网页一致重放。
+- 控制器侧快照协议与主机侧采集协议形成可审计闭环，NodeId 声明与导入的运行时属性证据可由 Python、CLI、HTTP 和网页一致重放。
 - 实际 NodeId、TMC/符号生成、TF6100 ACL、TwinCAT 编译和现场运行仍由部署责任人完成并留证。
 - OPC UA 通知仍只是触发器；最终一致性和完整覆盖继续由读回 sample index、M5 索引集合、quality/timestamp 与 receipt 共同判定。
 

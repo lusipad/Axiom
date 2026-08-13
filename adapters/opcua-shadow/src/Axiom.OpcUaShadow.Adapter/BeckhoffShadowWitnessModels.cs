@@ -49,6 +49,7 @@ public sealed record BeckhoffShadowWitnessProfile
     public required string ProfileId { get; init; }
     public required string VendorProfileContentHash { get; init; }
     public string? RuntimeEvidenceContentHash { get; init; }
+    public string? NodeVerificationEvidenceContentHash { get; init; }
     public string? ExpectedCommandContentHash { get; init; }
     public required string BindingStatus { get; init; }
     public required string Platform { get; init; }
@@ -89,6 +90,11 @@ public sealed record BeckhoffShadowWitnessProfile
         Require(RuntimeEvidenceContentHash is not null
                 && Contract.Sha256Pattern().IsMatch(RuntimeEvidenceContentHash),
             "runtimeEvidenceContentHash is required");
+        if (NodeVerificationEvidenceContentHash is not null)
+        {
+            Require(Contract.Sha256Pattern().IsMatch(NodeVerificationEvidenceContentHash),
+                "nodeVerificationEvidenceContentHash must be lowercase SHA-256 hex");
+        }
         Require(ExpectedCommandContentHash is not null
                 && Contract.Sha256Pattern().IsMatch(ExpectedCommandContentHash),
             "expectedCommandContentHash is required");

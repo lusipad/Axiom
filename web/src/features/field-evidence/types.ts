@@ -9,6 +9,7 @@ export interface BeckhoffWitnessDeploymentRequest {
   maximumTimestampUncertaintyMs: number;
   vendorProfile?: Record<string, unknown> | null;
   runtimeEvidence?: Record<string, unknown> | null;
+  witnessNodeVerification?: Record<string, unknown> | null;
   command?: Record<string, unknown> | null;
   nodes?: Array<{
     canonicalSignalId: string;

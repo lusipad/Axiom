@@ -6,13 +6,13 @@
 
 ### Added
 
-- 增加可导入的 TwinCAT `FB_AxiomShadowWitness.TcPOU`：只锁存 command hash、M5 sample index 和 X/Y/Z/B/C，先复制 hash/axes、最后发布 sample index；七个输出均使用 TF6100 只读 OPC UA pragma。
+- 增加可导入的 TwinCAT `FB_AxiomShadowWitness.TcPOU`：关闭窗口或窗口内命令身份异常切换时保持 sentinel，重新开窗后先锁存 command hash、M5 sample index 和 X/Y/Z/B/C，最后发布 sample index；七个输出均使用 TF6100 只读 OPC UA pragma。
 - 增加 `axiom.control.beckhoff-shadow-witness-deployment-request@1` / `report@1`、`axiom beckhoff-witness-deployment`、typed HTTP API 与 Field Evidence 网页部署预检。
 - 增加 [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、Open 请求骨架与 ADR-0025；Windows Adapter ZIP 同时携带模板、指南和请求示例。
 
 ### Changed
 
-- R7-E 不再只描述“控制器应提供 sample index”；现在冻结控制器锁存协议、七信号顺序、显式 namespace/identifier 绑定和可复算的 Bound Witness Profile 生成规则。
+- R7-E 不再只描述“控制器应提供 sample index”；现在冻结控制器锁存协议、七信号顺序、显式 namespace/identifier、同一 runtime 的 BrowseName/DataType/只读访问证据和可复算的 Bound Witness Profile 生成规则。
 - 网页可下载模板、导入部署请求并分别显示 Profile、vendor runtime、preparation、TwinCAT compile、Shadow 与 Reality 状态；仍没有 PLC 连接、写入、下发或控制入口。
 
 ### Verification
@@ -22,7 +22,7 @@
 
 ### Boundary
 
-- `capturePreparationStatus=Passed` 只表示静态模板/runtime/command/NodeId 准备闭合；capture authorization、Deployment Shadow、Reality、Controlled Trial 与 Closed Loop 仍为 `Open`，DeviceSafe/ProcessSafe 仍为 `NotAssessed`。
+- `capturePreparationStatus=Passed` 只表示模板、runtime、command、NodeId 声明及七节点运行时属性证据闭合；capture authorization、Deployment Shadow、Reality、Controlled Trial 与 Closed Loop 仍为 `Open`，DeviceSafe/ProcessSafe 仍为 `NotAssessed`。
 
 ## 0.19.0 - 2026-08-13
 

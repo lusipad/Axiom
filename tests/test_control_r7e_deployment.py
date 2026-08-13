@@ -13,6 +13,8 @@ from axiom.control import (
     BeckhoffWitnessDeploymentReport,
     BeckhoffWitnessDeploymentNodeBinding,
     BeckhoffWitnessDeploymentRequest,
+    BeckhoffWitnessNodeRuntimeObservation,
+    BeckhoffWitnessNodeVerificationEvidence,
     assess_beckhoff_witness_deployment,
     build_default_beckhoff_witness_deployment_request,
     load_beckhoff_witness_plc_template,
@@ -162,6 +164,53 @@ def _complete_request() -> BeckhoffWitnessDeploymentRequest:
         transport_evidence_content_hash="3" * 64,
     )
     command = M5DiscreteCommand.model_construct(content_id="4" * 64)
+    browse_names = (
+        "sWitnessCommandContentHash",
+        "nWitnessSampleIndex",
+        "fWitnessAxisX",
+        "fWitnessAxisY",
+        "fWitnessAxisZ",
+        "fWitnessAxisB",
+        "fWitnessAxisC",
+    )
+    data_types = (
+        "String",
+        "UInt32",
+        "Double",
+        "Double",
+        "Double",
+        "Double",
+        "Double",
+    )
+    observations = tuple(
+        BeckhoffWitnessNodeRuntimeObservation(
+            canonical_signal_id=binding.canonical_signal_id,
+            namespace_uri=binding.namespace_uri,
+            identifier=binding.identifier,
+            browse_name=browse_name,
+            node_class="Variable",
+            data_type=data_type,
+            access_level=1,
+            user_access_level=1,
+        )
+        for binding, browse_name, data_type in zip(
+            _nodes(), browse_names, data_types, strict=True
+        )
+    )
+    verification_payload = {
+        "schemaId": "axiom.control.beckhoff-witness-node-verification-evidence@1",
+        "evidenceId": "axiom.control.beckhoff-witness-node-verification.test@1",
+        "runtimeEvidenceContentHash": runtime.content_hash,
+        "sourceKind": "vendor-runtime",
+        "capturedAt": "2026-08-13T08:00:02+00:00",
+        "nodes": [node.model_dump(mode="json", by_alias=True) for node in observations],
+        "writeOperationCount": 0,
+        "methodCallOperationCount": 0,
+    }
+    verification_payload["contentHash"] = canonical_hash(verification_payload)
+    node_verification = BeckhoffWitnessNodeVerificationEvidence.model_validate(
+        verification_payload
+    )
     return BeckhoffWitnessDeploymentRequest.model_construct(
         schema_id="axiom.control.beckhoff-shadow-witness-deployment-request@1",
         schema_version=1,
@@ -171,6 +220,7 @@ def _complete_request() -> BeckhoffWitnessDeploymentRequest:
         maximum_timestamp_uncertainty_ms=20.0,
         vendor_profile=vendor,
         runtime_evidence=runtime,
+        witness_node_verification=node_verification,
         command=command,
         nodes=_nodes(),
     )
@@ -185,10 +235,27 @@ def test_twin_cat_template_is_read_only_and_publishes_sample_index_last() -> Non
     assert root.tag == "TcPlcObject"
     assert declaration.count("{attribute 'OPC.UA.DA' := '1'}") == 7
     assert declaration.count("{attribute 'OPC.UA.DA.Access' := '1'}") == 7
+    assert declaration.count("{attribute 'OPC.UA.DA.Alias'") == 7
+    assert all(
+        f"{{attribute 'OPC.UA.DA.Alias' := '{browse_name}'}}" in declaration
+        for browse_name in (
+            "sWitnessCommandContentHash",
+            "nWitnessSampleIndex",
+            "fWitnessAxisX",
+            "fWitnessAxisY",
+            "fWitnessAxisZ",
+            "fWitnessAxisB",
+            "fWitnessAxisC",
+        )
+    )
     assert "nWitnessSampleIndex : UDINT := 16#FFFFFFFF;" in declaration
     assert "sLastPublishedCommandContentHash : STRING(64);" in declaration
     assert "METHOD" not in declaration
     assert "MC_" not in implementation
+    assert "IF NOT bPublishEnabled THEN" in implementation
+    assert implementation.count("nWitnessSampleIndex := 16#FFFFFFFF;") == 2
+    assert "bPublishedAtLeastOnce := FALSE;" in implementation
+    assert "ELSIF bPublishedAtLeastOnce AND" in implementation
     assert "sCommandContentHash <> sLastPublishedCommandContentHash" in implementation
     assert (
         "sLastPublishedCommandContentHash := sCommandContentHash;" in implementation
@@ -279,14 +346,20 @@ def test_deployment_request_rejects_non_finite_timestamp_uncertainty(
         BeckhoffWitnessDeploymentRequest.model_validate(payload)
 
 
-def test_complete_static_binding_emits_bound_profile_but_keeps_shadow_open() -> None:
-    report = assess_beckhoff_witness_deployment(_complete_request())
+def test_runtime_verified_binding_emits_bound_profile_but_keeps_shadow_open() -> None:
+    request = _complete_request()
+    report = assess_beckhoff_witness_deployment(request)
 
     assert report.profile_binding_status == "Bound"
     assert report.runtime_precondition_status == "Passed"
     assert report.capture_preparation_status == "Passed"
     assert report.witness_profile is not None
     assert report.witness_profile.binding_status == "Bound"
+    assert request.witness_node_verification is not None
+    assert (
+        report.witness_profile.node_verification_evidence_content_hash
+        == request.witness_node_verification.content_hash
+    )
     assert tuple(
         node.canonical_signal_id for node in report.witness_profile.nodes
     ) == CANONICAL_SIGNALS
@@ -296,6 +369,70 @@ def test_complete_static_binding_emits_bound_profile_but_keeps_shadow_open() -> 
     assert report.assessment_request.capture_authorization is None
     assert report.deployment_shadow_status == "Open"
     assert report.reality_validation_status == "Open"
+
+
+def test_declared_nodes_without_runtime_verification_keep_preparation_open() -> None:
+    request = _complete_request()
+    request.witness_node_verification = None
+
+    report = assess_beckhoff_witness_deployment(request)
+
+    assert report.checks[4].status == "Open"
+    assert report.checks[4].reason_code == "WitnessNodeRuntimeVerificationMissing"
+    assert report.capture_preparation_status == "Open"
+    assert report.witness_profile is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("browseName", "fWitnessAxisY"),
+        ("nodeClass", "Object"),
+        ("dataType", "Int32"),
+        ("accessLevel", 3),
+        ("userAccessLevel", 3),
+    ),
+)
+def test_runtime_node_attribute_mismatch_blocks_profile_generation(
+    field: str,
+    value: str | int,
+) -> None:
+    request = _complete_request()
+    assert request.witness_node_verification is not None
+    payload = request.witness_node_verification.model_dump(
+        mode="json", by_alias=True, exclude={"content_hash"}
+    )
+    payload["nodes"][2][field] = value
+    payload["contentHash"] = canonical_hash(payload)
+    request.witness_node_verification = (
+        BeckhoffWitnessNodeVerificationEvidence.model_validate(payload)
+    )
+
+    report = assess_beckhoff_witness_deployment(request)
+
+    assert report.checks[4].status == "Blocked"
+    assert report.checks[4].reason_code == "WitnessNodeAttributeMismatch"
+    assert report.capture_preparation_status == "Blocked"
+    assert report.witness_profile is None
+
+
+def test_node_verification_must_bind_the_same_runtime_evidence() -> None:
+    request = _complete_request()
+    assert request.witness_node_verification is not None
+    payload = request.witness_node_verification.model_dump(
+        mode="json", by_alias=True, exclude={"content_hash"}
+    )
+    payload["runtimeEvidenceContentHash"] = "f" * 64
+    payload["contentHash"] = canonical_hash(payload)
+    request.witness_node_verification = (
+        BeckhoffWitnessNodeVerificationEvidence.model_validate(payload)
+    )
+
+    report = assess_beckhoff_witness_deployment(request)
+
+    assert report.checks[4].status == "Blocked"
+    assert report.checks[4].reason_code == "WitnessNodeVerificationRuntimeMismatch"
+    assert report.witness_profile is None
 
 
 def test_runtime_identity_mismatch_blocks_profile_generation() -> None:

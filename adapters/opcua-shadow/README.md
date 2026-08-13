@@ -93,10 +93,22 @@ R7-E 不把 OPC UA publishing interval 当作 M5 覆盖证明。Bound Witness Pr
 sample index，每个新索引触发一次七节点 batch Read。索引必须从 0 开始并与 M5 完全一致，
 缺失索引不会被插值。
 
-发布包同时提供 `deployment/FB_AxiomShadowWitness.TcPOU`。该功能块先锁存 command hash
-与五轴回读，最后发布 sample index；它不生成索引、不写轴、不启停设备。TwinCAT 导入、
-实例化、TMC 符号生成、TF6100 ACL 和显式 NodeId 绑定步骤见
+发布包同时提供 `deployment/FB_AxiomShadowWitness.TcPOU`。该功能块在关闭观测窗口时保持
+sentinel，重新开窗后先锁存 command hash 与五轴回读，最后发布 sample index；窗口内命令
+身份变化时也保持 sentinel，避免零索引复用。它不生成索引、不写轴、不启停设备。TwinCAT
+导入、实例化、TMC 符号生成、TF6100 ACL、显式 NodeId 绑定及七节点运行时属性验证步骤见
 [`BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md`](../../BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)。
+
+七节点属性证据由同一只读 Adapter 生成：
+
+```powershell
+axiom-opcua-shadow beckhoff-witness-inspect `
+  --config opcua-shadow.json `
+  --runtime-evidence beckhoff-runtime-evidence.json `
+  --deployment-request beckhoff-witness-deployment.json `
+  --evidence-id site.beckhoff-witness-node-inspection@1 `
+  --output beckhoff-witness-node-verification.json
+```
 
 真实采集还需绑定 Vendor Profile、R7-D runtime evidence、Controller Profile、已验证的
 只读 authority 和数据所有者 capture authorization。authorization 必须包含带 UTC offset 的

@@ -159,7 +159,10 @@ jobs:
           import axiom
           from axiom import (
               FieldEvidenceAssessmentRequest,
+              RealHoldoutIntakeReport,
+              RealHoldoutIntakeRequest,
               assess_field_evidence,
+              assess_real_holdout_intake,
               evaluate_run,
           )
           from axiom.five_axis.f2_runtime import current_f2_numeric_environment
@@ -493,6 +496,9 @@ jobs:
               "five-axis.device-safe-claim@1",
               "five-axis.process-safe-claim@1",
           }.intersection(r5b_claims)
+          assert RealHoldoutIntakeRequest.model_json_schema()["title"] == "RealHoldoutIntakeRequest"
+          assert RealHoldoutIntakeReport.model_json_schema()["title"] == "RealHoldoutIntakeReport"
+          assert callable(assess_real_holdout_intake)
 
           r6_manifest = build_r6_manifest()
           assert r6_manifest.domain_pack_id == R6_DOMAIN_PACK_ID
@@ -680,6 +686,12 @@ jobs:
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R5BExamplePayload") {
               throw "installed wheel did not expose the typed R5-B OpenAPI contract"
+            }
+            $r5bIntake = $openApi.paths."/api/v1/intelligence/r5b/intake/assess".post
+            $r5bIntakeRequestSchema = $r5bIntake.requestBody.content."application/json".schema.'$ref'
+            $r5bIntakeResponseSchema = $r5bIntake.responses."200".content."application/json".schema.'$ref'
+            if ($r5bIntakeRequestSchema -ne "#/components/schemas/RealHoldoutIntakeRequest" -or $r5bIntakeResponseSchema -ne "#/components/schemas/RealHoldoutIntakeReport") {
+              throw "installed wheel did not expose the typed R5-B intake contract"
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R6ExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "OptimizationSearchRequest") {
               throw "installed wheel did not expose the typed R6 OpenAPI contract"

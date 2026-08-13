@@ -1,6 +1,6 @@
 # Axiom 文档入口
 
-> 状态：v0.21.0 Windows 发布版本；R0–R2 已闭合，R3–R6 参考合同片、R7-A–R7-E、R4.1 双运行 reality evaluator、现场验收编排、Beckhoff 只读见证部署与离线证据组装已实现；真实现场证据/受控闭环保持 Open
+> 状态：v0.22.0 Windows 发布版本；R0–R2 已闭合，R3–R6 参考合同片、R7-A–R7-E、R4.1 双运行 reality evaluator、现场验收编排、Beckhoff 只读见证部署、离线证据组装与 R5-B 真实 holdout intake 已实现；真实现场证据/受控闭环保持 Open
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL / R4.1 Reality` + Intelligence `R5-A / R5-B` + Optimization `R6 v1` + Controlled Runtime `R7-A–R7-E`
 > 更新日期：2026-08-13
 
@@ -46,7 +46,7 @@ flowchart LR
 - 研究物理模型与现实对齐：项目规划蓝图 R4 → 物理模型与现实对齐规范 → 设备接入与物理闭环规范 → ADR-0015。
 - 研究机器学习：项目规划蓝图 R5 → 数据集与学习模型规范 → ADR-0016 / ADR-0017。
 - 研究受约束推荐：项目规划蓝图 R6 → 受约束优化与安全闭环规范 → ADR-0018 → 通用评估框架规范的角色与安全边界。
-- 研究真实控制器前置接入：项目规划蓝图 R7 → 受约束优化与安全闭环规范 R7-B–R7-E → ADR-0020–ADR-0025 → 设备接入与物理闭环规范 → [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md) → [OPC UA Shadow Adapter 使用说明](adapters/opcua-shadow/README.md)。
+- 研究真实控制器前置接入：项目规划蓝图 R7 → 受约束优化与安全闭环规范 R7-B–R7-E → ADR-0020–ADR-0026 → 设备接入与物理闭环规范 → [Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md) → [OPC UA Shadow Adapter 使用说明](adapters/opcua-shadow/README.md)。
 - 了解为何选择当前契约：对应规范 → ADR 索引 → 具体 ADR。
 - 查看版本变化与升级边界：[CHANGELOG](CHANGELOG.md)。
 
@@ -82,7 +82,7 @@ R4.0 已通过 `five-axis.domain-pack@6` 建立首个轴空间物理模型参考
 
 R5-A 已用独立 `intelligence.domain-pack@1` 实现可审计 DatasetSnapshot、前向分组切分、泄漏反例、OOD 弃权、X-only ridge 残差头、split conformal 区间、15 位权重导出和独立纯 Python Windows 目标解释器。`syntheticLearningContractStatus=Passed`，但真实 paired holdout 尚未进入，因此 `realWorldGeneralizationStatus=Open`，也不存在设备写回或在线学习入口。详细契约见[数据集与学习模型规范](数据集与学习模型规范.md)与[ADR-0016](架构决策记录/ADR-0016-R5可审计数据集与端侧模型边界.md)。
 
-R5-B 进一步把真实 holdout 的就绪门拆到独立 `intelligence.domain-pack@2`：`RealPairedHoldoutSet`、`RealHoldoutGovernance`、`RealHoldoutSelectionReceipt` 和 case-scoped `RealHoldoutCaseEvidence` 保持独立内容身份；外部输入必须带 controller-export 或 device-read、owner attestation、评估许可、R3 paired lineage、时钟/坐标对齐、`PhysicalResponseTrace`，并满足至少 2 个 in-domain case 跨 2 台 device、2 个 condition、再加 1 个 OOD case。当前仓库只提供 Open 就绪场景和上传入口，不内置真实正例，也不把 `DeviceSafe`、`ProcessSafe`、writeback 或 online learning 写进主线。
+R5-B 进一步把真实 holdout 的就绪门拆到独立 `intelligence.domain-pack@2`：`RealPairedHoldoutSet`、`RealHoldoutGovernance`、`RealHoldoutSelectionReceipt` 和 case-scoped `RealHoldoutCaseEvidence` 保持独立内容身份；外部输入必须带 controller-export 或 device-read、owner attestation、评估许可、R3 paired lineage、时钟/坐标对齐、`PhysicalResponseTrace`，并满足至少 2 个 in-domain case 跨 2 台 device、2 个 condition、再加 1 个 OOD case。v0.22.0 新增 `axiom.adapter.r7e-to-r5b-holdout@1`，把多份已封存的 R7-E/R4.1 现场报告确定性投影为这些既有对象，并保留原始 Shadow、Reality 分析和目标 Artifact 哈希；它是应用层 Adapter，不新增 DomainPack 或 Core 语义。当前仓库只提供 Open 就绪场景和外部导入入口，不内置真实正例，也不把 `DeviceSafe`、`ProcessSafe`、writeback 或 online learning 写进主线。
 
 R6 v1 使用独立 `optimization.domain-pack@1` 建立首个反向推荐闭环：对 `feedOverride={0.70,0.85,1.00}` 与 `samplePeriod={0.04,0.08}s` 做确定性完全枚举；每个候选重新执行 F3 jerk-feasible 规划、F4 M5 重建与区间碰撞，并消费 R4 多采样率 holdout 证据和 R5 OOD 注记。周期、线性跟随误差和样本数保持独立 Pareto 目标，Recommendation 与 AcceptanceRecord 分离，全部结果固定为 Offline、零设备写入、零自动接受。详细契约见[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)与[ADR-0018](架构决策记录/ADR-0018-R6多目标离线推荐与权限边界.md)。
 
@@ -94,13 +94,13 @@ R7-C 新增隔离的 Windows `.NET 8` OPC UA Shadow Adapter 和 `control.domain-
 
 R7-D 选择 Beckhoff TwinCAT 3 Build 4026+ / TF6100 作为首个具体厂商路径，并新增 `control.domain-pack@4`、版本化 Vendor Profile、Windows `tcpkg`/二进制预检、标准 BuildInfo、TF6100 许可证结果、五轴节点访问级别与独立非执行 canary 拒写证据。生产 Adapter 继续零 Write/Call；权限验证器是单独程序集，只有部署责任人明确授权专用 canary 时才允许执行一次同值 Write。当前开发机没有 TwinCAT/TF6100，因此默认只证明 Profile 合同并返回 `vendorRuntimeStatus=Open`；现实与安全 gate 不升级。详细边界见[ADR-0022](架构决策记录/ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md)。
 
-R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订阅控制器端 `sampleIndex`，每个新索引用索引前读、command/index/X/Y/Z/B/C batch Read、索引后读形成版本保护；M5 索引必须完整连续，不插值，Write/Call 固定为 0。R4.1 使用 `five-axis.domain-pack@7` 消费两个不同授权、不同时间窗的 R7-E calibration/validation pair，冻结参数后在 holdout 上分别验证线性 `mm` 与旋转 `rad` 残差。v0.19.0 增加统一现场验收编排；v0.20.0 再补可导入的 `FB_AxiomShadowWitness.TcPOU`、窗口 sentinel/失效后提交协议、七 NodeId 只读属性检查和离线绑定评估；v0.21.0 增加不联网的 `beckhoff-shadow-assessment`，并让 `axiom field-evidence` 直接配对两份 R7-E 文件，移除采集与验收之间的手工 JSON 拼装。仓库只提供 Open 场景和合同 conformance，不内置伪真实正例；详细边界见[Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、[Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)与[ADR-0025](架构决策记录/ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md)。
+R7-E 新增 `control.domain-pack@5` 与 `.NET` Beckhoff Shadow Witness：只订阅控制器端 `sampleIndex`，每个新索引用索引前读、command/index/X/Y/Z/B/C batch Read、索引后读形成版本保护；M5 索引必须完整连续，不插值，Write/Call 固定为 0。R4.1 使用 `five-axis.domain-pack@7` 消费两个不同授权、不同时间窗的 R7-E calibration/validation pair，冻结参数后在 holdout 上分别验证线性 `mm` 与旋转 `rad` 残差。v0.19.0 增加统一现场验收编排；v0.20.0 再补可导入的 `FB_AxiomShadowWitness.TcPOU`、窗口 sentinel/失效后提交协议、七 NodeId 只读属性检查和离线绑定评估；v0.21.0 增加不联网的 `beckhoff-shadow-assessment` 与双文件 `field-evidence`；v0.22.0 再把多个独立现场 dossier 接入 R5-B 真实 holdout，移除跨阶段手工对象拼装。仓库只提供 Open 场景和合同 conformance，不内置伪真实正例；详细边界见[Beckhoff 只读见证部署指南](BECKHOFF-WITNESS-DEPLOYMENT-WINDOWS.md)、[Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)、[ADR-0025](架构决策记录/ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md)与[ADR-0026](架构决策记录/ADR-0026-R7E现场证据到R5B真实holdout投影.md)。
 
-## v0.21.0 快速开始
+## v0.22.0 快速开始
 
-v0.21.0 的 Field Evidence 工作台可先下载 TwinCAT 见证模板并导入部署绑定请求，再分别导入 calibration 与 validation 两份 R7-E payload，由统一服务端编排器重验 Case、内容身份、独立性和 R4.1 holdout gate；Windows CLI 还可从原始支持文件离线组装两份 payload 并直接配对验收。页面和离线组装器都不提供 PLC 连接、写入、启动或控制入口。
+v0.22.0 的 Field Evidence 工作台可先下载 TwinCAT 见证模板并导入部署绑定请求，再分别导入 calibration 与 validation 两份 R7-E payload，由统一服务端编排器重验 Case、内容身份、独立性和 R4.1 holdout gate；R5-B 工作台随后可导入治理记录与多个独立 Case 文件，生成可直接执行的真实 holdout RunSpec。Windows CLI 同样支持多文件入口。页面和离线组装器都不提供 PLC 连接、写入、启动或控制入口。
 
-v0.21.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
+v0.22.0 的发布与阻断验收基线是 Windows AMD64、CPython 3.12.10 和由 [`global.json`](global.json) 精确冻结的 .NET SDK 8.0.424，并固定 `OPENBLAS_CORETYPE=Haswell`、OpenBLAS/OMP 单线程、[`constraints/acceptance.txt`](constraints/acceptance.txt) 以及 OPC Foundation 官方协议栈 `1.5.378.156`。R4–R7 runtime 在非 Windows 环境会明确返回 `UnsupportedRuntimePlatform`，不产生通过结论；Ubuntu/Linux/WSL 不属于本阶段支持矩阵。portable Artifact 身份仍与精确环境绑定的 `RunBundle.bundleHash` 分开验证。
 
 F4 最短用法是先取场景 payload，再把 `runSpec` 送回公共执行接口。下面这个例子会返回 `Passed`，并保留 7 个数学 gate claims：
 
@@ -247,7 +247,23 @@ R5-B 的查询面为：
 - `GET /api/v1/intelligence/r5b/manifest`
 - `GET /api/v1/intelligence/r5b/scenarios`
 - `GET /api/v1/examples/intelligence-r5b?scenarioId=real-holdout-readiness-open`
+- `POST /api/v1/intelligence/r5b/intake/assess`
 - `POST /api/v1/runs/evaluate`
+
+把每个已通过现场门的 dossier 连同显式 R3 上下文封成一个 Case JSON，再与外部治理记录、冻结的 R5-B 基线 RunSpec 一起提交；`--case` 可重复：
+
+```powershell
+axiom real-holdout-intake `
+  --base-run-spec .\r5b-base-run.json `
+  --governance .\real-holdout-governance.json `
+  --case .\case-machine-a.json `
+  --case .\case-machine-b.json `
+  --case .\case-ood.json |
+  Set-Content -Encoding utf8 .\real-holdout-intake-report.json
+$LASTEXITCODE  # 0=可进入 R5-B 评估，1=Open/Blocked，2=Malformed
+```
+
+报告中的 `countsTowardReality=true` 只表示证据集可进入 R5-B；必须继续执行其 `r5bRunSpec`，才能得到本次提交 Case 范围内的指标和 Claim。字段和边界见 [Windows 现场证据验收指南](FIELD-EVIDENCE-WINDOWS.md)与 [ADR-0026](架构决策记录/ADR-0026-R7E现场证据到R5B真实holdout投影.md)。
 
 R6 搜索端点负责生成 RecommendationSet，公共 Run 端点负责确定性重放验收：
 
@@ -504,8 +520,8 @@ CLI 退出码：`evaluate` 与 `run` 的 `0` 表示 `Passed`，`1` 表示 `Faile
 
 首版严格策略要求双方使用相同的领域包、Artifact 类型和 schema、Case、Profile、ReferenceBinding、执行结果策略、MetricDefinition、结果单位与坐标系。`evaluatorVersion` 和数值环境差异会记录为 finding，但不会自动禁止比较。不兼容时不会生成指标差值、综合分数差值或优胜方。
 
-v0.21.0 沿用单个评估、Run、部署绑定或 R7-E assessment 请求最多 8 MiB、单个比较、实验或现场证据请求最多 16 MiB、单个序列最多 100,000 点、非逐点参考比较最多 5,000,000 个距离单元的预算；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；R6 v1 固定为六点完全枚举，R7-A 固定为五个 bounded synthetic shadow 场景，R7-B 固定为两个只读就绪性场景，R7-C 固定为一个开放基线与 Windows localhost 网络验收，R7-D/R7-E 各固定一个 Beckhoff 开放基线和外部证据导入，R4.1 固定为两个独立运行。超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
+v0.22.0 沿用单个评估、Run、部署绑定或 R7-E assessment 请求最多 8 MiB、单个比较、实验或现场证据请求最多 16 MiB；真实 holdout intake 的多个封存 dossier 合计最多 64 MiB。单个序列最多 100,000 点，非逐点参考比较最多 5,000,000 个距离单元；当前 Fréchet 实现另有更严格的路径存储预算。F1 名义扫掠差集、F2 连续配置碰撞细分、F3 区间重建和 F4 M5 重建碰撞都有确定性证明边界；R6 v1 固定为六点完全枚举，R7-A 固定为五个 bounded synthetic shadow 场景，R7-B 固定为两个只读就绪性场景，R7-C 固定为一个开放基线与 Windows localhost 网络验收，R7-D/R7-E 各固定一个 Beckhoff 开放基线和外部证据导入，R4.1 固定为两个独立运行。超过可证明范围会返回结构化 `Unsupported*` / `Inconclusive`，不会用有限采样伪造正向证书。
 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
-v0.21.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B/R7-D/R7-E、R4.1、部署预检、离线 R7-E 组装与现场验收包只验证导入证据；R7-C–R7-E 的独立 `.NET` 生产程序只有在部署者显式运行采集命令时才建立 OPC UA read/subscribe 网络会话，`beckhoff-shadow-assessment` 永不联网，生产源码没有设备写或方法调用路径。TwinCAT 模板必须由现场责任人手工导入、编译和激活，Axiom 不执行自动部署。R7-D 权限 verifier 仅用于经部署责任人授权的专用非执行 canary，并与生产 Adapter 隔离。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。
+v0.22.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B/R7-D/R7-E、R4.1、部署预检、离线 R7-E 组装、现场验收与 R5-B intake 只验证或投影导入证据；R7-C–R7-E 的独立 `.NET` 生产程序只有在部署者显式运行采集命令时才建立 OPC UA read/subscribe 网络会话，`beckhoff-shadow-assessment` 永不联网，生产源码没有设备写或方法调用路径。TwinCAT 模板必须由现场责任人手工导入、编译和激活，Axiom 不执行自动部署。R7-D 权限 verifier 仅用于经部署责任人授权的专用非执行 canary，并与生产 Adapter 隔离。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。

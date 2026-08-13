@@ -2,6 +2,34 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.22.0 - 2026-08-13
+
+### Added
+
+- 新增 `axiom.adapter.r7e-to-r5b-holdout@1` 与 `axiom.intelligence.real-holdout-intake-request@1` / `report@1`，把多个已通过的 R7-E / R4.1 现场 dossier 确定性投影为现有 `RealPairedHoldoutSet` 和可执行 R5-B RunSpec。
+- 新增 `axiom real-holdout-intake`。既可读取完整请求文件，也可用 `--base-run-spec`、`--governance` 与可重复的 `--case` 直接组装多文件输入；退出码固定为 `0=可进入 R5-B`、`1=Open/Blocked`、`2=Malformed`。
+- 新增 `POST /api/v1/intelligence/r5b/intake/assess` 与 R5-B 网页多文件 intake 面板；网页可展示逐 Case 投影收据、八项门禁、原始/派生内容身份和永久安全边界，下载投影后的 `RealPairedHoldoutSet` / R5-B RunSpec，并执行生成的 RunSpec。
+- 新增 ADR-0026，并扩展 Windows 现场证据指南、R3/R4/R5 规范与 Roadmap 的跨阶段合同。
+
+### Changed
+
+- 每个现场 dossier 只允许贡献 validation 运行；calibration 仍只用于 R4.1 模型识别。Intake 要求至少两个 in-domain Case 跨两个设备与两个 condition，再加一个 OOD probe，并拒绝报告/Shadow 证据复用、capture 窗口重叠、治理时序错误和谱系/设备/单位冲突。
+- R3 投影保持 `sourceKind=device-read` 与 `operation=file-import` 两条事实，并以 `axiom.r7e.x-source-timestamp@1` 显式映射单一设备时间；五轴原始 source/server/host timestamp、sample-index 证据和原始 Shadow/R4.1 哈希完整保留，不插值、不平均、不静默修复。
+- 投影后的 R3 `MachineTelemetryTrace` 使用其规范化内容重新计算 `traceContentHash`；上游 Shadow 证据哈希仍作为独立来源身份保留，避免把来源身份误当成派生 Artifact 身份。
+- `countsTowardReality=true` 现在明确只表示 intake 有资格进入 R5-B evaluator。真实泛化是否得到支持仍由随后执行的 R5-B RunSpec 决定，范围只限提交的 Case。
+- 版本提升至 `0.22.0`，发布 wheel 同步包含更新后的 R5-B 工作台和 typed OpenAPI 契约。
+
+### Verification
+
+- Python 本机完整非环境绑定套件 `786 passed / 1 skipped`；定向 intake 套件覆盖 Passed/Open/Blocked、跨设备/工况/OOD 覆盖、复用/谱系/治理/时间窗反例、原始值与哈希保留、多文件 CLI、HTTP 和公共 R5-B Run。
+- 网页 `14 files / 49 tests`、TypeScript 与 Vite 生产构建通过；R5-B 组件覆盖多文件导入、投影报告和生成 RunSpec 的公共执行链。
+- `.NET SDK 8.0.424` locked restore 与 Release solution build 通过，`0 warnings / 0 errors`。本机 CPython 是 3.14.3，无法重放只绑定 CPython 3.12.10 的 F2/F3 bundle 金值；现有 Windows CI 继续使用精确 3.12.10 阻断该门。
+
+### Boundary
+
+- 仓库仍不包含真实 TwinCAT/TF6100 capture 或正向真实 holdout。Intake 只投影外部封存证据，不连接 PLC、不写设备、不重新训练、不自动部署或接受参数。
+- `Controlled Trial`、`Closed Loop` 保持 `Open`；`DeviceSafe`、`ProcessSafe` 保持 `NotAssessed`。即使 R5-B 对提交 Case 给出 Supported，也不能外推到未提交设备、工况或安全许可。
+
 ## 0.21.0 - 2026-08-13
 
 ### Added

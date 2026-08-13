@@ -80,17 +80,22 @@ def _test_command(role: str, shift: int) -> M5DiscreteCommand:
     return M5DiscreteCommand.model_validate(payload)
 
 
-def _controller_context():
+def _controller_context(
+    *,
+    machine_id: str = "test-five-axis-01",
+    identity_suffix: str = "",
+):
     profile, runtime, _transport = _complete_evidence()
+    suffix = f"-{identity_suffix}" if identity_suffix else ""
     controller = _seal(
         DeploymentControllerProfile,
         {
-            "profileId": "test.beckhoff.controller@1",
+            "profileId": f"test.beckhoff.controller{suffix}@1",
             "vendor": "Beckhoff Automation",
             "controllerFamily": "TwinCAT 3",
             "controllerModel": "CX-Test",
             "softwareVersion": "4026.17",
-            "machineId": "test-five-axis-01",
+            "machineId": machine_id,
             "interfaceType": "opc-ua",
             "targetStatus": "Selected",
         },
@@ -98,7 +103,7 @@ def _controller_context():
     authority = _seal(
         ReadOnlyAuthorityEvidence,
         {
-            "evidenceId": "test.authority@1",
+            "evidenceId": f"test.authority{suffix}@1",
             "controllerProfileContentHash": controller.content_hash,
             "principalId": "test-shadow-reader",
             "enforcementPoint": "controller",
@@ -127,8 +132,15 @@ def _complete_test_r7e_request(
     start: datetime,
     shift: int,
     inject_holdout_noise: bool = False,
+    case_id: str = "site.test-case@1",
+    machine_id: str = "test-five-axis-01",
+    identity_suffix: str = "",
 ) -> R7EAssessmentRequest:
-    profile, runtime, controller, authority = _controller_context()
+    profile, runtime, controller, authority = _controller_context(
+        machine_id=machine_id,
+        identity_suffix=identity_suffix,
+    )
+    suffix = f"-{identity_suffix}" if identity_suffix else ""
     command = _test_command(role, shift)
     nodes: list[dict[str, object]] = [
         {
@@ -170,7 +182,7 @@ def _complete_test_r7e_request(
         BeckhoffShadowWitnessProfile,
         {
             "schemaId": "axiom.control.beckhoff-shadow-witness-profile@1",
-            "profileId": f"test.{role}.witness@1",
+            "profileId": f"test.{role}.witness{suffix}@1",
             "vendorProfileContentHash": profile.content_hash,
             "runtimeEvidenceContentHash": runtime.content_hash,
             "nodeVerificationEvidenceContentHash": (
@@ -196,7 +208,7 @@ def _complete_test_r7e_request(
         BeckhoffShadowCaptureAuthorization,
         {
             "schemaId": "axiom.control.beckhoff-shadow-capture-authorization@1",
-            "authorizationId": f"test.{role}.authorization@1",
+            "authorizationId": f"test.{role}.authorization{suffix}@1",
             "dataOwnerId": "test-owner",
             "controllerProfileContentHash": controller.content_hash,
             "commandContentHash": command.content_id,
@@ -262,7 +274,7 @@ def _complete_test_r7e_request(
         BeckhoffShadowRunEvidence,
         {
             "schemaId": "axiom.control.beckhoff-shadow-run-evidence@1",
-            "evidenceId": f"test.{role}.evidence@1",
+            "evidenceId": f"test.{role}.evidence{suffix}@1",
             "adapterId": "axiom.control.beckhoff-shadow-witness-adapter@1",
             "adapterVersion": "test-only",
             "platform": "Windows",
@@ -298,7 +310,7 @@ def _complete_test_r7e_request(
         },
     )
     return R7EAssessmentRequest(
-        caseId="site.test-case@1",
+        caseId=case_id,
         vendorProfile=profile,
         runtimeEvidence=runtime,
         witnessProfile=witness,

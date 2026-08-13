@@ -139,3 +139,46 @@ axiom field-evidence .\examples\field-evidence.open-request.json
 - 可写参数、可启动循环或可绕过现场责任链。
 
 这些状态在现场证据报告中固定为 `Open` 或 `NotAssessed`，不能由客户端覆盖。
+
+## 6. 把多个现场 dossier 送入 R5-B
+
+单个 `field-evidence-report.json` 只证明一台设备、一个 Case 的 R4.1 validation。R5-B 还要求至少两个 in-domain Case 跨两个 device 与两个 condition，并额外提供一个 OOD probe。不要把 calibration 运行再次当作 holdout；每个 dossier 只能贡献自己的 validation 运行。
+
+为每个 dossier 准备一个 `RealHoldoutIntakeCase` JSON：
+
+```json
+{
+  "report": {},
+  "role": "in-domain",
+  "topology": "head-table",
+  "trajectoryFamily": "site-family-a",
+  "taskId": "site-task-a",
+  "conditionId": "site-condition-a",
+  "batchId": "site-batch-a",
+  "maximumTimeErrorSeconds": 0.000001,
+  "deviceProfile": {},
+  "clockMapping": {},
+  "coordinateAlignment": {},
+  "lineage": {},
+  "bindings": []
+}
+```
+
+空对象和空数组仅表示字段位置，不是有效输入。`report` 必须是本指南前几步得到的完整报告；设备 Profile 必须与报告中的 controller machine/vendor/family 一致；坐标对齐必须来自真实 calibration record；lineage 必须绑定 validation M5 command 并保留 F4 七个数学 Claim；bindings 必须按 X/Y/Z/B/C 顺序完整覆盖五个 scalar channel，X/Y/Z 使用 `mm`，B/C 使用 `rad`。
+
+治理记录单独保存为完整 `RealHoldoutGovernance` JSON。其 owner、授权、许可、用途和保留策略由数据责任人提供，`attestedAt` 不得早于所有 Case capture 完成时刻。再保存一个没有 `realHoldoutSet` 的冻结 R5-B 基线 RunSpec。CLI 可直接组装并评估：
+
+```powershell
+axiom real-holdout-intake `
+  --base-run-spec .\r5b-base-run.json `
+  --governance .\real-holdout-governance.json `
+  --case .\case-machine-a.json `
+  --case .\case-machine-b.json `
+  --case .\case-ood.json |
+  Set-Content -Encoding utf8 .\real-holdout-intake-report.json
+$LASTEXITCODE
+```
+
+退出码为 `0=Passed`、`1=Open/Blocked`、`2=Malformed`。完整 `axiom.intelligence.real-holdout-intake-request@1` 文件也可作为位置参数提交。HTTP 入口是 `POST /api/v1/intelligence/r5b/intake/assess`；网页 **Intelligence R5-B** 工作台可多选 Case 文件、导入一个治理文件，并使用内置 Open 基线或先导入的 R5-B RunSpec。Intake 通过后，网页可分别下载投影后的 `RealPairedHoldoutSet` 和可执行 R5-B RunSpec。
+
+`intakeStatus=Passed` 只表示报告包含可执行的 `r5bRunSpec`。继续执行该 RunSpec 后，R5-B 才会计算 improvement、conformal coverage、alignment coverage 与 OOD abstention，并决定是否支持仅限所提交 Case 的泛化 Claim。Intake 和 R5-B 都不会开放 Controlled Trial、Closed Loop、DeviceSafe 或 ProcessSafe。

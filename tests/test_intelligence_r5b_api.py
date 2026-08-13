@@ -92,9 +92,24 @@ def test_intelligence_r5b_openapi_freezes_response_models() -> None:
     example_schema = openapi["paths"]["/api/v1/examples/intelligence-r5b"]["get"][
         "responses"
     ]["200"]["content"]["application/json"]["schema"]
+    intake_operation = openapi["paths"][
+        "/api/v1/intelligence/r5b/intake/assess"
+    ]["post"]
+    intake_request_schema = intake_operation["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    intake_response_schema = intake_operation["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
 
     assert manifest_schema == {"$ref": "#/components/schemas/R5BManifest"}
     assert scenarios_schema["items"] == {
         "$ref": "#/components/schemas/R5BScenarioSummary"
     }
     assert example_schema == {"$ref": "#/components/schemas/R5BExamplePayload"}
+    assert intake_request_schema == {
+        "$ref": "#/components/schemas/RealHoldoutIntakeRequest"
+    }
+    assert intake_response_schema == {
+        "$ref": "#/components/schemas/RealHoldoutIntakeReport"
+    }

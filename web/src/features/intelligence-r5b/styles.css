@@ -190,6 +190,81 @@
   white-space: normal;
 }
 
+.intelligence-r5b-intake-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  font: 10px var(--mono);
+}
+
+.intelligence-r5b-intake-downloads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.intelligence-r5b-intake-summary,
+.intelligence-r5b-intake-checks,
+.intelligence-r5b-intake-receipts {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.intelligence-r5b-intake-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 0.85rem;
+}
+
+.intelligence-r5b-intake-summary article,
+.intelligence-r5b-intake-checks article,
+.intelligence-r5b-intake-receipts article {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.intelligence-r5b-intake-summary span,
+.intelligence-r5b-intake-summary small,
+.intelligence-r5b-intake-receipts small {
+  display: block;
+  color: var(--muted);
+}
+
+.intelligence-r5b-intake-summary strong {
+  display: block;
+  margin: 0.45rem 0;
+  font: 1.2rem var(--mono);
+}
+
+.intelligence-r5b-intake-checks {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.intelligence-r5b-intake-checks header,
+.intelligence-r5b-intake-receipts header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.intelligence-r5b-intake-checks code,
+.intelligence-r5b-intake-receipts code {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.intelligence-r5b-intake-receipts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0.85rem;
+}
+
 @media (max-width: 1180px) {
   .workspace.intelligence-r5b-workspace {
     grid-template-columns: 292px minmax(420px, 1fr);
@@ -197,7 +272,9 @@
 
   .intelligence-r5b-metric-grid,
   .intelligence-r5b-threshold-grid,
-  .intelligence-r5b-run-grid {
+  .intelligence-r5b-run-grid,
+  .intelligence-r5b-intake-summary,
+  .intelligence-r5b-intake-receipts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -209,7 +286,11 @@
 
   .intelligence-r5b-threshold-grid,
   .intelligence-r5b-run-grid,
-  .intelligence-r5b-metric-grid {
+  .intelligence-r5b-metric-grid,
+  .intelligence-r5b-intake-summary,
+  .intelligence-r5b-intake-checks,
+  .intelligence-r5b-intake-receipts,
+  .intelligence-r5b-intake-downloads {
     grid-template-columns: 1fr;
   }
 

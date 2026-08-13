@@ -17,6 +17,10 @@ from .control import (
 from .evaluator import evaluate
 from .experiment import run_experiment
 from .field_evidence import FieldEvidenceAssessmentRequest, assess_field_evidence
+from .intelligence import (
+    RealHoldoutIntakeRequest,
+    assess_real_holdout_intake,
+)
 from .models import CaseOutcome, ExecutionStatus
 from .run import evaluate_run
 
@@ -25,6 +29,7 @@ MAX_REQUEST_BYTES = 8 * 1024 * 1024
 MAX_COMPARISON_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_EXPERIMENT_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_FIELD_EVIDENCE_BYTES = 2 * MAX_REQUEST_BYTES
+MAX_REAL_HOLDOUT_INTAKE_BYTES = 8 * MAX_REQUEST_BYTES
 
 
 class _CliInputError(Exception):
@@ -127,6 +132,87 @@ def _paired_field_evidence_request(
         ) from exc
 
 
+def _assembled_real_holdout_intake_request(
+    args: argparse.Namespace,
+) -> RealHoldoutIntakeRequest | None:
+    assembled_values = (
+        args.base_run_spec,
+        args.governance,
+        *(args.cases or ()),
+        args.intake_id,
+        args.holdout_set_id,
+        args.selection_id,
+    )
+    if args.request is not None:
+        if any(value is not None for value in assembled_values):
+            raise _CliInputError({"code": "AmbiguousRealHoldoutIntakeInput"})
+        return None
+    if args.base_run_spec is None or args.governance is None or not args.cases:
+        raise _CliInputError({"code": "IncompleteRealHoldoutIntakeInput"})
+
+    paths = (
+        ("baseRunSpec", args.base_run_spec, MAX_REQUEST_BYTES),
+        ("governance", args.governance, MAX_REQUEST_BYTES),
+        *(
+            (f"cases[{index}]", path, MAX_FIELD_EVIDENCE_BYTES)
+            for index, path in enumerate(args.cases)
+        ),
+    )
+    payloads: dict[str, object] = {}
+    case_payloads: list[object] = []
+    total_size = 0
+    for role, path, limit in paths:
+        try:
+            with path.open("rb") as stream:
+                raw = stream.read(limit + 1)
+            if len(raw) > limit:
+                raise _CliInputError(
+                    {"code": "RealHoldoutIntakeInputTooLarge", "role": role}
+                )
+            total_size += len(raw)
+            if total_size > MAX_REAL_HOLDOUT_INTAKE_BYTES:
+                raise _CliInputError(
+                    {"code": "RealHoldoutIntakeInputTooLarge", "role": "combined"}
+                )
+            payload = json.loads(raw.decode("utf-8"))
+        except _CliInputError:
+            raise
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise _CliInputError(
+                {
+                    "code": "UnreadableRealHoldoutIntakeInput",
+                    "role": role,
+                    "message": str(exc),
+                }
+            ) from exc
+        if role.startswith("cases["):
+            case_payloads.append(payload)
+        else:
+            payloads[role] = payload
+
+    try:
+        return RealHoldoutIntakeRequest.model_validate(
+            {
+                "schemaId": "axiom.intelligence.real-holdout-intake-request@1",
+                "schemaVersion": 1,
+                "intakeId": args.intake_id or "field.real-holdout-intake@1",
+                "holdoutSetId": args.holdout_set_id or "field.real-holdout-set@1",
+                "selectionId": args.selection_id or "field.real-holdout-selection@1",
+                "selectedBeforeEvaluation": True,
+                "baseRunSpec": payloads["baseRunSpec"],
+                "governance": payloads["governance"],
+                "cases": case_payloads,
+            }
+        )
+    except ValidationError as exc:
+        raise _CliInputError(
+            {
+                "code": "MalformedRealHoldoutIntakeRequest",
+                "path": _validation_path(exc),
+            }
+        ) from exc
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="axiom",
@@ -185,6 +271,24 @@ def _parser() -> argparse.ArgumentParser:
             "deployment-request@1 JSON file"
         ),
     )
+    intake_command = commands.add_parser(
+        "real-holdout-intake",
+        help="project Windows field evidence into one R5-B real holdout RunSpec",
+    )
+    intake_command.add_argument(
+        "request",
+        nargs="?",
+        type=Path,
+        help=(
+            "path to an axiom.intelligence.real-holdout-intake-request@1 JSON file"
+        ),
+    )
+    intake_command.add_argument("--base-run-spec", type=Path)
+    intake_command.add_argument("--governance", type=Path)
+    intake_command.add_argument("--case", action="append", dest="cases", type=Path)
+    intake_command.add_argument("--intake-id")
+    intake_command.add_argument("--holdout-set-id")
+    intake_command.add_argument("--selection-id")
     serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
     serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
@@ -212,6 +316,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
             return 0 if report.overall_status == "Passed" else 1
 
+    if args.command == "real-holdout-intake":
+        try:
+            assembled_intake_request = _assembled_real_holdout_intake_request(args)
+        except _CliInputError as exc:
+            print(json.dumps(exc.payload, ensure_ascii=False), file=sys.stderr)
+            return 2
+        if assembled_intake_request is not None:
+            report = assess_real_holdout_intake(assembled_intake_request)
+            print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+            return 0 if report.intake_status == "Passed" else 1
+
     if args.command == "evaluate":
         path, label, limit = args.request, "评估请求", MAX_REQUEST_BYTES
     elif args.command == "run":
@@ -220,6 +335,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         path, label, limit = args.comparison, "比较请求", MAX_COMPARISON_BYTES
     elif args.command == "field-evidence":
         path, label, limit = args.request, "现场证据请求", MAX_FIELD_EVIDENCE_BYTES
+    elif args.command == "real-holdout-intake":
+        path, label, limit = (
+            args.request,
+            "真实 holdout intake 请求",
+            MAX_REAL_HOLDOUT_INTAKE_BYTES,
+        )
     elif args.command == "beckhoff-witness-deployment":
         path, label, limit = args.request, "Beckhoff 见证部署请求", MAX_REQUEST_BYTES
     else:
@@ -290,6 +411,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = assess_field_evidence(request)
         print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
         return 0 if report.overall_status == "Passed" else 1
+
+    if args.command == "real-holdout-intake":
+        try:
+            request = RealHoldoutIntakeRequest.model_validate(payload)
+        except ValidationError as exc:
+            print(
+                json.dumps(
+                    {
+                        "code": "MalformedRealHoldoutIntakeRequest",
+                        "path": _validation_path(exc),
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        report = assess_real_holdout_intake(request)
+        print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        return 0 if report.intake_status == "Passed" else 1
 
     if args.command == "experiment":
         try:

@@ -76,6 +76,9 @@ from .intelligence import (
     R5ExamplePayload,
     R5Manifest,
     R5ScenarioSummary,
+    RealHoldoutIntakeReport,
+    RealHoldoutIntakeRequest,
+    assess_real_holdout_intake,
 )
 from .machine import (
     list_machine_r3_scenarios,
@@ -559,6 +562,17 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
                 status_code=503,
                 detail="Intelligence R5-B example payload loader is unavailable.",
             ) from exc
+
+    @app.post(
+        "/api/v1/intelligence/r5b/intake/assess",
+        response_model=RealHoldoutIntakeReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5b_intake_assess(
+        request: RealHoldoutIntakeRequest,
+    ) -> RealHoldoutIntakeReport:
+        return assess_real_holdout_intake(request)
 
     @app.get(
         "/api/v1/optimization/r6/manifest",

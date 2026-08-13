@@ -134,3 +134,24 @@ axiom-opcua-shadow beckhoff-shadow-capture `
 固定 `sourceKind=contract-fixture`、`declaredReal=false`，只用于跨语言合同验收；它不能计入
 deployment Shadow 或 R4.1 reality gate。真实 R4.1 验证必须另采 calibration 与 validation
 两次运行，并使用不同 capture authorization 和时间窗。
+
+采集完成后，用离线组装命令生成 Python 可直接验证的 R7-E assessment 文件。它不建立
+OPC UA session，会重新计算 portable 内容身份并核对所有跨文件绑定；失败时不会创建输出：
+
+```powershell
+axiom-opcua-shadow beckhoff-shadow-assessment `
+  --case-id site.part-family-17@1 `
+  --vendor-profile beckhoff-bound-profile.json `
+  --runtime-evidence beckhoff-runtime-evidence.json `
+  --witness-profile beckhoff-shadow-witness-profile.json `
+  --controller-profile controller-profile.json `
+  --authority readonly-authority.json `
+  --capture-authorization capture-authorization.json `
+  --command m5-command.json `
+  --shadow-evidence beckhoff-shadow-calibration.json `
+  --output calibration.r7e.json
+```
+
+对 validation 使用独立 command、authorization 与 Shadow evidence 重复组装，再通过
+`axiom field-evidence --calibration ... --validation ...` 进入现有双运行编排器。完整步骤见
+[`FIELD-EVIDENCE-WINDOWS.md`](../../FIELD-EVIDENCE-WINDOWS.md)。

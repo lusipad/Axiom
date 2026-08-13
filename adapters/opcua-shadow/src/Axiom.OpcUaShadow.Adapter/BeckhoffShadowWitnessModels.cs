@@ -78,7 +78,7 @@ public sealed record BeckhoffShadowWitnessProfile
     public required bool MethodCallAllowed { get; init; }
     public required string ContentHash { get; init; }
 
-    public void Validate()
+    public void Validate(bool requireContentHash = true)
     {
         Require(SchemaId == BeckhoffShadowWitnessContract.ProfileSchema,
             $"schemaId must be {BeckhoffShadowWitnessContract.ProfileSchema}");
@@ -111,8 +111,11 @@ public sealed record BeckhoffShadowWitnessProfile
                 && Contract.Sha256Pattern().IsMatch(ExpectedCommandContentHash),
             "expectedCommandContentHash is required");
         ValidateNodes();
-        Require(ContentHash == JsonSupport.ComputeCanonicalHash(this, "contentHash"),
-            "witness profile contentHash mismatch");
+        if (requireContentHash)
+        {
+            Require(ContentHash == JsonSupport.ComputeCanonicalHash(this, "contentHash"),
+                "witness profile contentHash mismatch");
+        }
     }
 
     private void ValidateNodes()
@@ -265,7 +268,8 @@ internal sealed record LoadedContentIdentity(
 internal sealed record M5CommandReference(
     string ContentId,
     int[] SampleIndexes,
-    string Path);
+    string Path,
+    JsonElement Root = default);
 
 internal sealed record ShadowWitnessCaptureInputs(
     LoadedBeckhoffProfile VendorProfile,
@@ -334,4 +338,141 @@ public sealed record BeckhoffShadowRunEvidence
     public required string DeviceSafetyStatus { get; init; }
     public required string ProcessSafetyStatus { get; init; }
     public required string ContentHash { get; init; }
+
+    public void Validate(bool requirePortableHashes = true)
+    {
+        Require(SchemaId == BeckhoffShadowWitnessContract.EvidenceSchema,
+            $"schemaId must be {BeckhoffShadowWitnessContract.EvidenceSchema}");
+        Require(Contract.VersionedIdPattern().IsMatch(EvidenceId),
+            "evidenceId must be versioned");
+        Require(AdapterId == BeckhoffShadowWitnessContract.AdapterId,
+            $"adapterId must be {BeckhoffShadowWitnessContract.AdapterId}");
+        Require(!string.IsNullOrWhiteSpace(AdapterVersion),
+            "adapterVersion is required");
+        Require(Platform == "Windows", "platform must be Windows");
+        Require(SourceKind is "controller-live-read" or "contract-fixture",
+            "sourceKind is invalid");
+        Require((SourceKind == "controller-live-read" && DeclaredReal)
+                || (SourceKind == "contract-fixture" && !DeclaredReal),
+            "sourceKind and declaredReal disagree");
+        foreach (string hash in new[]
+        {
+            ControllerProfileContentHash,
+            AuthorityContentHash,
+            CaptureAuthorizationContentHash,
+            VendorProfileContentHash,
+            RuntimeEvidenceContentHash,
+            WitnessProfileContentHash,
+            CommandContentHash,
+            Receipt.TranscriptContentHash,
+            ContentHash
+        })
+        {
+            Require(Contract.Sha256Pattern().IsMatch(hash),
+                "Shadow evidence contains an invalid content hash");
+        }
+        Require(TryAwareTimestamp(CapturedAt, out _),
+            "capturedAt must include an explicit UTC offset");
+        ValidateFrames(requirePortableHashes);
+        ValidateReceipt();
+        Require(!CountsTowardReality
+                && RealityValidationStatus == "Open"
+                && DeviceSafetyStatus == "NotAssessed"
+                && ProcessSafetyStatus == "NotAssessed",
+            "Shadow evidence must keep reality and safety gates open");
+        if (requirePortableHashes)
+        {
+            Require(ContentHash == JsonSupport.ComputeCanonicalHash(this, "contentHash"),
+                "Shadow evidence contentHash mismatch");
+        }
+    }
+
+    private void ValidateFrames(bool requireTranscriptHash)
+    {
+        for (int index = 0; index < Frames.Length; index++)
+        {
+            BeckhoffShadowWitnessFrame frame = Frames[index];
+            Require(frame.Sequence == index,
+                "Shadow frame sequence must be contiguous from zero");
+            Require(frame.ProtocolSequenceNumber > 0,
+                "protocolSequenceNumber must be positive");
+            Require(frame.NotifiedSampleIndex == frame.ReadSampleIndex,
+                "notified and read sample indexes must match");
+            Require(frame.CommandContentHash == CommandContentHash,
+                "frame command content hash mismatch");
+            Require(TryAwareTimestamp(frame.HostTimestamp, out _),
+                "frame hostTimestamp must include an explicit UTC offset");
+            Require(frame.Samples.Length == Contract.RequiredAxes.Length,
+                "Shadow frame must contain X/Y/Z/B/C samples");
+            for (int axisIndex = 0; axisIndex < frame.Samples.Length; axisIndex++)
+            {
+                BeckhoffShadowAxisSample sample = frame.Samples[axisIndex];
+                string expectedAxis = Contract.RequiredAxes[axisIndex];
+                string expectedUnit = axisIndex < 3 ? "mm" : "rad";
+                Require(sample.AxisId == expectedAxis && sample.Unit == expectedUnit,
+                    $"Shadow sample {axisIndex} must be {expectedAxis} in {expectedUnit}");
+                Require(double.IsFinite(sample.Value),
+                    $"axis {expectedAxis} value must be finite");
+                Require(sample.Quality is "good" or "suspect" or "bad",
+                    $"axis {expectedAxis} quality is invalid");
+                Require(!string.IsNullOrWhiteSpace(sample.StatusCode),
+                    $"axis {expectedAxis} statusCode is required");
+                Require(TryAwareTimestamp(sample.SourceTimestamp, out _)
+                        && TryAwareTimestamp(sample.ServerTimestamp, out _),
+                    $"axis {expectedAxis} timestamps must include an explicit UTC offset");
+            }
+        }
+        if (requireTranscriptHash)
+        {
+            Require(Receipt.TranscriptContentHash
+                    == JsonSupport.ComputeCanonicalHash(Frames),
+                "Shadow evidence transcriptContentHash mismatch");
+        }
+    }
+
+    private void ValidateReceipt()
+    {
+        Require(Receipt.Status is "Succeeded" or "Failed",
+            "capture receipt status is invalid");
+        Require(TryAwareTimestamp(Receipt.OpenedAt, out DateTimeOffset openedAt)
+                && TryAwareTimestamp(Receipt.ClosedAt, out DateTimeOffset closedAt)
+                && closedAt >= openedAt,
+            "capture receipt timestamps are invalid");
+        Require(Receipt.SubscribeOperationCount == 1
+                && Receipt.ReadOperationCount >= 0
+                && Receipt.WriteOperationCount == 0
+                && Receipt.MethodCallOperationCount == 0,
+            "capture receipt violates the read-only operation boundary");
+        Require(Receipt.ReceivedFrameCount == Frames.Length
+                && Receipt.AcceptedFrameCount >= 0
+                && Receipt.RejectedFrameCount >= 0
+                && Receipt.DroppedSampleIndexCount >= 0
+                && Receipt.AcceptedFrameCount + Receipt.RejectedFrameCount
+                    == Receipt.ReceivedFrameCount,
+            "capture receipt frame counts are inconsistent");
+        Require(Receipt.Status != "Succeeded" || Receipt.AcceptedFrameCount > 0,
+            "Succeeded capture receipt requires an accepted frame");
+    }
+
+    private static bool TryAwareTimestamp(string value, out DateTimeOffset timestamp)
+    {
+        timestamp = default;
+        return (value.EndsWith('Z')
+                || (value.Length >= 6
+                    && (value[^6] == '+' || value[^6] == '-')
+                    && value[^3] == ':'))
+            && DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out timestamp);
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new ShadowContractException(message);
+        }
+    }
 }

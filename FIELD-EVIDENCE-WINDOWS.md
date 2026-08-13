@@ -25,11 +25,29 @@
 - `controllerProfile`、`authority`、`captureAuthorization`；
 - 对应的 `command` 与 `shadowEvidence`。
 
-先用 `POST /api/v1/control/r7e/assess` 单独重验每份输入。只有两份返回的 `readinessAudit.deploymentShadowStatus` 都是 `Passed`，编排器才会创建 calibration/validation pair。
+采集完成后，不要手工复制这些对象到一个大 JSON。用同一个离线 `.NET` 程序把原始支持文件与本次 Shadow evidence 组装为一份可直接交给 Python 的 R7-E assessment 输入：
+
+```powershell
+axiom-opcua-shadow beckhoff-shadow-assessment `
+  --case-id site.part-family-17@1 `
+  --vendor-profile .\beckhoff-bound-profile.json `
+  --runtime-evidence .\beckhoff-runtime-evidence.json `
+  --witness-profile .\beckhoff-shadow-witness-profile.json `
+  --controller-profile .\controller-profile.json `
+  --authority .\readonly-authority.json `
+  --capture-authorization .\capture-authorization.json `
+  --command .\m5-command.json `
+  --shadow-evidence .\beckhoff-shadow-calibration.json `
+  --output .\calibration.r7e.json
+```
+
+该命令不建立网络连接。它重验所有 `contentHash` / `contentId`、Profile/runtime/authority/authorization/command/Shadow 绑定、授权时间窗、`controller-live-read + declaredReal` 来源和零 Write/Call 收据，并用 CreateNew 语义写出文件；任一绑定不一致时不生成输出。对 validation 使用另一组 command、authorization 和 Shadow evidence 重复执行，得到 `validation.r7e.json`。
+
+可先用 `POST /api/v1/control/r7e/assess` 单独重验每份输入。只有两份返回的 `readinessAudit.deploymentShadowStatus` 都是 `Passed`，编排器才会创建 calibration/validation pair。
 
 外部命令或 Shadow evidence 缺少 `caseId` 会被拒绝；Axiom 不再为现场输入填入共享的默认 Case。
 
-## 2. 组成现场验收请求
+## 2. 组成现场验收请求（兼容入口）
 
 请求结构如下。`calibration` 和 `validation` 都是上一步的 R7-E assessment 输入，而不是未经核验的轴数组：
 
@@ -68,6 +86,21 @@
 上面的空对象只是字段示意，不是可通过的真实输入。不要手工修改任何 `contentHash`；内容身份会在 R7-E、pair 和最终报告三个层次重新计算。
 
 ## 3. 用 CLI 验收
+
+推荐直接传入上一步的两份 R7-E 文件，不再手工组成双运行请求：
+
+```powershell
+axiom field-evidence `
+  --calibration .\calibration.r7e.json `
+  --validation .\validation.r7e.json `
+  --assessment-id site.line-1.part-family-17.assessment@1 `
+  --calibration-pair-id site.line-1.part-family-17.calibration@1 `
+  --validation-pair-id site.line-1.part-family-17.validation@1 |
+  Set-Content -Encoding utf8 .\field-evidence-report.json
+$LASTEXITCODE
+```
+
+完整 `axiom.field-evidence-assessment-request@1` 文件仍是兼容入口：
 
 ```powershell
 axiom field-evidence .\field-evidence-request.json |

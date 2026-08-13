@@ -176,6 +176,31 @@ internal static class Program
                 Console.WriteLine($"Evidence content hash: {evidence.ContentHash}");
                 return 0;
             }
+            if (args.Length >= 19 && args[0] == "beckhoff-shadow-assessment")
+            {
+                Dictionary<string, string> options = ParseNamedOptions(args, 1);
+                string outputPath = RequireOption(options, "--output");
+                using var assessmentCancellation = new CancellationTokenSource();
+                R7EAssessmentRequestDocument assessment =
+                    await BeckhoffShadowAssessmentAssembler.BuildAsync(
+                        RequireOption(options, "--case-id"),
+                        RequireOption(options, "--vendor-profile"),
+                        RequireOption(options, "--runtime-evidence"),
+                        RequireOption(options, "--witness-profile"),
+                        RequireOption(options, "--controller-profile"),
+                        RequireOption(options, "--authority"),
+                        RequireOption(options, "--capture-authorization"),
+                        RequireOption(options, "--command"),
+                        RequireOption(options, "--shadow-evidence"),
+                        assessmentCancellation.Token).ConfigureAwait(false);
+                await JsonSupport.WriteNewAsync(
+                    outputPath,
+                    assessment,
+                    assessmentCancellation.Token).ConfigureAwait(false);
+                Console.WriteLine(
+                    $"R7-E assessment request: {Path.GetFullPath(outputPath)}");
+                return 0;
+            }
             if (args.Length < 3 || args[1] != "--config")
             {
                 PrintUsage();
@@ -244,6 +269,8 @@ internal static class Program
             "  axiom-opcua-shadow beckhoff-witness-inspect --config <config.json> --runtime-evidence <runtime.json> --deployment-request <request.json> --evidence-id <id@1> --output <evidence.json>");
         Console.Error.WriteLine(
             "  axiom-opcua-shadow beckhoff-shadow-capture --config <config.json> --vendor-profile <bound-profile.json> --runtime-evidence <runtime.json> --witness-node-evidence <nodes.json> --witness-profile <witness.json> --controller-profile <controller.json> --authority <authority.json> --capture-authorization <authorization.json> --command <m5.json> --evidence-id <id@1> --output <evidence.json>");
+        Console.Error.WriteLine(
+            "  axiom-opcua-shadow beckhoff-shadow-assessment --case-id <id@1> --vendor-profile <bound-profile.json> --runtime-evidence <runtime.json> --witness-profile <witness.json> --controller-profile <controller.json> --authority <authority.json> --capture-authorization <authorization.json> --command <m5.json> --shadow-evidence <evidence.json> --output <assessment.json>");
     }
 
     private static Dictionary<string, string> ParseNamedOptions(
@@ -273,6 +300,8 @@ internal static class Program
                 or "--authority"
                 or "--capture-authorization"
                 or "--command"
+                or "--case-id"
+                or "--shadow-evidence"
                 or "--evidence-id"
                 or "--output")
                 || string.IsNullOrWhiteSpace(value)

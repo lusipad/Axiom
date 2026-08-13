@@ -695,7 +695,10 @@ jobs:
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7DExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7DAssessmentRequest") {
               throw "installed wheel did not expose the typed R7-D OpenAPI contract"
             }
-            if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "R7EExamplePayload" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "R7EAssessmentRequest") {
+            $r7eAssess = $openApi.paths."/api/v1/control/r7e/assess".post
+            $r7eRequestSchema = $r7eAssess.requestBody.content."application/json".schema.'$ref'
+            $r7eResponseSchema = $r7eAssess.responses."200".content."application/json".schema.'$ref'
+            if ($r7eRequestSchema -ne "#/components/schemas/R7EAssessmentRequest-Input" -or $r7eResponseSchema -ne "#/components/schemas/R7EExamplePayload") {
               throw "installed wheel did not expose the typed R7-E OpenAPI contract"
             }
             if ($openApi.components.schemas.PSObject.Properties.Name -notcontains "BeckhoffWitnessDeploymentReport" -or $openApi.components.schemas.PSObject.Properties.Name -notcontains "BeckhoffWitnessDeploymentRequest") {

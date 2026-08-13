@@ -2,6 +2,16 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## 0.20.1 - 2026-08-13
+
+### Fixed
+
+- Release wheel 冒烟测试现在按实际路由引用核验 R7-E 的 split input schema 与 typed response，不再把 FastAPI 生成的 `R7EAssessmentRequest-Input` 误判为缺失契约。
+
+### Boundary
+
+- 本补丁不改变 R7-E API、采集协议或安全语义；真实 TwinCAT/TF6100 证据、Deployment Shadow 与 Reality 仍保持 `Open`，DeviceSafe/ProcessSafe 仍为 `NotAssessed`。
+
 ## 0.20.0 - 2026-08-13
 
 ### Added

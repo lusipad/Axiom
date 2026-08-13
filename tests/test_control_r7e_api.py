@@ -59,3 +59,16 @@ def test_r7e_http_rejects_unknown_scenario() -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_r7e_openapi_freezes_split_input_and_typed_response() -> None:
+    openapi = create_app(serve_frontend=False).openapi()
+    operation = openapi["paths"]["/api/v1/control/r7e/assess"]["post"]
+
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+
+    assert request_schema == {
+        "$ref": "#/components/schemas/R7EAssessmentRequest-Input"
+    }
+    assert response_schema == {"$ref": "#/components/schemas/R7EExamplePayload"}

@@ -153,6 +153,7 @@ jobs:
           & .\release-smoke\Scripts\axiom.exe --help
           @'
           from importlib.metadata import version
+          from os import environ
           from pathlib import Path
 
           import axiom
@@ -233,7 +234,7 @@ jobs:
           )
           from axiom.run import validate_run_bundle_integrity
 
-          assert version("axiom-evaluator") == "0.20.0"
+          assert version("axiom-evaluator") == environ["GITHUB_REF_NAME"].removeprefix("v")
           assert (Path(axiom.__file__).parent / "web_dist" / "index.html").is_file()
           expected_policy = {
               "openblasCoreType": "Haswell",

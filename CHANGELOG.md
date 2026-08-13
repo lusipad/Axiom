@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- Release wheel 冒烟测试现在按实际路由引用核验 R7-E 的 split input schema 与 typed response，不再把 FastAPI 生成的 `R7EAssessmentRequest-Input` 误判为缺失契约。
+- Release wheel 冒烟测试现在从发布标签推导安装版本，并按实际路由引用核验 R7-E 的 split input schema 与 typed response，不再把 `v0.20.1` 或 FastAPI 生成的 `R7EAssessmentRequest-Input` 误判为缺失契约。
 
 ### Boundary
 

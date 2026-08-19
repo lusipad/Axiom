@@ -3,7 +3,7 @@
 > 文档类型：理论基础与规范上位约束  
 > 状态：Draft / Proposed  
 > 适用范围：Axiom v1 的实验、评价、模型验证、证据与决策语义  
-> 当前结论：本文件建立可实现、可证伪的数学骨架；它不是对真实设备安全性的证明  
+> 当前结论：本文建立可实现、可证伪的数学骨架；它不是对真实设备安全性的证明  
 > 更新日期：2026-08-19
 
 ## 1. 文档目的
@@ -20,11 +20,20 @@ Axiom v1 不再以“输入数据后计算若干指标”为理论中心，而�
 → 有限适用域内的工程声明
 ```
 
-每一次转换都可能引入数值误差、离散化误差、时间与坐标对齐误差、模型结构误差、测量误差和统计不确定性。Axiom 的根本任务是回答：
+每一次转换都可能引入：
+
+- 数值求解误差；
+- 离散化和重建误差；
+- 时间和坐标对齐误差；
+- 模型参数与结构误差；
+- 测量误差；
+- 有限样本带来的统计不确定性。
+
+Axiom 的根本任务是回答：
 
 > 在什么明确条件下，一个关于数学模型、仿真或有限试验的结论，能够迁移为关于真实 CNC 的有限范围结论？
 
-本文件给出：
+本文给出：
 
 1. CNC 的混合系统与几何语义；
 2. 多通道 Trace、距离与性质鲁棒度；
@@ -36,51 +45,59 @@ Axiom v1 不再以“输入数据后计算若干指标”为理论中心，而�
 
 ## 2. 核心研究问题
 
-设算法或系统版本为 \(A,B\)，离线或仿真评价指标为 \(\widehat J\)，真实设备评价指标为 \(J\)。Axiom 的核心科学问题不是：
+设算法或系统版本为 A、B，离线或仿真指标为 J_model，真实设备指标为 J_real。若指标越小越好，定义：
+
+$$
+Δ_model = J_model(B) - J_model(A)
+$$
+
+$$
+Δ_real = J_real(B) - J_real(A)
+$$
+
+Axiom 的核心科学问题不是：
 
 > 仿真曲线与实机曲线看起来是否接近？
 
 而是：
 
-> 当 Axiom 依据数学或仿真证据判定 \(B\) 优于 \(A\) 时，这一排序在声明的设备、控制器、轨迹族和工况范围内是否仍成立？
+> 当数学或 Orion 证据判定 B 优于 A 时，这一排序在声明的设备、控制器、轨迹族和工况范围内是否仍成立？
 
-形式化地，若越小越好：
+若最小有实际意义的改善为 δ_min，Axiom 只有在证明或验证：
 
-\[
-\widehat\Delta
-=
-\widehat J(B)-\widehat J(A),
-\qquad
-\Delta
-=
-J(B)-J(A)
-\]
+$$
+Δ_model + B_transfer < -δ_min
+$$
 
-Axiom 只有在证明或验证：
+时，才允许产生：
 
-\[
-\widehat\Delta + B_{\mathrm{transfer}} < -\delta_{\min}
-\]
+$$
+Δ_real < -δ_min
+$$
 
-时，才允许产生“真实系统至少改善 \(\delta_{\min}\)”的正向 Claim。其中 \(B_{\mathrm{transfer}}\) 是从模型、离散、对齐、测量和统计不确定度组合得到的保守上界。
+这一正向 Claim。B_transfer 是从数值、离散、模型、时间、坐标、测量和统计不确定性组合得到的保守迁移界。
 
 ## 3. Axiom Margin Principle
 
 Axiom v1 的第一原则是：
 
-\[
-\boxed{
-\text{没有超过总不确定度的裕量，就没有可迁移的正向结论。}
-}
-\]
+> **没有超过总不确定度的裕量，就没有可迁移的正向结论。**
 
-对于性质 \(arphi\)，设模型或观测 Trace 的鲁棒裕量为 \(ho_\varphi(\widehat\tau)\)，端到端迁移界为 \(B\)。只有当：
+对于性质 φ，设模型或观测 Trace 的鲁棒裕量为 ρ_φ(τ_model)，端到端迁移界为 B。只有当：
 
-\[
-\rho_\varphi(\widehat\tau)>B
-\]
+$$
+ρ_φ(τ_model) > B
+$$
 
-时，才能把该性质迁移到目标真实 Trace。若只知道 \(ho_\varphi(\widehat\tau)>0\)，但不知道它是否大于迁移误差，则结论只能是 `Inconclusive`。
+时，才能把该性质迁移到目标真实 Trace。
+
+如果只知道：
+
+$$
+ρ_φ(τ_model) > 0
+$$
+
+但不知道它是否大于迁移误差，则结论必须是 `Inconclusive`，不能因为仿真中“通过”就升级为现实中的正向声明。
 
 ## 4. 基本对象与符号
 
@@ -88,16 +105,9 @@ Axiom v1 的第一原则是：
 
 一个适用域定义为：
 
-\[
-D
-\subseteq
-D_{machine}
-\times D_{controller}
-\times D_{trajectory}
-\times D_{process}
-\times D_{environment}
-\times D_{measurement}
-\]
+$$
+D ⊆ D_machine × D_controller × D_trajectory × D_process × D_environment × D_measurement
+$$
 
 它至少冻结：
 
@@ -108,164 +118,240 @@ D_{machine}
 - 温度、暖机与环境范围；
 - 采集、计量、时钟和坐标配置。
 
-不存在脱离适用域的 `ModelValidated=true`。所有 Claim 都必须携带 \(D\)。
+不存在脱离适用域的 `ModelValidated = true`。所有 Claim 都必须携带 D。
 
 ### 4.2 CNC 的随机混合系统语义
 
 一个 CNC、PLC、伺服与机床组合建模为：
 
-\[
-\mathcal H=
-(
-\mathcal M,
-\{X_m\}_{m\in\mathcal M},
-U,W,\Theta,
-F,G,R,H,\mu_0
-)
-\]
+$$
+ℋ = (M, {X_m}, U, W, Θ, F, G, R, H, μ_0)
+$$
 
 其中：
 
-- \(\mathcal M\)：离散模式，例如 `Idle`、`Run`、`Hold`、`Stopping`、`Fault`；
-- \(X_m\)：模式 \(m\) 下的连续状态空间；
-- \(U\)：控制输入；
-- \(W\)：扰动；
-- \(\Theta\)：设备与模型参数；
-- \(F\)：连续动力学；
-- \(G\)：模式转换 Guard；
-- \(R\)：离散跳变 Reset；
-- \(H\)：观测映射；
-- \(\mu_0\)：初始状态分布。
+- M：离散模式集合，例如 `Idle`、`Run`、`Hold`、`Stopping`、`Fault`；
+- X_m：模式 m 下的连续状态空间；
+- U：控制输入；
+- W：外部扰动；
+- Θ：设备和模型参数；
+- F：连续动力学；
+- G：模式转换 Guard；
+- R：离散跳变 Reset；
+- H：观测映射；
+- μ_0：初始状态分布。
 
-连续演化可写为：
+模式 m 下的连续演化可以表示为：
 
-\[
-dx_t=f_m(x_t,u_t,\theta,c)dt+\Sigma_m(x_t,u_t,\theta,c)dW_t
-\]
+$$
+dx_t = f_m(x_t, u_t, θ, c)dt + Σ_m(x_t, u_t, θ, c)dW_t
+$$
 
-事件 \(e\) 触发时：
+事件 e 触发时：
 
-\[
-m^+=\Gamma_e(m^-),
-\qquad
-x^+=R_e(x^-,u^-,\theta)
-\]
+$$
+m^+ = Γ_e(m^-)
+$$
+
+$$
+x^+ = R_e(x^-, u^-, θ)
+$$
 
 设备观测为：
 
-\[
-z_k=h_m(x(t_k),\eta,c)+\nu_k
-\]
+$$
+z_k = h_m(x(t_k), η, c) + ν_k
+$$
 
-本语义要求连续信号、离散事件、运行模式和时钟同时成为一等对象；任何仅使用点序列的领域包都只是该语义的一个投影。
+本语义要求连续信号、离散事件、运行模式和时钟同时成为一等对象；只使用点序列的领域包只是该系统语义的一个投影。
 
-### 4.3 配置空间和任务空间
+### 4.3 时钟模型
 
-对 \(n_l\) 个直线轴和 \(n_r\) 个旋转轴：
+每个设备或采集源有自己的时间域 c：
 
-\[
-Q=\mathbb R^{n_l}\times\mathbb T^{n_r}
-\]
-
-考虑机械限位和有效配置后：
-
-\[
-Q_{adm}\subset Q
-\]
-
-刀具相对工件的位姿属于 \(SE(3)\)，正向运动学是：
-
-\[
-F:Q_{adm}\rightarrow SE(3)
-\]
-
-其微分：
-
-\[
-dF_q:T_qQ\rightarrow T_{F(q)}SE(3)
-\]
-
-在局部坐标中表示为雅可比 \(J(q)\)。奇异集合为：
-
-\[
-\Sigma=
-\{q\in Q_{adm}:\operatorname{rank}J(q)<r\}
-\]
-
-这里 \(r\) 是当前任务所需的局部维数，不应无条件固定为 6。
-
-### 4.4 约束路径提升
-
-给定任务空间路径：
-
-\[
-\gamma:[0,1]\rightarrow SE(3)
-\]
-
-其五轴可行性不是“每个离散点都存在逆解”，而是存在连续提升：
-
-\[
-q:[0,1]\rightarrow Q_{adm}
-\]
-
-满足：
-
-\[
-F(q(s))=\gamma(s),
-\quad
-q(s)\notin\Sigma,
-\quad
-q(s)\in Q_{free}
-\]
-
-路径提升集合定义为：
-
-\[
-\mathcal L(\gamma)=
-\left\{
-q\in W^{3,\infty}([0,1],Q_{adm})
-\mid
-F(q(s))=\gamma(s),
-q(s)\in Q_{free},
-q(0)\in B_0
-\right\}
-\]
-
-运动学可行性是：
-
-\[
-\mathcal L(\gamma)\neq\varnothing
-\]
-
-它同时要求分支连续、远离奇异集合、满足配置空间碰撞和轴限位，并具有后续 Jerk 时间参数化所需的正则性。
-
-## 5. Trace 空间
-
-### 5.1 多通道 TraceBundle
-
-一个运行观测不是单一 Artifact，而是：
-
-\[
-\mathcal T=
-(
-\{\tau_c\}_{c\in C},
-\mathcal K,
-\mathcal F,
-\mathcal E,
-P
-)
-\]
+$$
+t̂_c = a_c t + b_c + ξ_c(t)
+$$
 
 其中：
 
-- \(C\)：通道集合；
-- \(	au_c:[0,T_c]\rightarrow Y_c\)：通道 Trace；
-- \(\mathcal K\)：ClockGraph；
-- \(\mathcal F\)：FrameGraph；
-- \(\mathcal E\)：事件与模式 Trace；
-- \(P\)：Provenance。
+- a_c：时钟速率误差；
+- b_c：时钟偏置；
+- ξ_c：抖动和非平稳同步误差。
 
-每个值空间 \(Y_c\) 必须声明单位、类型和度量 \(d_c\)。典型通道包括：
+若无法给出时钟映射及其误差界，跨源逐样点比较不得产生正向现实 Claim。
+
+### 4.4 配置空间和任务空间
+
+对 n_l 个直线轴和 n_r 个旋转轴，机床配置空间为：
+
+$$
+Q = ℝ^{n_l} × 𝕋^{n_r}
+$$
+
+考虑机械限位和有效配置后：
+
+$$
+Q_adm ⊂ Q
+$$
+
+刀具相对工件的位姿属于 SE(3)，正向运动学是：
+
+$$
+F : Q_adm → SE(3)
+$$
+
+其微分为：
+
+$$
+dF_q : T_qQ → T_{F(q)}SE(3)
+$$
+
+在局部坐标中表示为雅可比 J(q)。奇异集合为：
+
+$$
+Σ_sing = {q ∈ Q_adm : rank J(q) < r}
+$$
+
+r 是当前任务所需的局部维数，不应无条件固定为 6。
+
+### 4.5 位姿误差
+
+Axiom 默认保留平移误差和旋转误差两个分量：
+
+$$
+e_pose(T_1, T_2) = (‖p_1-p_2‖, ‖log(R_1^T R_2)∨‖)
+$$
+
+只有在 Profile 明确给出特征长度 ℓ_c 后，才允许形成标量：
+
+$$
+d_ℓ(T_1,T_2)^2 = ‖p_1-p_2‖^2 + ℓ_c^2 ‖log(R_1^T R_2)∨‖^2
+$$
+
+毫米与弧度不得依靠数组位置直接相加。
+
+### 4.6 约束路径提升
+
+给定任务空间路径：
+
+$$
+γ : [0,1] → SE(3)
+$$
+
+其五轴可行性不是“每个离散点都有一个逆解”，而是存在连续提升：
+
+$$
+q : [0,1] → Q_adm
+$$
+
+满足：
+
+$$
+F(q(s)) = γ(s)
+$$
+
+$$
+q(s) ∉ Σ_sing
+$$
+
+$$
+q(s) ∈ Q_free
+$$
+
+定义路径提升集合：
+
+$$
+L(γ) = {q ∈ W^{3,∞}([0,1],Q_adm) : F(q(s))=γ(s), q(s)∈Q_free, q(0)∈B_0}
+$$
+
+运动学可行性是：
+
+$$
+L(γ) ≠ ∅
+$$
+
+它同时要求：
+
+- 分支连续；
+- 不穿越奇异集合；
+- 不进入配置空间碰撞区域；
+- 满足轴限位；
+- 具有后续 Jerk 时间参数化所需的正则性。
+
+## 5. 时间参数化
+
+给定几何轴路径 q(s) 和时间律 s(t)：
+
+$$
+s(0)=0, s(T)=1, ds/dt ≥ 0
+$$
+
+轴导数必须按链式法则计算：
+
+$$
+dq/dt = q'(s) ds/dt
+$$
+
+$$
+d²q/dt² = q''(s)(ds/dt)^2 + q'(s)d²s/dt²
+$$
+
+$$
+d³q/dt³ = q'''(s)(ds/dt)^3 + 3q''(s)(ds/dt)(d²s/dt²) + q'(s)d³s/dt³
+$$
+
+时间规划问题为：
+
+$$
+min T
+$$
+
+subject to：
+
+$$
+|dq_i/dt| ≤ v_i^{max}
+$$
+
+$$
+|d²q_i/dt²| ≤ a_i^{max}
+$$
+
+$$
+|d³q_i/dt³| ≤ j_i^{max}
+$$
+
+以及驱动力、奇异性、碰撞和工艺约束。
+
+Axiom 必须区分：
+
+1. 找到一个数值时间律；
+2. 离散节点满足约束；
+3. 连续区间满足约束；
+4. 参数扰动后仍鲁棒满足约束。
+
+四者不得共用一个 `Passed`。
+
+## 6. Trace 空间
+
+### 6.1 多通道 TraceBundle
+
+一个运行观测不是单一 Artifact，而是：
+
+$$
+T_bundle = ({τ_c}_{c∈C}, K_clock, F_frame, E_event, P)
+$$
+
+其中：
+
+- C：通道集合；
+- τ_c : [0,T_c] → Y_c：通道 Trace；
+- K_clock：ClockGraph；
+- F_frame：FrameGraph；
+- E_event：事件与模式 Trace；
+- P：Provenance。
+
+每个值空间 Y_c 必须声明单位、类型和度量 d_c。典型通道包括：
 
 - `SignalTrace<T>`：位置、速度、电流、温度；
 - `EventTrace`：启动、停止、报警、Reset、控制权请求；
@@ -273,104 +359,85 @@ P
 - `TrajectoryTrace`：任务空间或轴空间轨迹；
 - `MeasurementTrace`：外部计量数据与不确定度。
 
-### 5.2 Trace 距离
+### 6.2 Trace 距离
 
 Axiom 不定义一个跨所有领域的万能距离。每个 Comparator 必须声明：
 
-\[
-(\mathcal T,d_{\mathcal T})
-\]
+$$
+(T, d_T)
+$$
 
-对于允许有限时间扭曲的连续或分段连续 Trace，可使用 Skorokhod 型距离：
+对于允许有限时间扭曲的连续或分段连续 Trace，可以使用 Skorokhod 型距离：
 
-\[
-d_{Sk}(\tau_1,\tau_2)
-=
-\inf_{\lambda\in\Lambda}
-\max
-\left\{
-\|\lambda-id\|_\infty,
-\sup_t d_Y(\tau_1(t),\tau_2(\lambda(t)))
-\right\}
-\]
+$$
+d_Sk(τ_1,τ_2) = inf_{λ∈Λ} max(‖λ-id‖_∞, sup_t d_Y(τ_1(t),τ_2(λ(t))))
+$$
 
-其中 \(\Lambda\) 为严格单调、端点保持的时间重参数化集合。若评价的是控制器固定采样语义，则必须限制或禁用重参数化，避免把真实超时“对齐掉”。
+其中 Λ 是严格单调、端点保持的时间重参数化集合。
 
-多通道距离可以定义为：
+若评价的是固定采样周期、超时或实时事件，则必须限制或禁用重参数化，避免把真实时序缺陷“对齐掉”。
 
-\[
-d_{bundle}(\mathcal T_1,\mathcal T_2)
-=
-\max_{c\in C}w_c d_c(\tau_{1c},\tau_{2c})
-\]
+多通道距离可以按目标定义为向量：
 
-但权重 \(w_c\) 只能在单位、业务含义和 Claim 中显式声明；默认情况下，线性轴、旋转轴、事件和状态不得被压缩为一个标量总分。
+$$
+d_bundle = (d_position, d_velocity, d_event, d_mode, d_measurement)
+$$
 
-## 6. 性质、鲁棒度和 Claim
+默认不把线性轴、旋转轴、事件和模式压缩为一个标量总分。
 
-### 6.1 性质鲁棒度
+## 7. 性质、鲁棒度和 Claim
 
-一个性质 \(arphi\) 对 Trace 的定量语义为：
+### 7.1 性质鲁棒度
 
-\[
-\rho_\varphi:\mathcal T\rightarrow\mathbb R
-\]
+一个性质 φ 对 Trace 的定量语义为：
+
+$$
+ρ_φ : T → ℝ
+$$
 
 约定：
 
-- \(ho_\varphi(\tau)>0\)：满足；
-- \(ho_\varphi(\tau)<0\)：违反；
-- \(|\rho_\varphi(\tau)|\)：到性质边界的裕量。
+- ρ_φ(τ) > 0：满足；
+- ρ_φ(τ) < 0：违反；
+- |ρ_φ(τ)|：到性质边界的裕量。
 
 例如跟随误差约束：
 
-\[
-\varphi_{fe}
-=
-\mathbf G_{[0,T]}(|e_f(t)|\le e_{max})
-\]
+$$
+φ_fe = G_[0,T](|e_f(t)| ≤ e_max)
+$$
 
 控制权唯一性：
 
-\[
-\varphi_{owner}
-=
-\mathbf G
-\left(
-\sum_{s\in Sources}owner(axis,s)\le1
-\right)
-\]
+$$
+φ_owner = G(Σ_{s∈Sources} owner(axis,s) ≤ 1)
+$$
 
-紧停后进入安全停止模式：
+紧停后必须在 T_s 内进入安全停止模式：
 
-\[
-\varphi_{stop}
-=
-\mathbf G
-\left(
-EmergencyStop
-\rightarrow
-\mathbf F_{[0,T_s]}SafeStopped
-\right)
-\]
+$$
+φ_stop = G(EmergencyStop ⇒ F_[0,T_s](SafeStopped))
+$$
 
-### 6.2 Claim
+这里 G 和 F 是时序逻辑中的“始终”和“最终”算子；具体离散/连续语义由 DomainPackage 冻结。
+
+### 7.2 Claim
 
 一个 Claim 定义为：
 
-\[
-C=(\phi,D,I,K,A)
-\]
+$$
+C = (φ, D, I, K, A)
+$$
 
 其中：
 
-- \(\phi\)：命题；
-- \(D\)：适用域；
-- \(I\)：预期用途；
-- \(K\)：可信度描述；
-- \(A\)：依赖的 Argument。
+- φ：命题；
+- D：适用域；
+- I：预期用途；
+- K：可信度描述；
+- A：依赖的 Argument。
 
-Claim 的结论状态只允许：
+Claim 状态只允许：
 
 ```text
 Supported
@@ -378,49 +445,44 @@ Refuted
 Inconclusive
 ```
 
-`Supported` 不等于全局真理，只表示在 \(D\)、\(I\)、冻结假设和当前证据下，Argument 已满足声明的接受规则。
+`Supported` 不等于全局真理，只表示在 D、I、冻结假设和当前证据下，Argument 满足声明的接受规则。
 
-## 7. 可信度证书
+## 8. 可信度证书
 
-### 7.1 定义
+### 8.1 定义
 
-从表示层 \(X\) 到 \(Y\) 的可信度证书定义为：
+从表示层 X 到 Y 的可信度证书定义为：
 
-\[
-\mathcal C_{X\to Y}
-=
-(
-D,
-R,
-d,
-\varepsilon,
-\alpha,
-A,
-M,
-P
-)
-\]
+$$
+C_XY = (D, R, d, ε, α, A, M, P)
+$$
 
 其中：
 
-- \(D\)：适用域；
-- \(R\subseteq X\times Y\)：对应关系；
-- \(d\)：比较距离；
-- \(arepsilon\ge0\)：误差界；
-- \(\alpha\in[0,1]\)：界失效风险上界；
-- \(A\)：成立所需假设；
-- \(M\)：证明、验证、测量或统计方法；
-- \(P\)：Provenance。
+- D：适用域；
+- R ⊂ X × Y：对应关系；
+- d：比较距离；
+- ε ≥ 0：误差界；
+- α ∈ [0,1]：误差界失效风险上界；
+- A：成立所需假设；
+- M：证明、验证、测量或统计方法；
+- P：Provenance。
 
-语义为：对 \(D\) 内的有效输入，有：
+其语义是：
 
-\[
-\Pr[d(x,y)\le\varepsilon]\ge1-\alpha
-\]
+$$
+Pr[d(x,y) ≤ ε] ≥ 1-α
+$$
 
-演绎证明可取 \(\alpha=0\)，但仍必须记录证明依赖、数值类型和模型假设；真实观测证书通常有 \(\alpha>0\)，且必须记录测量模型。
+演绎证明可以取 α = 0，但仍必须记录：
 
-### 7.2 证书种类
+- 证明依赖；
+- 数值类型；
+- 模型假设；
+- 适用域；
+- 使用的形式系统。
+
+### 8.2 证书种类
 
 `methodKind` 至少区分：
 
@@ -432,37 +494,47 @@ StatisticallyValidated
 DirectlyObserved
 ```
 
-这些类别不是从强到弱的单一等级。一个针对简化方程的演绎证明和一个独立外部计量结果支持的是不同命题，不能用 `Exact > Observed` 的线性枚举比较。
+这些类别不是从强到弱的线性等级。针对简化方程的演绎证明和独立外部计量支持的是不同命题，不能用 `Exact > Observed` 比较。
 
-### 7.3 证书偏序
+### 8.3 证书偏序
 
-对相同关系、距离和假设族，定义：
+对相同关系、距离和假设族，定义 C_1 ≽ C_2，当且仅当：
 
-\[
-\mathcal C_1\succeq\mathcal C_2
-\]
+$$
+D_1 ⊇ D_2
+$$
 
-当且仅当：
+$$
+ε_1 ≤ ε_2
+$$
 
-\[
-D_1\supseteq D_2,
-\qquad
-\varepsilon_1\le\varepsilon_2,
-\qquad
-\alpha_1\le\alpha_2
-\]
+$$
+α_1 ≤ α_2
+$$
 
-并且 \(\mathcal C_1\) 的假设不比 \(\mathcal C_2\) 更强。该关系是偏序，不是总序；大量证书彼此不可比较。
+并且 C_1 的假设不比 C_2 更强。
 
-## 8. 八条基础公理
+这是偏序，不是总序；大量证书彼此不可比较。
+
+### 8.4 证书组合
+
+若 C_1 连接 X 到 Y，C_2 连接 Y 到 Z，且它们的中间表示、距离和假设兼容，则组合证书定义为：
+
+$$
+C_1 ⊗ C_2 = (D_1∩D_2, ε_1+ε_2, min(1,α_1+α_2), A_1∪A_2, P_1∪P_2)
+$$
+
+默认风险使用 union bound 组合。只有明确证明独立性或联合分布结构后，才能采用更紧的风险计算。
+
+## 9. 八条基础公理
 
 ### AX-01 预期用途公理
 
-模型、指标和证书只能相对于明确的 Intended Use 评价，不存在无条件“有效模型”。
+模型、指标和证书只能相对于明确 Intended Use 评价，不存在无条件“有效模型”。
 
 ### AX-02 类型与量纲公理
 
-任何比较、组合和阈值必须在类型、单位、Frame、Clock 和重建语义兼容后进行；禁止依赖数组形状推断语义。
+比较、组合和阈值必须在类型、单位、Frame、Clock 和重建语义兼容后进行；禁止依赖数组形状推断语义。
 
 ### AX-03 Raw 不可变公理
 
@@ -488,204 +560,171 @@ Subject 自身生成的结论不能作为独立验证证据；Reference、Verifi
 
 Optimizer 提出候选、Evaluator 评价候选、DecisionPolicy 处置候选、设备权限方执行候选；四者不得由一个未经独立约束的角色合并。
 
-## 9. 核心定理
+## 10. 核心定理
 
 ### 定理 T1：证书域限制单调性
 
-若证书 \(\mathcal C=(D,R,d,\varepsilon,\alpha,A,M,P)\) 成立，且 \(D'\subseteq D\)，则：
+若证书 C 在域 D 上成立，且 D' ⊆ D，则将 C 的适用域限制到 D' 后仍成立。
 
-\[
-\mathcal C|_{D'}=(D',R,d,\varepsilon,\alpha,A,M,P)
-\]
+**证明。** 原证书的误差和风险界对 D 中所有有效输入成立，因此也对其子集 D' 中的所有输入成立。证毕。
 
-仍成立。
-
-**证明。** 原证书的概率界对 \(D\) 中所有有效输入成立，因此也对其子集 \(D'\) 中的所有输入成立。证毕。
-
-该定理只允许收缩适用域，不允许在没有额外证据时扩大适用域。
+该定理只允许收缩适用域，不允许在没有新证据时扩大适用域。
 
 ### 定理 T2：证书链组合定理
 
 设：
 
-\[
-x_0,x_1,\ldots,x_n\in(\mathcal T,d)
-\]
+$$
+x_0, x_1, …, x_n ∈ (T,d)
+$$
 
-且每一层证书满足：
+并且每一层满足：
 
-\[
-\Pr[d(x_{i-1},x_i)\le\varepsilon_i]\ge1-\alpha_i
-\]
+$$
+Pr[d(x_{i-1},x_i) ≤ ε_i] ≥ 1-α_i
+$$
 
 则：
 
-\[
-\Pr
-\left[
- d(x_0,x_n)\le\sum_{i=1}^n\varepsilon_i
-\right]
-\ge
-1-\min\left(1,\sum_{i=1}^n\alpha_i\right)
-\]
+$$
+Pr[d(x_0,x_n) ≤ Σ_i ε_i] ≥ 1-min(1,Σ_i α_i)
+$$
 
-适用域为各层证书适用域的交集。
+适用域是所有层证书适用域的交集。
 
-**证明。** 令事件 \(E_i=\{d(x_{i-1},x_i)\le\varepsilon_i\}\)。在 \(\cap_iE_i\) 上，由三角不等式：
+**证明。** 令事件 E_i 表示 d(x_{i-1},x_i) ≤ ε_i。在所有 E_i 同时成立时，由三角不等式：
 
-\[
-d(x_0,x_n)
-\le
-\sum_i d(x_{i-1},x_i)
-\le
-\sum_i\varepsilon_i
-\]
+$$
+d(x_0,x_n) ≤ Σ_i d(x_{i-1},x_i) ≤ Σ_i ε_i
+$$
 
 由 union bound：
 
-\[
-\Pr[\cap_iE_i]
-=1-\Pr[\cup_iE_i^c]
-\ge1-\sum_i\Pr[E_i^c]
-\ge1-\sum_i\alpha_i
-\]
+$$
+Pr[∩_i E_i] = 1-Pr[∪_i E_i^c] ≥ 1-Σ_i Pr[E_i^c] ≥ 1-Σ_i α_i
+$$
 
-并将下界截断到 \([0,1]\)。证毕。
-
-除非明确证明独立性或其他联合分布结构，Axiom 默认使用该保守风险组合，不得擅自相乘概率。
+将概率下界截断到 [0,1]，得到结论。证毕。
 
 ### 定理 T3：Lipschitz 指标迁移定理
 
-若 \(J:(\mathcal T,d)\rightarrow\mathbb R\) 是 \(L_J\)-Lipschitz：
+若指标 J : (T,d) → ℝ 是 L_J-Lipschitz：
 
-\[
-|J(x)-J(y)|\le L_Jd(x,y)
-\]
+$$
+|J(x)-J(y)| ≤ L_J d(x,y)
+$$
 
 且证书给出：
 
-\[
-\Pr[d(x,y)\le\varepsilon]\ge1-\alpha
-\]
+$$
+Pr[d(x,y) ≤ ε] ≥ 1-α
+$$
 
 则：
 
-\[
-\Pr[|J(x)-J(y)|\le L_J\varepsilon]\ge1-\alpha
-\]
+$$
+Pr[|J(x)-J(y)| ≤ L_J ε] ≥ 1-α
+$$
 
-**证明。** 在事件 \(d(x,y)\le\varepsilon\) 上，直接应用 Lipschitz 条件。证毕。
+**证明。** 在事件 d(x,y) ≤ ε 上直接应用 Lipschitz 条件。证毕。
 
-若指标不连续或无法给出局部连续模，则不得使用该定理迁移排序。
+若指标不连续，或无法给出适用域内的局部连续模，则不得使用该定理迁移排序。
 
 ### 定理 T4：算法排序迁移定理
 
-设越小越好，模型 Trace 为 \(\widehat\tau_A,\widehat\tau_B\)，真实 Trace 为 \(	au_A,	au_B\)。若：
+设越小越好，模型 Trace 为 τ̂_A、τ̂_B，真实 Trace 为 τ_A、τ_B。若：
 
-\[
-d(\tau_A,\widehat\tau_A)\le\varepsilon_A
-\]
+$$
+d(τ_A,τ̂_A) ≤ ε_A
+$$
 
-\[
-d(\tau_B,\widehat\tau_B)\le\varepsilon_B
-\]
+$$
+d(τ_B,τ̂_B) ≤ ε_B
+$$
 
-且 \(J\) 为 \(L_J\)-Lipschitz，定义：
+且 J 是 L_J-Lipschitz，定义：
 
-\[
-\widehat\Delta
-=J(\widehat\tau_B)-J(\widehat\tau_A)
-\]
+$$
+Δ_model = J(τ̂_B)-J(τ̂_A)
+$$
 
-\[
-\Delta
-=J(\tau_B)-J(\tau_A)
-\]
+$$
+Δ_real = J(τ_B)-J(τ_A)
+$$
 
 则：
 
-\[
-|\Delta-\widehat\Delta|
-\le
-L_J(\varepsilon_A+\varepsilon_B)
-\]
+$$
+|Δ_real-Δ_model| ≤ L_J(ε_A+ε_B)
+$$
 
 因此，如果：
 
-\[
-\widehat\Delta
-+L_J(\varepsilon_A+\varepsilon_B)
-<-\delta
-\]
+$$
+Δ_model + L_J(ε_A+ε_B) < -δ
+$$
 
 则：
 
-\[
-\Delta<-\delta
-\]
+$$
+Δ_real < -δ
+$$
 
 **证明。**
 
-\[
-\begin{aligned}
-|\Delta-\widehat\Delta|
-&=
-|J(\tau_B)-J(\tau_A)-J(\widehat\tau_B)+J(\widehat\tau_A)|\\
-&\le
-|J(\tau_B)-J(\widehat\tau_B)|
-+
-|J(\tau_A)-J(\widehat\tau_A)|\\
-&\le
-L_J\varepsilon_B+L_J\varepsilon_A
-\end{aligned}
-\]
+$$
+|Δ_real-Δ_model|
+$$
 
-由上界重排即可得到充分条件。证毕。
+$$
+= |J(τ_B)-J(τ_A)-J(τ̂_B)+J(τ̂_A)|
+$$
 
-若两个 Trace 证书风险分别为 \(\alpha_A,\alpha_B\)，则该排序结论的失效风险上界为 \(\alpha_A+\alpha_B\)。
+$$
+≤ |J(τ_B)-J(τ̂_B)| + |J(τ_A)-J(τ̂_A)|
+$$
+
+$$
+≤ L_J ε_B + L_J ε_A
+$$
+
+由上界重排得到充分条件。证毕。
+
+若两个 Trace 证书的风险分别为 α_A、α_B，则该排序结论的失效风险上界为 α_A+α_B。
 
 ### 定理 T5：鲁棒性质迁移定理
 
-设性质鲁棒度 \(ho_\varphi\) 满足连续模：
+设性质鲁棒度 ρ_φ 满足连续模 ω_φ：
 
-\[
-|\rho_\varphi(x)-\rho_\varphi(y)|
-\le
-\omega_\varphi(d(x,y))
-\]
+$$
+|ρ_φ(x)-ρ_φ(y)| ≤ ω_φ(d(x,y))
+$$
 
 且：
 
-\[
-d(x,y)\le\varepsilon
-\]
+$$
+d(x,y) ≤ ε
+$$
 
 则：
 
-\[
-\rho_\varphi(x)
-\ge
-\rho_\varphi(y)-\omega_\varphi(\varepsilon)
-\]
+$$
+ρ_φ(x) ≥ ρ_φ(y)-ω_φ(ε)
+$$
 
 如果：
 
-\[
-\rho_\varphi(y)>
-\omega_\varphi(\varepsilon)
-\]
+$$
+ρ_φ(y) > ω_φ(ε)
+$$
 
-则 \(ho_\varphi(x)>0\)，即 \(x\) 满足 \(arphi\)。
+则 ρ_φ(x) > 0，即 x 满足 φ。
 
 **证明。** 由绝对值不等式：
 
-\[
-\rho_\varphi(y)-\rho_\varphi(x)
-\le
-|\rho_\varphi(x)-\rho_\varphi(y)|
-\le
-\omega_\varphi(\varepsilon)
-\]
+$$
+ρ_φ(y)-ρ_φ(x) ≤ |ρ_φ(x)-ρ_φ(y)| ≤ ω_φ(ε)
+$$
 
 重排得到第一式，第二式随即成立。证毕。
 
@@ -693,299 +732,230 @@ d(x,y)\le\varepsilon
 
 定义两个位姿的相对变换：
 
-\[
-E(T_1,T_2)=T_1^{-1}T_2
-\]
+$$
+E(T_1,T_2) = T_1^{-1}T_2
+$$
 
-对任意共同 Frame 变换 \(G\in SE(3)\)：
+对任意共同 Frame 变换 G ∈ SE(3)：
 
-\[
-E(GT_1,GT_2)=E(T_1,T_2)
-\]
+$$
+E(GT_1,GT_2) = E(T_1,T_2)
+$$
 
 **证明。**
 
-\[
-E(GT_1,GT_2)
-=(GT_1)^{-1}(GT_2)
-=T_1^{-1}G^{-1}GT_2
-=T_1^{-1}T_2
-\]
+$$
+E(GT_1,GT_2) = (GT_1)^{-1}(GT_2) = T_1^{-1}G^{-1}GT_2 = T_1^{-1}T_2
+$$
 
 证毕。
 
-因此基于相对变换本身构造的误差在共同世界坐标系变换下保持不变。若进一步对 \(\log(E)\) 使用加权范数，权重和特征长度必须显式冻结；本定理不意味着 \(SE(3)\) 上存在适用于一切任务的默认标量距离。
+因此，基于相对变换本身构造的误差在共同世界坐标系变换下保持不变。该结论不意味着 SE(3) 上存在适用于所有任务的默认标量距离。
 
 ### 定理 T7：分段线性重建误差界
 
-设 \(q:[t_k,t_{k+1}]\rightarrow\mathbb R^n\) 二阶连续可微，区间长度 \(h=t_{k+1}-t_k\)，\(I_hq\) 为端点分段线性插值。则：
+设 q : [t_k,t_{k+1}] → ℝ^n 二阶连续可微，区间长度 h = t_{k+1}-t_k，I_hq 是端点分段线性插值。则：
 
-\[
-\|q-I_hq\|_\infty
-\le
-\frac{h^2}{8}
-\|q''\|_\infty
-\]
+$$
+‖q-I_hq‖_∞ ≤ (h²/8) ‖q''‖_∞
+$$
 
-其中向量范数和诱导的函数上确界范数必须一致。
+**证明。** 对任一标量分量，线性插值余项为：
 
-**证明。** 对任一标量分量，线性插值余项可写为：
-
-\[
-q_i(t)-(I_hq_i)(t)
-=
-\frac{q_i''(\xi_t)}{2}(t-t_k)(t-t_{k+1})
-\]
+$$
+q_i(t)-(I_hq_i)(t) = (q_i''(ξ_t)/2)(t-t_k)(t-t_{k+1})
+$$
 
 而：
 
-\[
-\max_{t\in[t_k,t_{k+1}]}
-|(t-t_k)(t-t_{k+1})|
-=\frac{h^2}{4}
-\]
+$$
+max_{t∈[t_k,t_{k+1}]} |(t-t_k)(t-t_{k+1})| = h²/4
+$$
 
-故每个分量误差不超过 \(h^2\|q_i''\|_\infty/8\)，组合到一致向量范数得到结论。证毕。
+故每个分量误差不超过 h²‖q_i''‖_∞/8。使用一致向量范数可得结论。证毕。
 
-若控制器采用 ZOH，则必须改用对应的一阶界，例如：
+若控制器采用 ZOH，则必须使用对应的一阶界，例如：
 
-\[
-\|q-ZOH_h(q)\|_\infty
-\le h\|\dot q\|_\infty
-\]
+$$
+‖q-ZOH_h(q)‖_∞ ≤ h ‖q'‖_∞
+$$
 
-不得把分段线性界套到 ZOH 语义上。
+不得把 PWL 误差界套到 ZOH 语义上。
 
 ### 定理 T8：连续区间净空证书
 
-设净空函数：
+设净空函数 c : Q → ℝ，c(q) > 0 表示无碰撞，并且 c 是 L_c-Lipschitz：
 
-\[
-c:Q\rightarrow\mathbb R
-\]
+$$
+|c(q_1)-c(q_2)| ≤ L_c ‖q_1-q_2‖
+$$
 
-满足 \(c(q)>0\) 表示无碰撞，并且是 \(L_c\)-Lipschitz：
+若在区间 [t_k,t_{k+1}] 有已证明的轨迹管界：
 
-\[
-|c(q_1)-c(q_2)|\le L_c\|q_1-q_2\|
-\]
-
-若在区间 \([t_k,t_{k+1}]\) 有已证明的轨迹管界：
-
-\[
-\|q(t)-q_k\|\le r_k
-\]
+$$
+‖q(t)-q_k‖ ≤ r_k
+$$
 
 且：
 
-\[
-c(q_k)>L_cr_k
-\]
+$$
+c(q_k) > L_c r_k
+$$
 
 则整个区间无碰撞。
 
-**证明。** 对任意 \(t\)：
+**证明。** 对任意 t：
 
-\[
-c(q(t))
-\ge
-c(q_k)-|c(q(t))-c(q_k)|
-\ge
-c(q_k)-L_c\|q(t)-q_k\|
-\ge
-c(q_k)-L_cr_k
->0
-\]
+$$
+c(q(t)) ≥ c(q_k)-|c(q(t))-c(q_k)|
+$$
+
+$$
+≥ c(q_k)-L_c‖q(t)-q_k‖
+$$
+
+$$
+≥ c(q_k)-L_c r_k > 0
+$$
 
 证毕。
 
-这一定理说明“所有采样点无碰撞”本身不足以产生 `IntervalCertified`；还必须有区间轨迹管和净空连续性界。
+“所有采样点无碰撞”本身不足以产生 `IntervalCertified`；还必须有区间轨迹管和净空连续性界。
 
 ### 定理 T9：鲁棒 Pareto 支配
 
-考虑均为越小越好的 \(m\) 个目标。对候选 \(A,B\)，若真实目标分别位于区间：
+考虑 m 个均为越小越好的目标。对候选 A、B，若真实目标分别位于区间：
 
-\[
-J_j(A)\in[\underline A_j,\overline A_j],
-\qquad
-J_j(B)\in[\underline B_j,\overline B_j]
-\]
+$$
+J_j(A) ∈ [A_j^-, A_j^+]
+$$
 
-并且对所有 \(j\)：
+$$
+J_j(B) ∈ [B_j^-, B_j^+]
+$$
 
-\[
-\overline B_j\le\underline A_j
-\]
+并且对全部 j：
 
-且至少一个目标严格小于，则 \(B\) 在所有与证书一致的真实取值上 Pareto 支配 \(A\)。
+$$
+B_j^+ ≤ A_j^-
+$$
+
+且至少一个目标严格小于，则 B 在所有与证书一致的真实取值上 Pareto 支配 A。
 
 **证明。** 对任意允许取值：
 
-\[
-J_j(B)\le\overline B_j\le\underline A_j\le J_j(A)
-\]
+$$
+J_j(B) ≤ B_j^+ ≤ A_j^- ≤ J_j(A)
+$$
 
 至少一个目标严格成立，因此根据 Pareto 支配定义得到结论。证毕。
 
-若区间重叠，Axiom 只能报告可能支配或不可判定，不能靠任意权重制造确定排名。
+若区间重叠，Axiom 只能报告可能支配或不可判定，不能通过任意权重制造确定排名。
 
 ### 定理 T10：有限数据不可无条件外推
 
-设校准数据仅覆盖有限输入集合：
+设校准数据只覆盖有限输入集合：
 
-\[
-S=\{x_1,\ldots,x_n\}\subset D
-\]
+$$
+S = {x_1,…,x_n} ⊂ D
+$$
 
-且 \(x_*\in D\setminus S\)。在不施加连续性、光滑性、函数族或物理结构假设时，对于任意模型 \(f\) 和任意 \(M>0\)，都存在另一个函数 \(g\)，使：
+且 x_* ∈ D 且 x_* ∉ S。在不施加连续性、光滑性、函数族或物理结构假设时，对于任意模型 f 和任意 M > 0，都存在另一个函数 g，使：
 
-\[
-g(x_i)=f(x_i),\quad i=1,\ldots,n
-\]
+$$
+g(x_i)=f(x_i), i=1,…,n
+$$
 
 但：
 
-\[
-|g(x_*)-f(x_*)|>M
-\]
+$$
+|g(x_*)-f(x_*)| > M
+$$
 
-**证明。** 构造一个在所有 \(x_i\) 上为 0、在 \(x_*\) 上为 1 的函数 \(b\)。令：
+**证明。** 构造在所有 x_i 上为 0、在 x_* 上为 1 的函数 b。令：
 
-\[
+$$
 g(x)=f(x)+(M+1)b(x)
-\]
+$$
 
-则 \(g\) 与 \(f\) 在全部校准点完全一致，但在 \(x_*\) 处相差 \(M+1\)。证毕。
+则 g 与 f 在全部校准点完全一致，但在 x_* 处相差 M+1。证毕。
 
 因此，没有结构假设和覆盖证据时，训练误差或有限 holdout 不能证明任意未覆盖区域的现实可信度。
 
 ### 命题 T11：灵敏度秩亏的局部不可辨识性
 
-设模型输出 \(y(\theta)\) 可微，灵敏度矩阵：
+设模型输出 y(θ) 可微，灵敏度矩阵为：
 
-\[
-S(\theta)=\frac{\partial y}{\partial\theta}
-\]
+$$
+S(θ) = ∂y/∂θ
+$$
 
 若：
 
-\[
-\operatorname{rank}S(\theta)<\dim\theta
-\]
+$$
+rank S(θ) < dim θ
+$$
 
-则存在非零方向 \(v\)，满足：
+则存在非零方向 v，使：
 
-\[
-S(\theta)v=0
-\]
+$$
+S(θ)v = 0
+$$
 
 并且：
 
-\[
-y(\theta+hv)=y(\theta)+o(h)
-\]
+$$
+y(θ+hv)=y(θ)+o(h)
+$$
 
 即该参数方向在一阶近似下不可辨识。
 
-**证明。** 秩亏意味着零空间中存在 \(v\neq0\)。由 Taylor 展开：
+**证明。** 秩亏意味着零空间中存在 v ≠ 0。由 Taylor 展开：
 
-\[
-y(\theta+hv)
-=y(\theta)+hS(\theta)v+o(h)
-=y(\theta)+o(h)
-\]
+$$
+y(θ+hv)=y(θ)+hS(θ)v+o(h)=y(θ)+o(h)
+$$
 
 证毕。
 
 满秩通常只是局部可辨识的必要条件之一，不自动证明全局唯一性。
 
-## 10. 时间参数化的数学契约
-
-给定几何轴路径 \(q(s)\) 和时间律 \(s(t)\)：
-
-\[
-s(0)=0,
-\quad
-s(T)=1,
-\quad
-\dot s(t)\ge0
-\]
-
-轴导数必须按链式法则计算：
-
-\[
-\dot q=q'(s)\dot s
-\]
-
-\[
-\ddot q=q''(s)\dot s^2+q'(s)\ddot s
-\]
-
-\[
-\dddot q=q'''(s)\dot s^3+3q''(s)\dot s\ddot s+q'(s)\dddot s
-\]
-
-时间规划问题是：
-
-\[
-\min_{s(\cdot)}T
-\]
-
-subject to：
-
-\[
-|\dot q_i|\le v_i^{max},
-\quad
-|\ddot q_i|\le a_i^{max},
-\quad
-|\dddot q_i|\le j_i^{max}
-\]
-
-以及驱动力、奇异性、碰撞和工艺约束。Axiom 必须区分：
-
-1. 找到一个数值时间律；
-2. 离散节点满足约束；
-3. 连续区间满足约束；
-4. 参数扰动后仍鲁棒满足约束。
-
-四者不得共用一个 `Passed`。
-
 ## 11. 物理模型、偏差与测量
 
 真实观测应建模为：
 
-\[
-y^{obs}(u,c)
-=
-\mathcal M(u,\theta,c)
-+
-\delta(u,c)
-+
-\epsilon(u,c)
-\]
+$$
+y_obs(u,c) = M(u,θ,c) + δ_model(u,c) + ε_measurement(u,c)
+$$
 
 其中：
 
-- \(\mathcal M\)：Orion 或候选机床模型；
-- \(	heta\)：可校准参数；
-- \(\delta\)：模型结构偏差；
-- \(\epsilon\)：测量误差。
+- M：Orion 或候选机床模型；
+- θ：可校准参数；
+- δ_model：模型结构偏差；
+- ε_measurement：测量误差。
 
-禁止把全部 \(\delta\) 吸收到 \(	heta\) 并把低训练误差解释为物理参数已识别。当前逐轴一阶滞后模型应作为 Null Model：复杂模型只有在独立 holdout、残差诊断和不确定度覆盖上显著优于该基线时，才有资格增加复杂度。
+禁止把全部模型结构偏差吸收到参数 θ 中，并把低训练误差解释为物理参数已识别。
+
+当前逐轴一阶滞后模型应作为 Null Model。复杂模型只有在以下方面独立优于该基线时，才有资格增加复杂度：
+
+- holdout 预测误差；
+- 残差结构；
+- 参数稳定性；
+- 区间覆盖率；
+- 排序迁移能力。
 
 测量模型写为：
 
-\[
-z=g(y,\eta)
-\]
+$$
+z = g(y,η)
+$$
 
 一阶不确定度传播为：
 
-\[
-\Sigma_z
-\approx
-J_g\Sigma_\eta J_g^\mathsf T
-\]
+$$
+Σ_z ≈ J_g Σ_η J_g^T
+$$
 
 实机 MetricResult 至少需要：
 
@@ -999,31 +969,36 @@ uncertaintyBudget
 measurementModelId
 ```
 
+内部控制器反馈和外部计量结果必须保留不同 Evidence 身份，不能混称为同一种现实真值。
+
 ## 12. 配对算法比较规则
 
-对场景 \(i\)、重复 \(j\)，定义配对差异：
+对场景 i、重复 j，定义配对差异：
 
-\[
-D_{ij}=J(\tau_{B,ij})-J(\tau_{A,ij})
-\]
+$$
+D_ij = J(τ_Bij)-J(τ_Aij)
+$$
 
-统计分析计划必须在读取 validation 结果前冻结。可以使用层次模型、配对 bootstrap、随机化检验或其他明确方法，但正向结论必须同时满足：
+统计分析计划必须在读取 Validation 结果前冻结。可以使用：
+
+- 层次模型；
+- 配对 bootstrap；
+- 随机化检验；
+- 明确假设下的参数检验。
+
+正向结论必须同时满足：
 
 1. 数学和设备硬约束通过；
 2. Calibration 与 Validation 无谱系重叠；
 3. 差异的统计不确定度已量化；
 4. 迁移界已加入；
-5. 改善超过预声明的最小实际意义 \(\delta_{min}\)。
+5. 改善超过预声明的最小实际意义 δ_min。
 
-若差异置信集合为 \(\mathcal I_{1-\alpha}\)，越小越好，则充分接受规则为：
+若差异的 1-α 置信集合为 I_(1-α)，越小越好，则一个充分接受规则是：
 
-\[
-\sup\mathcal I_{1-\alpha}
-+
-B_{transfer}
-<
--\delta_{min}
-\]
+$$
+sup I_(1-α) + B_transfer < -δ_min
+$$
 
 P 值不能替代效应量、实际意义、适用域和迁移误差。
 
@@ -1034,33 +1009,33 @@ P 值不能替代效应量、实际意义、适用域和迁移误差。
 | PO-01 | 类型与 schema 一致性 | 有类型解析证据 |
 | PO-02 | 单位一致性 | 量纲检查与转换谱系 |
 | PO-03 | Frame 客观性 | FrameGraph 与不变性说明 |
-| PO-04 | Clock 可比性 | 时钟源、偏置和抖动界 |
-| PO-05 | 数值有限性 | NaN/Inf/overflow 排除 |
-| PO-06 | 数值算法实现正确性 | 独立 Oracle 或证明 |
-| PO-07 | 数值误差 | \(arepsilon_{num}\) |
+| PO-04 | Clock 可比性 | 时钟源、偏置、速率和抖动界 |
+| PO-05 | 数值有限性 | NaN、Inf、overflow 排除 |
+| PO-06 | 数值算法实现正确性 | 独立 Oracle 或形式证明 |
+| PO-07 | 数值误差 | ε_num |
 | PO-08 | 路径正则性 | 连续性与导数条件 |
-| PO-09 | 路径提升存在 | \(\mathcal L(\gamma)\neq\varnothing\) |
+| PO-09 | 路径提升存在 | L(γ) ≠ ∅ |
 | PO-10 | IK 分支连续性 | 无未授权分支跳变 |
-| PO-11 | 奇异性裕量 | \(\sigma_{min}(J)\ge\sigma_0\) 或等价证据 |
+| PO-11 | 奇异性裕量 | 最小奇异值或等价证据 |
 | PO-12 | 轴限位 | 连续区间限位证书 |
 | PO-13 | 连续碰撞 | Clearance/tube 证书 |
 | PO-14 | 连续速度约束 | 区间速度界 |
 | PO-15 | 连续加速度约束 | 区间加速度界 |
 | PO-16 | 连续 Jerk 约束 | 区间 Jerk 界 |
-| PO-17 | 重建语义正确 | PWL/ZOH/控制器实际语义 |
-| PO-18 | 离散重建误差 | \(arepsilon_{disc}\) |
+| PO-17 | 重建语义正确 | PWL、ZOH 或控制器实际语义 |
+| PO-18 | 离散重建误差 | ε_disc |
 | PO-19 | 采集完整性 | 序号、丢样和撕裂检测 |
-| PO-20 | 时间对齐 | \(arepsilon_{time}\) |
-| PO-21 | 坐标标定 | \(arepsilon_{frame}\) |
-| PO-22 | 测量不确定度 | \(arepsilon_{meas},\alpha_{meas}\) |
-| PO-23 | 激励覆盖 | 输入与频率覆盖报告 |
-| PO-24 | 参数局部可辨识 | 灵敏度/FIM 诊断 |
-| PO-25 | 残差结构 | 白噪声、相关性和异方差诊断 |
+| PO-20 | 时间对齐 | ε_time |
+| PO-21 | 坐标标定 | ε_frame |
+| PO-22 | 测量不确定度 | ε_measurement、α_measurement |
+| PO-23 | 激励覆盖 | 输入域与频率覆盖报告 |
+| PO-24 | 参数局部可辨识 | 灵敏度或 FIM 诊断 |
+| PO-25 | 残差结构 | 白噪声、相关性、异方差诊断 |
 | PO-26 | Calibration/Validation 隔离 | 内容身份和时间窗证明 |
-| PO-27 | 模型 holdout 一致性 | \(arepsilon_{model},\alpha_{model}\) |
-| PO-28 | 适用域覆盖 | \(D_{claim}\subseteq D_{cert}\) |
-| PO-29 | 性质鲁棒度 | \(ho_\varphi\) 与连续模 |
-| PO-30 | 证书链组合 | 总 \(arepsilon\) 和总 \(\alpha\) |
+| PO-27 | 模型 holdout 一致性 | ε_model、α_model |
+| PO-28 | 适用域覆盖 | D_claim ⊆ D_certificate |
+| PO-29 | 性质鲁棒度 | ρ_φ 和连续模 |
+| PO-30 | 证书链组合 | 总 ε 和总 α |
 | PO-31 | 排序迁移 | T4 的充分条件 |
 | PO-32 | 决策权限 | Evaluator、Policy、Authority 分离 |
 
@@ -1074,65 +1049,70 @@ P 值不能替代效应量、实际意义、适用域和迁移误差。
 
 ### KinematicallyFeasible
 
-至少依赖：GeometryValid 依赖项，加 PO-09、PO-10、PO-11、PO-12。
+至少依赖 GeometryValid 的依赖项，以及 PO-09、PO-10、PO-11、PO-12。
 
 ### IntervalCertified
 
-至少依赖：PO-13 至 PO-18，且重建语义必须匹配实际执行器。
+至少依赖 PO-13 至 PO-18，且重建语义必须匹配实际执行器。
 
 ### ModelAdequateForOfflineRanking
 
-至少依赖：PO-19 至 PO-31，并将 Intended Use 限定为“离线算法排序”。它不能推出 `DeviceSafe`。
+至少依赖 PO-19 至 PO-31，并将 Intended Use 限定为“离线算法排序”。它不能推出 `DeviceSafe`。
 
 ### AlgorithmBImprovesRealMetric
 
 至少依赖：
 
-- A、B 相同 Protocol 的配对运行；
+- A、B 使用相同 Protocol 的配对运行；
 - 全部硬约束 Claim；
 - 测量和模型证书；
 - 统计差异区间；
 - T4 排序迁移充分条件；
-- 明确的 \(\delta_{min}\)。
+- 明确的 δ_min。
 
 ## 15. 必须保留的反例
 
-Axiom 的测试库必须包含以下最小反例：
+Axiom 的测试库必须包含：
 
 1. 所有采样点无碰撞，但区间内部碰撞；
-2. 每个点均有 IK 解，但不存在连续分支提升；
-3. 毫米和弧度被直接相加后生成错误排名；
+2. 每个点都有 IK 解，但不存在连续分支提升；
+3. 毫米和弧度被直接相加后产生错误排名；
 4. 训练误差极低，但 holdout 结构性偏差明显；
-5. 时钟对齐算法把真实超时重参数化消除；
+5. 时间对齐算法把真实超时重参数化消除；
 6. Calibration 与 Validation 文件名不同，但内容窗口重叠；
 7. 一阶模型通过自生成数据自证；
-8. 模型 A/B 排序优势小于迁移误差，却错误发布优胜方；
+8. 模型 A/B 优势小于迁移误差，却错误发布优胜方；
 9. 同一坐标值在不同 Frame 下被错误比较；
 10. FIM 秩亏却输出唯一物理参数；
 11. PWL 误差界被错误用于 ZOH；
-12. 单一总分掩盖一个硬约束失败。
+12. 单一总分掩盖一个硬约束失败；
+13. OOD Case 被模型强制外推；
+14. 设备时间速率漂移被当成常数偏置；
+15. 内部反馈低误差被误称外部轮廓精度。
+
+每个新 DomainPackage 至少增加一个能够推翻其核心正向 Claim 的反例。
 
 ## 16. 数学成熟度路线
 
 | 阶段 | 数学目标 | 退出条件 |
 |---|---|---|
 | M0 | 类型、单位、Frame、Clock 语义 | PO-01 至 PO-05 闭合 |
-| M1 | Trace 空间和 Comparator | 每个指标有明确空间与距离 |
+| M1 | Trace 空间和 Comparator | 每个指标有明确空间和距离 |
 | M2 | 数值和离散证书 | PO-06 至 PO-18 闭合 |
 | M3 | 真实采集、辨识和测量 | PO-19 至 PO-26 闭合 |
 | M4 | 模型一致性与性质迁移 | T2、T3、T5 可执行验证 |
-| M5 | 算法排序迁移 | T4 条件在独立 holdout 上通过 |
+| M5 | 算法排序迁移 | T4 在独立真实 holdout 上通过 |
 | M6 | 跨工况和第二设备证伪 | 适用域扩展由新证据支持 |
 
-`learning`、`optimization` 和 `controlled_runtime` 只能在 M5 通过后恢复为主线能力；在此之前保持 Experimental。
+`learning`、`optimization` 和 `controlled_runtime` 只有在 M5 通过后才能恢复为主线能力；此前保持 Experimental。
 
 ## 17. 与当前仓库的映射
 
 ### 保留
 
-- 内容哈希与 Provenance；
+- 内容哈希和 Provenance；
 - DomainPack 的显式类型和能力思想；
-- 五轴 F1–F4 中的连续区间证据；
+- FiveAxis F1–F4 中的连续区间证据；
 - Calibration/Validation 隔离；
 - R3/R7-E 的只读采集和零写边界；
 - 负例与 fail-closed 测试。
@@ -1142,23 +1122,23 @@ Axiom 的测试库必须包含以下最小反例：
 - `OrderedPointSequence` 移出 Core，成为领域类型；
 - 单一 `Observation` 升级为多通道 `TraceSet`；
 - `Evidence.level` 拆成方法种类、适用域、误差、风险和独立性；
-- `Claim` 增加 Argument、Assumption、Defeater；
+- `Claim` 增加 Argument、Assumption 和 Defeater；
 - 一阶独立轴模型降级为 Null Model；
 - R5–R7 先冻结为 Experimental；
 - Core 不再依靠顶层导入副作用注册所有领域。
 
 ## 18. 限制和非声明
 
-本文件没有证明：
+本文没有证明：
 
 - 任意五轴机床都能被当前模型覆盖；
 - Skorokhod 距离适合所有 CNC 属性；
-- 误差分量在统计上独立；
+- 各误差分量在统计上独立；
 - 当前逐轴模型足以预测真实设备；
 - 通过数学门的轨迹具备设备或工艺安全性；
 - Axiom 可以承担 Safety PLC、设备写入或最终责任审批。
 
-若某个定理的连续性、Lipschitz、可辨识、测量或适用域假设无法验证，结论必须降为 `Inconclusive`，而不是用经验阈值替代缺失证明。
+若某个定理的连续性、Lipschitz、可辨识、测量或适用域假设无法验证，结论必须降为 `Inconclusive`，不能用经验阈值替代缺失证明。
 
 ## 19. 理论依据
 
@@ -1197,7 +1177,7 @@ Axiom 的测试库必须包含以下最小反例：
 
 ### 时间规划和 CNC
 
-13. H. Pham and Q.-C. Pham, “A New Approach to Time-Optimal Path Parameterization Based on Reachability Analysis,” *IEEE Transactions on Robotics*, 2018.  
+13. H. Pham and Q.-C. Pham, “A New Approach to Time-Optimal Path Parameterization Based on Reachability Analysis,” *IEEE Transactions on Robotics*, 34(3), 2018.  
     https://arxiv.org/abs/1707.07239
 14. K. Erkorkmaz and Y. Altintas, “High Speed CNC System Design. Part I: Jerk Limited Trajectory Generation and Quintic Spline Interpolation,” *International Journal of Machine Tools and Manufacture*, 41, 1323–1345, 2001.  
     https://doi.org/10.1016/S0890-6955(01)00002-5
@@ -1212,12 +1192,12 @@ Axiom 的测试库必须包含以下最小反例：
 
 ## 20. 规范优先级
 
-Axiom v1 后续项目规划、架构和实现必须满足本文件中的：
+Axiom v1 后续项目规划、架构和实现必须满足：
 
 1. 八条基础公理；
-2. 证书语义；
+2. 可信度证书语义；
 3. Margin Principle；
 4. Proof Obligation Catalog；
-5. 适用域与不确定度边界。
+5. 适用域和不确定度边界。
 
-若现有 Roadmap、DomainPack、UI、优化或控制代码与本文件冲突，应先通过 ADR 明确取舍，不能让既有实现反向决定理论含义。
+若现有 Roadmap、DomainPack、UI、优化或控制代码与本文冲突，应先通过 ADR 明确取舍，不能让既有实现反向决定理论含义。

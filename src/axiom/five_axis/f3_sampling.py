@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import re
+from fractions import Fraction
 from typing import Any, Literal, Mapping
 
 import numpy as np
@@ -713,10 +714,31 @@ def _max_abs_polynomial(coefficients: np.ndarray, start: float, end: float) -> t
 
 
 def _certified_abs_bound(coefficients: np.ndarray, interval_length: float) -> float:
-    total = 0.0
-    for power, coefficient in enumerate(coefficients):
-        total += abs(float(coefficient)) * interval_length**power
-    return math.nextafter(float(total), math.inf)
+    values = tuple(float(coefficient) for coefficient in coefficients)
+    if not math.isfinite(interval_length) or interval_length < 0 or any(not math.isfinite(value) for value in values):
+        raise ValueError("power bound requires finite coefficients and a finite nonnegative interval")
+    # Rounding only the final floating-point sum upward does not enclose errors
+    # accumulated by powers, products and additions. These low-degree binary64
+    # polynomials can be bounded exactly with rational arithmetic, then rounded
+    # outward once. This encloses the supplied coefficients, not their derivation.
+    span = Fraction.from_float(float(interval_length))
+    exact = sum((abs(Fraction.from_float(value)) * span**power for power, value in enumerate(values)), Fraction(0))
+    try:
+        outward = float(exact)
+    except OverflowError:
+        return math.inf
+    if Fraction.from_float(outward) < exact:
+        outward = math.nextafter(outward, math.inf)
+    # Preserve previously conservative bounds to avoid gratuitous changes to
+    # existing evidence. Only previously underestimated bounds must increase.
+    try:
+        legacy = 0.0
+        for power, value in enumerate(values):
+            legacy += abs(value) * interval_length**power
+        legacy = math.nextafter(legacy, math.inf)
+    except OverflowError:
+        legacy = math.inf
+    return max(outward, legacy)
 
 
 def _position_peak_for_interval(

@@ -1,0 +1,52 @@
+{
+  "schemaId": "axiom.cnc-benchmark-case@1",
+  "caseId": "example.line-regression",
+  "coordinateFrame": "workpiece",
+  "unit": "mm",
+  "samplePeriodSeconds": 0.01,
+  "referencePath": [
+    [
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      1.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "axisLimits": [
+    {
+      "axis": "X",
+      "minimumPositionMm": -10.0,
+      "maximumPositionMm": 10.0,
+      "maximumVelocityMmS": 100.0,
+      "maximumAccelerationMmS2": 10000.0,
+      "maximumJerkMmS3": 1000000.0
+    },
+    {
+      "axis": "Y",
+      "minimumPositionMm": -10.0,
+      "maximumPositionMm": 10.0,
+      "maximumVelocityMmS": 100.0,
+      "maximumAccelerationMmS2": 10000.0,
+      "maximumJerkMmS3": 1000000.0
+    },
+    {
+      "axis": "Z",
+      "minimumPositionMm": -10.0,
+      "maximumPositionMm": 10.0,
+      "maximumVelocityMmS": 100.0,
+      "maximumAccelerationMmS2": 10000.0,
+      "maximumJerkMmS3": 1000000.0
+    }
+  ],
+  "maximumPathDeviationMm": 0.03,
+  "maximumEndpointErrorMm": 0.001,
+  "comparisonTolerances": {
+    "durationSeconds": 0.0,
+    "pathDeviationMm": 0.001,
+    "computationSeconds": 0.0001
+  }
+}

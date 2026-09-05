@@ -1,0 +1,111 @@
+{
+  "schemaId": "axiom.cnc-algorithm-export@1",
+  "algorithmId": "example.planner",
+  "algorithmVersion": "baseline",
+  "sourceKind": "synthetic-example",
+  "caseContentHash": "7523812fc2cae623e142a2687799660e8b88e03e1c8fc43aee0c73f73015c42f",
+  "coordinateFrame": "workpiece",
+  "unit": "mm",
+  "samplePeriodSeconds": 0.01,
+  "samples": [
+    {
+      "sampleIndex": 0,
+      "t": 0.0,
+      "positionMm": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 1,
+      "t": 0.01,
+      "positionMm": [
+        0.1,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 2,
+      "t": 0.02,
+      "positionMm": [
+        0.2,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 3,
+      "t": 0.03,
+      "positionMm": [
+        0.3,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 4,
+      "t": 0.04,
+      "positionMm": [
+        0.4,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 5,
+      "t": 0.05,
+      "positionMm": [
+        0.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 6,
+      "t": 0.06,
+      "positionMm": [
+        0.6,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 7,
+      "t": 0.07,
+      "positionMm": [
+        0.7,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 8,
+      "t": 0.08,
+      "positionMm": [
+        0.8,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 9,
+      "t": 0.09,
+      "positionMm": [
+        0.9,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sampleIndex": 10,
+      "t": 0.1,
+      "positionMm": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

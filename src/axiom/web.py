@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
+from .benchmark import CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
 from .control import (
     BECKHOFF_WITNESS_PLC_TEMPLATE_FILE,
     BeckhoffWitnessDeploymentReport,
@@ -862,6 +863,18 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         request: FieldEvidenceAssessmentRequest,
     ) -> FieldEvidenceAssessmentReport:
         return assess_field_evidence(request)
+
+    @app.get("/api/v1/benchmarks/cnc/example", response_model=CncBenchmarkRequest, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_example() -> CncBenchmarkRequest:
+        return cnc_benchmark_example()
+
+    @app.post("/api/v1/benchmarks/cnc/case-hash")
+    def cnc_case_hash(case: CncBenchmarkCase) -> dict[str, str]:
+        return {"caseContentHash": benchmark_case_hash(case)}
+
+    @app.post("/api/v1/benchmarks/cnc/compare", response_model=CncBenchmarkReport, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_compare(request: CncBenchmarkRequest) -> CncBenchmarkReport:
+        return compare_cnc_exports(request)
 
     @app.post(
         "/api/v1/experiments/run",

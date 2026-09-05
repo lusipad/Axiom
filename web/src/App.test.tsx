@@ -330,7 +330,22 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 afterEach(() => vi.unstubAllGlobals());
 
+function openPointLab() {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "参考与实验功能" }));
+  fireEvent.click(screen.getByRole("button", { name: /Point Lab/ }));
+}
+
 describe("Axiom workbench", () => {
+  it("默认进入算法比较且不依赖旧实验 API", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    expect(screen.getByRole("heading", { name: "比较两版 CNC 算法" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Point Lab/ })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("加载 Point Lab 并允许重新运行实验", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -341,7 +356,7 @@ describe("Axiom workbench", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /共享输入与两个 Subject 输出/ })).toBeInTheDocument();
@@ -364,7 +379,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({ detail: "runner unavailable" }, 503));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("API 503");
     expect(screen.queryByText("证据包已封存")).not.toBeInTheDocument();
@@ -380,7 +395,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({}, 404));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F1/i }));
@@ -397,7 +412,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({}, 404));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F4/i }));
@@ -417,7 +432,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({}, 404));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Physical.*R4/i }));
@@ -437,7 +452,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({}, 404));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Controlled.*R7-A/i }));
@@ -459,7 +474,7 @@ describe("Axiom workbench", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Deployment.*R7-B/i }));
@@ -483,7 +498,7 @@ describe("Axiom workbench", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Intelligence.*R5-B/i }));
@@ -675,7 +690,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({}, 404));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Machine.*R3/i }));
@@ -863,7 +878,7 @@ describe("Axiom workbench", () => {
       return Promise.resolve(jsonResponse({}, 404));
     }));
 
-    render(<App />);
+    openPointLab();
 
     expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Physical.*R4/i }));
@@ -897,7 +912,7 @@ describe("Axiom workbench", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    openPointLab();
     await screen.findByText("证据包已封存");
     fireEvent.click(screen.getByRole("button", { name: /Five-Axis.*F1/i }));
 

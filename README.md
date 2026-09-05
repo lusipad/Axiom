@@ -1,4 +1,35 @@
-# Axiom 文档入口
+# Axiom
+
+> 当前开发主线：CNC 算法 A/B 对比与回归验证。下方 v0.22 阶段记录保留为参考能力，R5–R7 的扩展暂停，真实现场结论仍以对应证据为准。
+
+Axiom 帮助 CNC 开发者比较两个实际算法版本：在同一份刀路与约束下，发现指标变化、定位超限并重放结果。
+
+## 先完成一次算法比较
+
+1. 启动 `axiom serve`，进入默认的“算法 A/B 对比”页面。
+2. 上传同一个案例的刀路与约束、基线 A、候选 B 三份 JSON。
+3. 查看运动时间、采样路径偏差、可比较的计算耗时，以及每个轴的采样限制和最差位置。
+4. 下载输入与报告，让另一位工程师独立重放。
+
+可先点击“载入回归示例”，验证已知 0.08 mm 偏差会被定位到第 5 个样本。示例明确为合成数据。首版比较的是采样 XYZ 指令，未证明连续轨迹、路径遍历完整性或实机加工效果。
+
+```powershell
+python -m pip install -e .
+axiom benchmark --case examples/cnc-benchmark/case.json --baseline examples/cnc-benchmark/baseline.json --candidate examples/cnc-benchmark/candidate.json
+axiom serve
+```
+
+样例包含已知超限，`benchmark` 预期退出码为 1。Windows 发布验收继续使用下方冻结环境。
+
+- [CNC 算法接入与使用说明](CNC-BENCHMARK.md)：文件格式、Case hash、CLI、API、指标与结果边界。
+- [近期项目路线](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)：首先接入真实算法版本、真实刀路和独立回归重放。
+- [ADR-0028](架构决策记录/ADR-0028-先交付CNC算法对比与回归工作流.md)：调整开发顺序，保留现有代码资产。
+
+现有五轴、物理、学习与设备页面移到“参考与实验功能”。下一里程碑以一次真实算法回归判断为验收依据；[Draft PR #21](https://github.com/lusipad/Axiom/pull/21) 的新内核和完整证书体系不是本工作流的前置条件。
+
+<details>
+<summary>v0.22 参考能力、历史路线与冻结环境</summary>
+
 
 > 状态：v0.22.0 Windows 发布版本；R0–R2 已闭合，R3–R6 参考合同片、R7-A–R7-E、R4.1 双运行 reality evaluator、现场验收编排、Beckhoff 只读见证部署、离线证据组装与 R5-B 真实 holdout intake 已实现；真实现场证据/受控闭环保持 Open
 > 当前里程碑：通用框架 `R0` + 有序离散点 `R1` + Five-Axis Math `F4` + Machine `R3 v1` + Physical `R4.0 SIL / R4.1 Reality` + Intelligence `R5-A / R5-B` + Optimization `R6 v1` + Controlled Runtime `R7-A–R7-E`
@@ -525,3 +556,5 @@ v0.22.0 沿用单个评估、Run、部署绑定或 R7-E assessment 请求最多 
 按 G1、G2/G3、闭合轮廓、螺旋下刀、采样时间戳和名义—观测偏差构造的 CNC 工程合成数据，见 [`fixtures/cnc_scenarios`](fixtures/cnc_scenarios)。目录内的 `manifest.json` 给出了每个请求的预期状态、指标与 CLI 退出码，可直接批量验收。
 
 v0.22.0 的 Python 执行边界仍是本地、确定性、静态注册。它不会执行任意命令或 Python 模块，也不启动厂商算法、容器或设备。R6 只输出 Offline Recommendation；R7-A 只运行 synthetic shadow 状态机；R7-B/R7-D/R7-E、R4.1、部署预检、离线 R7-E 组装、现场验收与 R5-B intake 只验证或投影导入证据；R7-C–R7-E 的独立 `.NET` 生产程序只有在部署者显式运行采集命令时才建立 OPC UA read/subscribe 网络会话，`beckhoff-shadow-assessment` 永不联网，生产源码没有设备写或方法调用路径。TwinCAT 模板必须由现场责任人手工导入、编译和激活，Axiom 不执行自动部署。R7-D 权限 verifier 仅用于经部署责任人授权的专用非执行 canary，并与生产 Adapter 隔离。数据库、认证、远程队列、文件/RPC Solver Adapter、持久化历史、真实设备数据训练、自动部署、参数回写、真实 deployment Shadow、Controlled Trial 与 Closed Loop 仍属于后续阶段。
+
+</details>

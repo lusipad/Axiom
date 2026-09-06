@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "axiom-evaluator"
 version = "0.22.0"
-description = "A deterministic, domain-extensible industrial algorithm evaluation framework"
+description = "Reproducible CNC algorithm comparison and regression analysis"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

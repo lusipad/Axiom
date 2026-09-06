@@ -1,4 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CncBenchmarkWorkbench } from "./features/benchmark/CncBenchmarkWorkbench";
 
 import {
   executeExperiment,
@@ -28,7 +29,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7" | "control-r7b" | "control-r7c" | "control-r7d" | "field-evidence";
+type Lab = "benchmark" | "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7" | "control-r7b" | "control-r7c" | "control-r7d" | "field-evidence";
 type PointView = "geometry" | "metrics";
 
 function clone<T>(value: T): T {
@@ -178,7 +179,9 @@ function comparisonWinner(metric: MetricComparison, report: ExperimentReport): s
 }
 
 export function App() {
-  const [activeLab, setActiveLab] = useState<Lab>("point");
+  const [activeLab, setActiveLab] = useState<Lab>("benchmark");
+  const [showLegacy, setShowLegacy] = useState(false);
+  const needsLegacy = activeLab !== "benchmark";
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [spec, setSpec] = useState<ExperimentSpec | null>(null);
   const [report, setReport] = useState<ExperimentReport | null>(null);
@@ -202,6 +205,7 @@ export function App() {
   };
 
   useEffect(() => {
+    if (!needsLegacy) return;
     let active = true;
     (async () => {
       try {
@@ -223,7 +227,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [needsLegacy]);
 
   const pointPaths = useMemo(() => (spec ? projectPaths(spec, report) : []), [spec, report]);
   const baseline = report?.armResults[0];
@@ -233,8 +237,9 @@ export function App() {
   const pointDimension = spec?.sharedInput.points[0]?.length ?? 0;
   const pointRunnerLabel = [...new Set(spec?.arms.map((arm) => arm.runnerId ?? "unknown-runner") ?? [])].join(", ");
   const pointBusyState = loading || pointBusy;
-  const visibleError = error;
-  const workbenchTitle = activeLab === "point"
+  const visibleError = activeLab === "benchmark" ? null : error;
+  const workbenchTitle = activeLab === "benchmark" ? "CNC 算法对比"
+    : activeLab === "point"
     ? "Experiment Workbench"
     : activeLab === "five-axis-f1"
       ? "Five-Axis Geometry Reference Workbench"
@@ -263,7 +268,8 @@ export function App() {
             : activeLab === "field-evidence"
               ? "Beckhoff Field Evidence R7-E / R4.1"
             : "Machine Read-only Lab";
-  const activeManifestId = activeLab === "point"
+  const activeManifestId = activeLab === "benchmark" ? "XYZ · 采样命令评估"
+    : activeLab === "point"
     ? spec?.experimentId ?? "loading"
     : activeLab === "five-axis-f1"
       ? "five-axis.f1-math-stage-manifest@1"
@@ -377,7 +383,7 @@ export function App() {
         </div>
         <div className="topbar-context">
           <span className={`connection-dot ${visibleError ? "offline" : ""}`} />
-          <span className="context-label">{visibleError ? "需要检查" : "本地 API 可用"}</span>
+          <span className="context-label">{activeLab === "benchmark" ? "离线结果比较" : visibleError ? "需要检查" : "本地 API 可用"}</span>
           <code>{activeManifestId}</code>
         </div>
         <div className="topbar-actions">
@@ -394,7 +400,8 @@ export function App() {
             </>
           ) : (
             <span className="f1-top-boundary">
-              {activeLab === "machine-r3"
+              {activeLab === "benchmark" ? "同一案例 · 两个算法版本"
+                : activeLab === "machine-r3"
                 ? "READ ONLY · NOT DEVICE SAFE"
                 : activeLab === "intelligence-r5"
                   ? "SYNTHETIC LEARNING · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
@@ -431,7 +438,12 @@ export function App() {
         </div>
       )}
 
-      <div className="lab-switcher" aria-label="领域实验室">
+      <nav className="primary-navigation" aria-label="主要工作流">
+        <button type="button" className={`button ${activeLab === "benchmark" ? "active" : ""}`} onClick={() => setActiveLab("benchmark")}>算法 A/B 对比</button>
+        <button type="button" className="button" aria-expanded={showLegacy} onClick={() => setShowLegacy(value => !value)}>参考与实验功能</button>
+        <span className="legacy-navigation-note">先比较实际算法，再按需要查看数学与设备证据</span>
+      </nav>
+      {showLegacy && <div className="lab-switcher" aria-label="领域实验室">
         <button className={`lab ${activeLab === "point" ? "active" : ""}`} type="button" onClick={() => setActiveLab("point")}>
           <span>01</span>Point Lab
         </button>
@@ -477,9 +489,9 @@ export function App() {
         <button className={`lab ${activeLab === "field-evidence" ? "active" : ""}`} type="button" onClick={() => setActiveLab("field-evidence")}>
           <span>15</span>Field Evidence<small>R7-E / R4.1</small>
         </button>
-      </div>
+      </div>}
 
-      {activeLab === "point" ? (
+      {activeLab === "benchmark" ? <CncBenchmarkWorkbench /> : activeLab === "point" ? (
         <main className="workspace">
           <aside className="config-panel">
             <div className="panel-heading">

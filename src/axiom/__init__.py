@@ -1,5 +1,6 @@
 """Axiom evaluation framework public API."""
 
+from .benchmark import CncAlgorithmExport, CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
 from .comparison import compare, compare_runs
 from .domain import (
     ORDERED_POINT_DOMAIN_PACK,
@@ -266,6 +267,13 @@ from .adapters import (
 from .subjects import list_subjects, register_subject
 
 __all__ = [
+    "CncAlgorithmExport",
+    "CncBenchmarkCase",
+    "CncBenchmarkReport",
+    "CncBenchmarkRequest",
+    "benchmark_case_hash",
+    "cnc_benchmark_example",
+    "compare_cnc_exports",
     "ArtifactAdapter",
     "ArtifactAdapterProvenance",
     "ArtifactEnvelope",

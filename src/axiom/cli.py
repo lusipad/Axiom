@@ -9,6 +9,7 @@ from typing import Sequence
 from pydantic import ValidationError
 
 from .comparison import compare
+from .benchmark import benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
 from .control import (
     BeckhoffWitnessDeploymentRequest,
     R7EAssessmentRequest,
@@ -36,6 +37,40 @@ class _CliInputError(Exception):
     def __init__(self, payload: dict[str, object]) -> None:
         super().__init__(str(payload.get("code", "MalformedInput")))
         self.payload = payload
+
+
+def _benchmark_json(path: Path) -> object:
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_EXPERIMENT_BYTES + 1)
+    if len(raw) > MAX_EXPERIMENT_BYTES:
+        raise ValueError(f"{path.name} exceeds the {MAX_EXPERIMENT_BYTES} byte limit")
+    return json.loads(raw.decode("utf-8-sig"))
+
+
+def _benchmark_command(args: argparse.Namespace) -> int:
+    try:
+        if args.command == "benchmark-example":
+            print(cnc_benchmark_example().model_dump_json(indent=2, by_alias=True, exclude_none=True))
+            return 0
+        if args.command == "benchmark-case-hash":
+            print(benchmark_case_hash(_benchmark_json(args.case)))
+            return 0
+        paths = (args.case, args.baseline, args.candidate)
+        if args.request is not None:
+            if any(path is not None for path in paths):
+                raise ValueError("use a request file or --case/--baseline/--candidate, not both")
+            payload = _benchmark_json(args.request)
+        else:
+            if any(path is None for path in paths):
+                raise ValueError("--case, --baseline and --candidate are all required")
+            payload = {role: _benchmark_json(path) for role, path in zip(("case", "baseline", "candidate"), paths, strict=True)}
+        report = compare_cnc_exports(payload)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        message = str(exc) if not isinstance(exc, ValidationError) else str(exc.errors(include_url=False, include_context=False, include_input=False))
+        print(json.dumps({"code": "MalformedCncBenchmark", "message": message}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+    return 0 if report.outcome in {"Improved", "WithinTolerance"} else 1
 
 
 def _validation_path(exc: ValidationError) -> str | None:
@@ -289,6 +324,14 @@ def _parser() -> argparse.ArgumentParser:
     intake_command.add_argument("--intake-id")
     intake_command.add_argument("--holdout-set-id")
     intake_command.add_argument("--selection-id")
+    benchmark_command = commands.add_parser("benchmark", help="compare two exported XYZ command traces under one frozen case")
+    benchmark_command.add_argument("request", nargs="?", type=Path)
+    benchmark_command.add_argument("--case", type=Path)
+    benchmark_command.add_argument("--baseline", type=Path)
+    benchmark_command.add_argument("--candidate", type=Path)
+    hash_command = commands.add_parser("benchmark-case-hash", help="print the canonical case hash to bind algorithm exports")
+    hash_command.add_argument("case", type=Path)
+    commands.add_parser("benchmark-example", help="print an explicitly synthetic CNC comparison request")
     serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
     serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
@@ -297,6 +340,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command in {"benchmark", "benchmark-case-hash", "benchmark-example"}:
+        return _benchmark_command(args)
     if args.command == "serve":
         import uvicorn
 

@@ -189,6 +189,80 @@ export interface TargetParityReceipt {
 
 export type R5BRunSpec = RunSpec & { subjectVersion?: string };
 
+export interface RealHoldoutCampaignCaseSlot {
+  caseId: string;
+  assessmentId: string;
+  calibrationPairId: string;
+  validationPairId: string;
+  role: "in-domain" | "ood-probe";
+  topology: "dual-table" | "head-table" | "dual-head";
+  trajectoryFamily: string;
+  taskId: string;
+  conditionId: string;
+  batchId: string;
+  deviceId: string;
+  calibrationCommandContentId: string;
+  validationCommandContentId: string;
+  maximumTimeErrorSeconds: number;
+}
+
+export interface RealHoldoutCampaignManifest {
+  artifactType: "axiom.intelligence.real-holdout-campaign-manifest";
+  schemaId: "axiom.intelligence.real-holdout-campaign-manifest@1";
+  schemaVersion: 1;
+  campaignId: string;
+  holdoutSetId: string;
+  selectionId: string;
+  modelBundleHash: string;
+  trainingDatasetHash: string;
+  selectionPolicyId: "axiom.intelligence.real-holdout-preregistered-selection@1";
+  leakageDimensions: ["device", "condition", "task", "batch", "time"];
+  platform: "windows";
+  cases: RealHoldoutCampaignCaseSlot[];
+  contentHash: string;
+}
+
+export interface RealHoldoutCampaignRegistration {
+  artifactType: "axiom.intelligence.real-holdout-campaign-registration";
+  schemaId: "axiom.intelligence.real-holdout-campaign-registration@1";
+  schemaVersion: 1;
+  campaignContentHash: string;
+  registeredAt: string;
+  registrationAuthorityId: string;
+  registrationRecordId: string;
+  registrationMethod: "external-owner-attestation";
+  contentHash: string;
+}
+
+export interface RealHoldoutCampaignRegistrationRequest {
+  schemaId: "axiom.intelligence.real-holdout-campaign-registration-request@1";
+  schemaVersion: 1;
+  campaignId: string;
+  holdoutSetId: string;
+  selectionId: string;
+  baseRunSpec: R5BRunSpec;
+  cases: RealHoldoutCampaignCaseSlot[];
+  registeredAt: string;
+  registrationAuthorityId: string;
+  registrationRecordId: string;
+  registrationMethod: "external-owner-attestation";
+}
+
+export interface RealHoldoutCampaignRegistrationReport {
+  schemaId: "axiom.intelligence.real-holdout-campaign-registration-report@1";
+  schemaVersion: 1;
+  manifest: RealHoldoutCampaignManifest;
+  registration: RealHoldoutCampaignRegistration;
+  registrationStatus: "Passed";
+  countsTowardReality: false;
+  trustBoundary: "external-owner-attestation";
+  controlledTrialStatus: "Open";
+  closedLoopStatus: "Open";
+  deviceSafetyStatus: "NotAssessed";
+  processSafetyStatus: "NotAssessed";
+  contentHash: string;
+}
+
 export interface RealHoldoutIntakeRequest {
   schemaId: "axiom.intelligence.real-holdout-intake-request@1";
   schemaVersion: 1;
@@ -229,6 +303,37 @@ export interface RealHoldoutIntakeReport {
   intakeId: string;
   checks: RealHoldoutIntakeCheck[];
   projectedCases: RealHoldoutProjectionReceipt[];
+  realHoldoutSet?: Record<string, unknown>;
+  r5bRunSpec?: R5BRunSpec;
+  intakeStatus: "Passed" | "Open" | "Blocked";
+  countsTowardReality: boolean;
+  validationScope: "submitted-cases-only";
+  controlledTrialStatus: "Open";
+  closedLoopStatus: "Open";
+  deviceSafetyStatus: "NotAssessed";
+  processSafetyStatus: "NotAssessed";
+  contentHash: string;
+}
+
+export interface PreregisteredRealHoldoutIntakeRequest {
+  schemaId: "axiom.intelligence.preregistered-real-holdout-intake-request@1";
+  schemaVersion: 1;
+  intakeId: string;
+  baseRunSpec: R5BRunSpec;
+  governance: Record<string, unknown>;
+  campaignManifest: RealHoldoutCampaignManifest;
+  campaignRegistration: RealHoldoutCampaignRegistration;
+  cases: Record<string, unknown>[];
+}
+
+export interface PreregisteredRealHoldoutIntakeReport {
+  schemaId: "axiom.intelligence.preregistered-real-holdout-intake-report@1";
+  schemaVersion: 1;
+  intakeId: string;
+  campaignManifestContentHash: string;
+  campaignRegistrationContentHash: string;
+  checks: RealHoldoutIntakeCheck[];
+  delegatedIntakeReport?: RealHoldoutIntakeReport;
   realHoldoutSet?: Record<string, unknown>;
   r5bRunSpec?: R5BRunSpec;
   intakeStatus: "Passed" | "Open" | "Blocked";

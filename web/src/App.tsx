@@ -15,6 +15,7 @@ import { F2Workbench } from "./features/five-axis-f2/F2Workbench";
 import { F3Workbench } from "./features/five-axis-f3/F3Workbench";
 import { F4Workbench } from "./features/five-axis-f4/F4Workbench";
 import { IntelligenceR5BWorkbench } from "./features/intelligence-r5b/IntelligenceR5BWorkbench";
+import { IntelligenceR5CWorkbench } from "./features/intelligence-r5c/IntelligenceR5CWorkbench";
 import { IntelligenceR5Workbench } from "./features/intelligence-r5/IntelligenceR5Workbench";
 import { MachineR3Workbench } from "./features/machine-r3/MachineR3Workbench";
 import { OptimizationR6Workbench } from "./features/optimization-r6/OptimizationR6Workbench";
@@ -28,7 +29,7 @@ import type {
   Point,
 } from "./types";
 
-type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7" | "control-r7b" | "control-r7c" | "control-r7d" | "field-evidence";
+type Lab = "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "intelligence-r5c" | "optimization-r6" | "control-r7" | "control-r7b" | "control-r7c" | "control-r7d" | "field-evidence";
 type PointView = "geometry" | "metrics";
 
 function clone<T>(value: T): T {
@@ -248,6 +249,8 @@ export function App() {
               ? "Intelligence R5 Evidence Lab"
             : activeLab === "intelligence-r5b"
               ? "Intelligence R5-B Reality Gate"
+            : activeLab === "intelligence-r5c"
+              ? "Intelligence R5-C Conditional Effect Lab"
             : activeLab === "physical-r4"
               ? "Physical R4 Validation Workbench"
             : activeLab === "optimization-r6"
@@ -277,6 +280,8 @@ export function App() {
               ? "intelligence.r5-manifest@1"
             : activeLab === "intelligence-r5b"
               ? "intelligence.r5b-manifest@1"
+            : activeLab === "intelligence-r5c"
+              ? "intelligence.r5c-manifest@1"
             : activeLab === "physical-r4"
               ? "physical.r4-manifest@1"
             : activeLab === "optimization-r6"
@@ -400,6 +405,8 @@ export function App() {
                   ? "SYNTHETIC LEARNING · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
                 : activeLab === "intelligence-r5b"
                   ? "REAL HOLDOUT VALIDATION · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
+                : activeLab === "intelligence-r5c"
+                  ? "SYNTHETIC CONDITIONAL EFFECT · REALITY OPEN · OFFLINE ONLY"
                 : activeLab === "physical-r4"
                   ? "MODEL VALIDATION · NOT DEVICE SAFE"
                 : activeLab === "optimization-r6"
@@ -458,6 +465,9 @@ export function App() {
         </button>
         <button className={`lab ${activeLab === "intelligence-r5b" ? "active" : ""}`} type="button" onClick={() => setActiveLab("intelligence-r5b")}>
           <span>09</span>Intelligence<small>R5-B</small>
+        </button>
+        <button className={`lab ${activeLab === "intelligence-r5c" ? "active" : ""}`} type="button" onClick={() => setActiveLab("intelligence-r5c")}>
+          <span>09C</span>Intelligence<small>R5-C</small>
         </button>
         <button className={`lab ${activeLab === "optimization-r6" ? "active" : ""}`} type="button" onClick={() => setActiveLab("optimization-r6")}>
           <span>10</span>Optimization<small>R6</small>
@@ -674,6 +684,8 @@ export function App() {
         <IntelligenceR5Workbench catalog={catalog} />
       ) : activeLab === "intelligence-r5b" ? (
         <IntelligenceR5BWorkbench catalog={catalog} />
+      ) : activeLab === "intelligence-r5c" ? (
+        <IntelligenceR5CWorkbench catalog={catalog} />
       ) : activeLab === "physical-r4" ? (
         <PhysicalR4Workbench catalog={catalog} />
       ) : activeLab === "optimization-r6" ? (

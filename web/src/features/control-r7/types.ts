@@ -1,15 +1,18 @@
 export type RuntimeState = "Prepared" | "Admitted" | "Blocked" | "Monitoring" | "StopRequested" | "Stopped" | "RollbackVerified" | "Completed";
 
 export interface R7Manifest {
-  manifestId: "control.r7-manifest@1";
+  manifestId: "control.r7-manifest@1" | "control.r7a-v2-manifest@1";
   domainPackId: "control.domain-pack@1";
   evaluatorVersion: string;
   runnerId: string;
+  sourceRecommendationSchemaId?: "axiom.optimization.recommendation-set@2";
+  projectionSchemaId?: "axiom.control.recommendation-evidence-projection@1";
   supportedPlatforms: ["Windows"];
   permissionCeiling: "Shadow";
   deviceWriteAllowed: false;
   scenarioIds: string[];
   syntheticShadowContractStatus: "Passed";
+  handoffContractStatus?: "Passed";
   deploymentShadowStatus: "Open";
   controlledTrialStatus: "Open";
   closedLoopStatus: "Open";
@@ -27,10 +30,29 @@ export interface R7ExamplePayload {
   manifest: R7Manifest;
   scenario: R7ScenarioSummary;
   recommendationSet: {
+    schemaId?: "axiom.optimization.recommendation-set@1" | "axiom.optimization.recommendation-set@2";
     contentHash: string;
     permissionLevel: "Offline";
     realityValidationStatus: "Open";
+    bestObservedCandidateIds?: string[];
+    exactValidationBudget?: number;
   };
+  recommendationProjection?: {
+    schemaId: "axiom.control.recommendation-evidence-projection@1";
+    adapterId: "axiom.adapter.r6v2-to-r7a-shadow@1";
+    contentHash: string;
+    sourceRecommendationSetContentHash: string;
+    candidateId: string;
+    candidateContentHash: string;
+    screeningEstimateContentHash: string;
+    sourceCandidateStatus: "ExactEligible" | "ExactIneligible";
+    selectionClass: "BestObserved" | "ParetoWithinValidated" | "ExactEligible" | "ExactIneligible";
+    targetUse: "SyntheticShadowAdmission";
+    targetPermissionCeiling: "Shadow";
+    automaticAcceptanceAllowed: false;
+    deviceWriteAllowed: false;
+    globalOptimalityStatus: "NotClaimed";
+  } | null;
   runtimeSpec: {
     runtimeSpecId: string;
     requestedPermission: string;
@@ -78,6 +100,7 @@ export interface R7ExamplePayload {
       disposition: "Shadow" | "Blocked";
       grantedPermission: string;
       contentHash: string;
+      evidenceSnapshotHash: string;
       automatic: false;
       responsibility: {
         accountablePartyId: string;

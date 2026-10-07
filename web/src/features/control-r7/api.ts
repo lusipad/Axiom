@@ -29,3 +29,23 @@ export function replayR7Scenario(scenarioId: string): Promise<R7ExamplePayload> 
     body: JSON.stringify({ scenarioId }),
   });
 }
+
+export function loadR7A2Manifest(): Promise<R7Manifest> {
+  return requestJson<R7Manifest>("/api/v1/control/r7a-v2/manifest");
+}
+
+export function loadR7A2Scenarios(): Promise<R7ScenarioSummary[]> {
+  return requestJson<R7ScenarioSummary[]>("/api/v1/control/r7a-v2/scenarios");
+}
+
+export function loadR7A2Example(scenarioId = "r6v2-shadow-nominal"): Promise<R7ExamplePayload> {
+  return requestJson<R7ExamplePayload>(`/api/v1/examples/control-r7a-v2?scenarioId=${encodeURIComponent(scenarioId)}`);
+}
+
+export function replayR7A2Scenario(scenarioId: string): Promise<R7ExamplePayload> {
+  return requestJson<R7ExamplePayload>("/api/v1/control/r7a-v2/replay", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenarioId }),
+  });
+}

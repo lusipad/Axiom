@@ -1,0 +1,68 @@
+{
+  "manifestId": "axiom.optimization.r6v2-fixture-manifest@1",
+  "platform": "windows",
+  "identityScope": "numeric-environment-bound",
+  "developmentEnvironment": "windows-cpython-3.14",
+  "releaseEnvironment": "windows-cpython-3.12.10-openblas-haswell-single-thread",
+  "screeningCandidateCount": 135,
+  "exactValidationBudget": 27,
+  "surrogateContextHash": "4babff6f06e9cbb8513927d22943943160ce1e78325567d6b67bd7d08094a611",
+  "scenarios": {
+    "canonical-goal-conditioned-speed": {
+      "searchRequestHash": "d388302cbb3232165f4530dffeaf78a59cf3e55884f4ce31ef3ed53f0559bd47",
+      "screeningReceiptContentHash": "e7fa0d69f54c7c86beaf9e2709b94799c949cf4fb1e1a561a94c1212f89fd1e7",
+      "recommendationSetContentHash": "eb812efa4f52315f3fe6fb09f867c7f38b04e92c0c92ea966abdac25495738e6",
+      "bestObservedCandidateIds": [
+        "optimization.r6v2.feed-0825.period-050ms@1",
+        "optimization.r6v2.feed-0825.period-055ms@1"
+      ]
+    },
+    "canonical-goal-conditioned-quality": {
+      "searchRequestHash": "a00e5cf0a369f5c1ae6e361e79938fafc51ee4fbd87ef11cc3778e78b47ade25",
+      "screeningReceiptContentHash": "5baf64a1fc9dc84bfcc2d9453228ea90af232dc42da3fefa2cf9cd623ada2d6f",
+      "recommendationSetContentHash": "5363ae94ae33fb625aff6ced246c9181016aa8de69d27df13969ea427a7f72e1",
+      "bestObservedCandidateIds": [
+        "optimization.r6v2.feed-0800.period-050ms@1"
+      ]
+    },
+    "canonical-goal-conditioned-compact-command": {
+      "searchRequestHash": "e204cece7779112b1ce9ce94f5a0de0291677af049391b10d16786837dbb67bf",
+      "screeningReceiptContentHash": "a5bbb6182e52524ae83643797636e66a74c13f9b15e9a9d5a089579bd3bc20d1",
+      "recommendationSetContentHash": "61bef62773b7e97e17feada9ab109cfbd5d2030d75c06bccbc2bbf6ab5795d70",
+      "bestObservedCandidateIds": [
+        "optimization.r6v2.feed-0800.period-080ms@1"
+      ]
+    }
+  },
+  "windowsRelease": {
+    "surrogateContextHash": "15372d1201401438719d48bd6ba5471223820499cb841c8149971b3504bc4456",
+    "scenarios": {
+      "canonical-goal-conditioned-speed": {
+        "searchRequestHash": "b10eed01047979e7739e73c567ae561a71b6e8c938c9bb303c0811ff0df2eb6d",
+        "screeningReceiptContentHash": "f20458721a7293a81408f591694f6e99a3c0adfc6425ec4b7ebcc906d539e5c3",
+        "recommendationSetContentHash": "9ba541d47e5e66fd2a40e6592550aaf596f01078de24c7de4d0f6ead251b1226",
+        "bestObservedCandidateIds": [
+          "optimization.r6v2.feed-0825.period-050ms@1",
+          "optimization.r6v2.feed-0825.period-055ms@1"
+        ]
+      },
+      "canonical-goal-conditioned-quality": {
+        "searchRequestHash": "21bfe0eb431e6c75913f84487fe91fb8d273192f32bbb27633f66d09ce605a6a",
+        "screeningReceiptContentHash": "61ee2afdffa21790bdb924a9d2754530971cdc068f0390902eed6685b24c6e20",
+        "recommendationSetContentHash": "639c161342ebb695870d781ba36e4f1bfd90ae5879fe68e769bd0922db0d6f6e",
+        "bestObservedCandidateIds": [
+          "optimization.r6v2.feed-0800.period-050ms@1"
+        ]
+      },
+      "canonical-goal-conditioned-compact-command": {
+        "searchRequestHash": "c23fa8f54a230bbb62ecc2c967078915e62a14bb688ab67e2599f701f9f5e470",
+        "screeningReceiptContentHash": "18a4c71e6b9793af60e0bbef70556eee1e913d3950779801f1e7bc2db3d4e031",
+        "recommendationSetContentHash": "4e6581d7606f75846fae07c301ca46465a18c9217e98180500bc52af5e02aa52",
+        "bestObservedCandidateIds": [
+          "optimization.r6v2.feed-0800.period-080ms@1"
+        ]
+      }
+    }
+  },
+  "boundary": "SURROGATE SCREENING + EXACT REPLAY / BEST OBSERVED ONLY / NOT REALITY VALIDATED / NOT DEVICE SAFE"
+}

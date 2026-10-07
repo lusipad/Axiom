@@ -1,0 +1,65 @@
+{
+  "manifestId": "axiom.intelligence.r5e-fixture-manifest@1",
+  "platform": "windows",
+  "identityScope": "numeric-environment-bound",
+  "developmentEnvironment": "windows-cpython-3.14",
+  "releaseEnvironment": "windows-cpython-3.12.10-openblas-haswell-single-thread",
+  "runnerId": "axiom.physical.canonical-f3-f4-r4-replay@1",
+  "approvalPolicyId": "axiom.intelligence.r5e-explicit-offline-approval@1",
+  "accountablePartyId": "fixture-reviewer",
+  "expectedProposalPoints": [
+    [0.675, 0.04],
+    [0.65, 0.045],
+    [0.75, 0.08],
+    [1.0, 0.055],
+    [0.975, 0.08]
+  ],
+  "expectedAcquisitionLabels": [
+    [1.005928794198545, 0.36550563328863817, 27],
+    [1.0446183632061814, 0.3612146101299807, 25],
+    [0.9053359147786905, 0.4692778032767464, 13],
+    [0.6790019360840179, 0.5323623615207111, 14],
+    [0.6964122421374543, 0.561059765701124, 10]
+  ],
+  "expectedCounts": {
+    "dataset": 30,
+    "train": 20,
+    "validation": 5,
+    "test": 5,
+    "nextAvailableCandidateCount": 105,
+    "nextDesignSampleCount": 20,
+    "nextExcludedObservedPointCount": 30
+  },
+  "expectedNextProposalPoints": [
+    [0.975, 0.04],
+    [0.675, 0.08],
+    [0.7, 0.04],
+    [0.775, 0.08],
+    [1.0, 0.065]
+  ],
+  "developmentExpectedIdentities": {
+    "campaignRequestContentHash": "9d72ce2404beb59c8b85616504869777fc07f46345a925e7fb1eda73a898ed0e",
+    "acquisitionReceiptContentHash": "349f76a2ba3be9cd531ddd98af4b7d3997d8d1f075c94d78fdea750469ece357",
+    "datasetContentHash": "7b73948fb8f4efe6b6b540d3b986ada1530502665b4bae81318799c61b702eae",
+    "splitManifestContentHash": "6f79de37a2bcd8dcca28b973ccd937fd21f1d5d1ea70116cbeff6ac581bb39fe",
+    "trainingReceiptContentHash": "c30ea7be456b01b01852c33946e782b810749f17b1eb20c409b6e6880d776999",
+    "modelBundleContentHash": "cc6a08dc31256ca2e3e826d2ff140044ae6f3bb37ee9d6e702b2cc291c02e3cc",
+    "parityReceiptContentHash": "7018c3ac9a62b3812abce0a897a10581d63e30f528e468645d1293b5bd4f948d",
+    "candidateAssessmentContentHash": "fa0a99f4ff76051ba69b7bcbe2e7a33eb36ae45a3bbcfacc5aae3fd03cf5e3a2",
+    "nextPlanContentHash": "fd1e730b20e72a22f956d645241888715676bc92ae3d62db1eb62e42a982eda4",
+    "reportContentHash": "da0e4df9e940bdbe108763fb40b8690e110a0efaf72d5998d9026990370b06f0"
+  },
+  "windowsReleaseExpectedIdentities": {
+    "campaignRequestContentHash": "4c5e6a0b5481ba119dc32676ef62f8117db9b9e4a9a6bad06adef958274e5812",
+    "acquisitionReceiptContentHash": "6222f098bbe77b8de3facaaf78a4d0ae44abb99308492820b5d0f47ef63ae4bb",
+    "datasetContentHash": "6a78242b79480a66eb7dabfe1943df5a2b1d97da8dd99cc05268da0e2a37073f",
+    "splitManifestContentHash": "70abc1bb16a4bbda61c5f4a568b3f43bc500f68686725712e277b654ebdbd9a2",
+    "trainingReceiptContentHash": "1c71b151582014b7b95651dabde017fa1f6d4bc67b83f9f8214f95a366e0b4ee",
+    "modelBundleContentHash": "4e2b92f37cc21c6ee24ff547033622f6f91b94d55f948b561cc50bfffaf0437f",
+    "parityReceiptContentHash": "e693acd4bbe6cc893ac412b69d91480da58c1ae16784b1118d09856b73acd9b9",
+    "candidateAssessmentContentHash": "c9ae01da87d7f32232dd01c1a6667633ceede285623053de7317e1ec25111efc",
+    "nextPlanContentHash": "f449943c18474265d0e9a7a978849437f63a0d0c7fab3614caffb218ad1a683f",
+    "reportContentHash": "b268119e57884a178fc89b6cb6c6515419919aa1277d7ee206466218bd806528"
+  },
+  "boundary": "SYNTHETIC SIL CAMPAIGN / NOT REALITY VALIDATED / NOT DEVICE SAFE / PROMOTION NOT PERFORMED"
+}

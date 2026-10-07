@@ -515,7 +515,12 @@ def evaluate_r5b_intelligence(
             case.source_kind in {"controller-export", "device-read"}
             for case in holdout_set.cases
         )
-        holdout_isolation = True
+        selection_pre_registered = (
+            holdout_set.selection.selection_evidence_status == "PreRegistered"
+            and holdout_set.selection.campaign_manifest_content_hash is not None
+            and holdout_set.selection.campaign_registration_content_hash is not None
+        )
+        holdout_isolation = selection_pre_registered
         aligned_cases: list[_AlignedCase] = []
         alignment_coverage_ok = True
         r3_gate_ok = True
@@ -598,6 +603,15 @@ def evaluate_r5b_intelligence(
             ),
             "conditionIds": sorted({case.condition_id for case in holdout_set.cases}),
             "selectionId": holdout_set.selection.selection_id,
+            "selectionEvidenceStatus": (
+                holdout_set.selection.selection_evidence_status or "LegacySelfAttested"
+            ),
+            "campaignManifestContentHash": (
+                holdout_set.selection.campaign_manifest_content_hash
+            ),
+            "campaignRegistrationContentHash": (
+                holdout_set.selection.campaign_registration_content_hash
+            ),
         }
         source_details = {
             "sourceKinds": {
@@ -649,12 +663,19 @@ def evaluate_r5b_intelligence(
                         "allowedUses": list(holdout_set.governance.allowed_uses),
                     },
                 ),
-                R5B_HOLDOUT_ISOLATION_METRIC_ID: _result(
-                    R5B_HOLDOUT_ISOLATION_METRIC_ID,
-                    status=MetricStatus.COMPUTED,
-                    value=holdout_isolation,
-                    reason_code=None if holdout_isolation else "HoldoutIsolationFailed",
-                    details=isolation_details,
+                R5B_HOLDOUT_ISOLATION_METRIC_ID: (
+                    _result(
+                        R5B_HOLDOUT_ISOLATION_METRIC_ID,
+                        status=MetricStatus.COMPUTED,
+                        value=True,
+                        details=isolation_details,
+                    )
+                    if selection_pre_registered
+                    else _insufficient(
+                        R5B_HOLDOUT_ISOLATION_METRIC_ID,
+                        reason_code="RealHoldoutSelectionNotPreRegistered",
+                        details=isolation_details,
+                    )
                 ),
                 R5B_ALIGNMENT_COVERAGE_METRIC_ID: _result(
                     R5B_ALIGNMENT_COVERAGE_METRIC_ID,
@@ -696,21 +717,43 @@ def evaluate_r5b_intelligence(
                         "abstainedCount": ood_abstain,
                     },
                 ),
-                R5B_REAL_WORLD_GENERALIZATION_METRIC_ID: _result(
-                    R5B_REAL_WORLD_GENERALIZATION_METRIC_ID,
-                    status=MetricStatus.COMPUTED,
-                    value=final_gate,
-                    reason_code=None if final_gate else "CaseScopedGateFailed",
-                    details={
-                        "status": "CaseScopedPassed" if final_gate else "Open",
-                        "scopeCaseIds": [case.case_id for case in holdout_set.cases],
-                        "inDomainAbstainedCount": in_domain_abstain,
-                        "improvementRatio": improvement_ratio,
-                        "conformalCoverage": conformal_coverage,
-                        "oodAbstentionRate": ood_abstention_rate,
-                        "submittedCasesOnly": True,
-                    },
-                    method=f"{R5B_REAL_WORLD_GENERALIZATION_METRIC_ID}.case-scoped@1",
+                R5B_REAL_WORLD_GENERALIZATION_METRIC_ID: (
+                    _result(
+                        R5B_REAL_WORLD_GENERALIZATION_METRIC_ID,
+                        status=MetricStatus.COMPUTED,
+                        value=final_gate,
+                        reason_code=None if final_gate else "CaseScopedGateFailed",
+                        details={
+                            "status": "CaseScopedPassed" if final_gate else "Open",
+                            "scopeCaseIds": [
+                                case.case_id for case in holdout_set.cases
+                            ],
+                            "inDomainAbstainedCount": in_domain_abstain,
+                            "improvementRatio": improvement_ratio,
+                            "conformalCoverage": conformal_coverage,
+                            "oodAbstentionRate": ood_abstention_rate,
+                            "submittedCasesOnly": True,
+                            "selectionEvidenceStatus": "PreRegistered",
+                        },
+                        method=f"{R5B_REAL_WORLD_GENERALIZATION_METRIC_ID}.case-scoped@1",
+                    )
+                    if selection_pre_registered
+                    else _insufficient(
+                        R5B_REAL_WORLD_GENERALIZATION_METRIC_ID,
+                        reason_code="RealHoldoutSelectionNotPreRegistered",
+                        details={
+                            "status": "Open",
+                            "scopeCaseIds": [
+                                case.case_id for case in holdout_set.cases
+                            ],
+                            "computedPerformanceGate": performance_gate,
+                            "improvementRatio": improvement_ratio,
+                            "conformalCoverage": conformal_coverage,
+                            "oodAbstentionRate": ood_abstention_rate,
+                            "submittedCasesOnly": True,
+                            "selectionEvidenceStatus": "LegacySelfAttested",
+                        },
+                    )
                 ),
             }
         )

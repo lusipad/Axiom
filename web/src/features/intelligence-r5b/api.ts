@@ -5,6 +5,10 @@ import type {
   R5BManifest,
   R5BRunSpec,
   R5BScenarioSummary,
+  PreregisteredRealHoldoutIntakeReport,
+  PreregisteredRealHoldoutIntakeRequest,
+  RealHoldoutCampaignRegistrationReport,
+  RealHoldoutCampaignRegistrationRequest,
   RealHoldoutIntakeReport,
   RealHoldoutIntakeRequest,
 } from "./types";
@@ -50,4 +54,36 @@ export async function assessRealHoldoutIntake(
     throw new Error(`API ${response.status}: ${detail}`);
   }
   return response.json() as Promise<RealHoldoutIntakeReport>;
+}
+
+export async function registerRealHoldoutCampaign(
+  request: RealHoldoutCampaignRegistrationRequest,
+): Promise<RealHoldoutCampaignRegistrationReport> {
+  const response = await fetch("/api/v1/intelligence/r5b/campaigns/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+    const detail = body?.detail ? JSON.stringify(body.detail) : response.statusText;
+    throw new Error(`API ${response.status}: ${detail}`);
+  }
+  return response.json() as Promise<RealHoldoutCampaignRegistrationReport>;
+}
+
+export async function assessPreregisteredRealHoldoutIntake(
+  request: PreregisteredRealHoldoutIntakeRequest,
+): Promise<PreregisteredRealHoldoutIntakeReport> {
+  const response = await fetch("/api/v1/intelligence/r5b/intake/assess-preregistered", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+    const detail = body?.detail ? JSON.stringify(body.detail) : response.statusText;
+    throw new Error(`API ${response.status}: ${detail}`);
+  }
+  return response.json() as Promise<PreregisteredRealHoldoutIntakeReport>;
 }

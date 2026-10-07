@@ -7,6 +7,7 @@ from importlib import resources
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from axiom.intelligence import load_r5_scenario
 from axiom.intelligence.r5b_models import (
@@ -101,6 +102,11 @@ def _selection_content_hash(payload: dict[str, Any]) -> str:
         selected_before_evaluation=payload["selectedBeforeEvaluation"],
         leakage_dimensions=tuple(payload["leakageDimensions"]),
         case_ids=tuple(payload["caseIds"]),
+        selection_evidence_status=payload.get("selectionEvidenceStatus"),
+        campaign_manifest_content_hash=payload.get("campaignManifestContentHash"),
+        campaign_registration_content_hash=payload.get(
+            "campaignRegistrationContentHash"
+        ),
         content_hash="",
     )
     from axiom.intelligence.models import canonical_hash
@@ -402,6 +408,20 @@ def test_r5b_real_holdout_contract_accepts_case_scoped_windows_payload() -> None
         "time",
     )
     assert [case.case_id for case in holdout.cases] == list(holdout.selection.case_ids)
+    assert holdout.selection.selection_evidence_status is None
+    assert (
+        holdout.selection.content_hash
+        == "e0ba5a752c5078777e7a7e0ec91dd0f1f2867b7b8e2d142bdc470a366218c966"
+    )
+
+
+def test_r5b_selection_requires_all_preregistration_bindings_together() -> None:
+    payload = _build_holdout_set()["selection"]
+    payload["selectionEvidenceStatus"] = "PreRegistered"
+    payload["contentHash"] = _selection_content_hash(payload)
+
+    with pytest.raises(ValidationError, match="campaign manifest and registration"):
+        RealHoldoutSelectionReceipt.model_validate(payload)
 
 
 def test_r5b_request_rejects_holdout_that_starts_before_training_window() -> None:

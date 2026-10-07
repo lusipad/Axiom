@@ -2,6 +2,93 @@
 
 本文件记录 Axiom 的用户可见变化。版本遵循语义化版本。
 
+## Unreleased
+
+## 0.23.0 - 2026-08-14
+
+### Added
+
+- 新增 `RealHoldoutCampaignManifest` / `RealHoldoutCampaignRegistration` 与 `axiom real-holdout-campaign`，使外部数据/试验责任方能在现场采集前封存 R5-B 基线、计划 Case、设备/工况、双运行身份和 command 内容身份。
+- 新增 `axiom.intelligence.preregistered-real-holdout-intake-request@1` / `report@1`、`POST /api/v1/intelligence/r5b/campaigns/register` 和 `POST /api/v1/intelligence/r5b/intake/assess-preregistered`；严格 intake 会检查登记早于每次 capture 打开时间，并逐项核对实际 Case 与预登记 slot。
+- R5-B 工作台新增 Campaign request/report 导入、严格 intake、Manifest/Registration 下载和 `PreRegistered` selection 状态展示；新增 ADR-0027 与 Windows 现场流程说明。
+- 新增 Windows-only `intelligence.domain-pack@3`：25 点 R4 synthetic SIL 参数研究、15/5/5 空间 holdout、周期 `s` 与线性误差 `mm` 双输出 ridge 模型、split-conformal 区间、OOD 弃权和独立纯 Python parity。
+- 新增 R5-C typed manifest/scenario/example/predict API、公共 Run 重放、Intelligence R5-C 网页工作台、开发/发布双档数值环境金值与 ADR-0028。
+- 新增 Windows-only `optimization.domain-pack@2`、目标驱动 `optimization.search-request@2` 和 `RecommendationSet@2`：在 15×9 共 135 点网格上使用 R5-C 代理筛选，并把精确 F3/F4/R4 回放限制在最多 27 点。
+- 新增速度、质量和紧凑指令三个 R6 v2 场景、typed manifest/example/search API、开发/发布双档数值环境金值、默认 v2 Optimization Lab 与 ADR-0029；网页保留 v1 切换入口。
+- 新增 `axiom.control.recommendation-evidence-projection@1` 与 `axiom.adapter.r6v2-to-r7a-shadow@1`，把 R6 v2 Recommendation、screening、exact candidate 和预算内最优性身份显式接入既有 R7-A synthetic Shadow。
+- 新增六个 R7-A v2 handoff 场景、typed manifest/example/replay API、环境绑定 Projection/Audit 金值与 ADR-0030；Controlled Runtime 默认展示 v2，并保留 v1 切换。
+- 新增 `GoalToShadowRequest` / `GoalToShadowReport`、`axiom.control.physical-shadow-projection@1` 与 `POST /api/v1/control/goal-to-shadow/rehearse`；选中的 R6 v2 exact candidate 会按冻结协议重新执行 F3/F4/R4，并以实际 `PhysicalResponseTrace` 驱动既有 R7-A 状态机。
+- Optimization Lab 新增候选级“进入 Synthetic Shadow”动作和内联结果卡，展示 exact sample 数、X/Y/Z 最大线性误差、OOD、Admission、Stop/Rollback 与永久零写入边界；新增 ADR-0031。
+- 新增 R5-D `SimulationExperimentPlan` 与纯 Python 顺序 G-optimal planner：只用 R5-C 的 15 个 train 点构造信息矩阵，从 R6 v2 网格的 110 个未观测点中规划默认五点，并冻结开发/发布双数值环境身份。
+- 新增 R5-D typed manifest/example/plan API、Intelligence Lab“规划下一批仿真”面板与 ADR-0032；界面展示选择前后最大 leverage、独立 `s`/`mm` 预测和预计命令样本数。
+- 新增 R5-E 离线合成实验反馈闭环：完整五点 R5-D 计划在责任方显式 synthetic-only 批准后重放 exact F3/F4/R4，封存不可变 AcquisitionReceipt，生成 30 点 Dataset@2、20/5/5 Split@2、ModelBundle@2 候选与下一份未执行计划。
+- 新增 R5-E typed manifest/example/approve/execute API、Intelligence Lab 批准与执行面板、双数值环境 fixture 和 ADR-0033；界面展示五点物理结果、数据/split 扩展、原 holdout 指标差值、候选门与下一计划。
+- 新增 R5-F 候选模型下游影响评估：在同一三个 R6 v2 意图、135 点网格和 27 次精确预算下并排运行 R5-C v1 基线与 R5-E v2 候选，封存筛选差异、精确集合、预算内最佳目标和共享精确点预测误差差值。
+- 新增 `optimization.search-request@3`、`axiom.optimization.recommendation-set@3`、R5-F typed manifest/impact API、Intelligence Lab 影响面板、双数值环境 fixture 和 ADR-0034；旧 `@2` 合同与金值保持不变。
+- 新增 R5-G `ModelPromotionReadinessDossier`：确定性重放 R5-E/R5-F，冻结唯一基线、候选、candidate context 与 rollback baseline 身份，并把五项 readiness checks 和六项 remaining gates 封装为内容寻址审查包。
+- 新增 R5-G typed manifest/readiness API、Intelligence Lab 只读审查面板、开发/发布双数值环境 fixture 和 ADR-0035；界面只生成审查包，不提供采用、注册、激活、默认切换或部署动作。
+- 新增 R5-H 候选专属真实 holdout：采集前冻结 R5-G baseline/candidate、至少三个 Case、严格阈值、精确 M4/M5 与数值环境；评估只接受完整 R7-E/R4.1 报告，并由服务端重算周期与 X/Y/Z 线性误差标签。
+- 新增 R5-H typed manifest/register/assess API、Intelligence Lab 预注册/下载/多报告导入/只读结果面板和 ADR-0036；状态明确区分 `Open`、`Blocked`、`Refuted` 与 `CaseScopedPassed`，不提供模型采用或设备动作。
+- 新增 R5-I `PromotionDecision`、晋升预检、ActivationReceipt、MonitoringWindow 与 RollbackReceipt 合同；本机 SQLite Registry 以单事务完成候选注册、generation 增长、默认指针切换与提交后读回，并持久化分目标监控及显式回滚证据。
+- 新增 Windows `axiom model-lifecycle status|predict|preflight|promote|monitor|rollback`、R5-I 只读 typed HTTP API、Intelligence Lab 生命周期面板和 ADR-0037；HTTP/网页不暴露晋升、激活或回滚写操作。
+
+### Changed
+
+- 只有同时绑定 Campaign Manifest/Registration 的 `selectionEvidenceStatus=PreRegistered` 才能关闭 R5-B holdout isolation 门。旧 `selectedBeforeEvaluation=true`、v1 intake schema 和历史 selection 内容身份保持兼容读取，但 runtime 会以 `RealHoldoutSelectionNotPreRegistered` 保持现实泛化 Claim 为 `Inconclusive`。
+- 严格 intake 继续复用 v0.22.0 的 R7-E/R4.1 投影、治理、谱系、单位和隔离检查；本次没有新增 DomainPack 或修改 Core。
+- R5-C 保持两个目标和单位独立，不生成综合评分；R6 v1 继续逐候选重放 F3/F4/R4 六点完全枚举，不静默改用代理模型。
+- R6 v2 用一个主目标和两个显式同量纲约束代替权重总分。代理只产生候选和筛选回执；最终 Recommendation 只来自预算内精确回放，且只声明 `best observed`，不声明全局最优。
+- `control.domain-pack@1` 的 Recommendation context 现在显式接受 schema version 1/2；主 RuntimeAudit、Evaluator、Runner 和六项 Claim 不变，R7-A v1 计算语义不变，其 Recommendation/Audit 身份按冻结数值环境分别保持不变。
+- R7-A v2 只允许 exact-eligible 候选进入 synthetic Shadow；缺 Projection、跨候选重绑、精确约束失败和设备写请求均 fail closed。Projection 不是 AcceptanceRecord，非 best 的 exact-eligible 候选仍需独立处置。
+- Goal-to-Shadow 不再把 R7-A 固定四点合同夹具解释为当前候选响应。服务端重验候选 M4/M5/R4 identity，并要求 M5 与 response 的 sample index、time 和五轴 command 逐项一致；Shadow 误差仅使用 X/Y/Z mm，B/C rad 明确排除，禁止插值或补点。
+- R5-C、R5-D、R6 v2、R7-A 与 Goal-to-Shadow 中包含数值求解谱系的身份不再宣称跨环境 portable；fixture 显式区分 CPython 3.14 开发档案与 CPython 3.12.10 + Haswell/单线程 OpenBLAS 发布档案。
+- R5-D 明确区分 split-conformal 区间与 design leverage：前者继续表达 validation 边界内的经验覆盖，后者只作为线性设计的 epistemic proxy；预测值不参与首版信息价值排序。
+- R5-D 每轮选点后更新信息矩阵，validation/test 永不进入设计矩阵，全部已观测点都从候选池排除；获得新标签后必须生成新的 DatasetSnapshot 与 ModelBundle 才能再次规划。
+- R5-E 保持全部 R5-C v1 序列化与内容金值不变；v2 只按 proposal 顺序向 train 追加五点，原 validation/test 成员与顺序冻结，候选仍在原 holdout 上与基线比较。
+- R5-E 把 Campaign 成功、candidate gate 与 model promotion 分成三个独立状态。冻结 fixture 上的 RMSE 改善只记录为观测，`generalImprovementGuarantee=NotClaimed`，`modelPromotionStatus=NotPerformed`。
+- R5-F 在影响评估前重放 R5-E Campaign 并重验 candidate bundle、training、parity、dataset、split 与 assessment 谱系；客户端不能提交自报的 RecommendationSet。
+- 候选 surrogate 仍只改变有限预算内的筛选顺序，最终结果继续由 exact F3/F4/R4 和七个数学/碰撞门裁决；影响门不改变 R6 v2 默认模型。
+- R5-G 的 `ReadyForIndependentReview` 只由证据完整性派生。准备者三项确认不是 PromotionDecision；报告固定等待独立人工决定，并保持 registry/default/activation 状态不变。
+- R5-G HTTP intake 会按冻结 R6 v2 参数 schema 恢复 JavaScript JSON 往返中从 `1.0` 退化为 `1` 的坐标类型，再执行原内容哈希校验；全局哈希算法和既有 R5/R6 金值不变。
+- R5-H 不复用 R5-B 对 R5-A 残差模型的结论。周期头固定为不计入 reality 的 `exact-planner` 证据；线性误差头才从 controller-live-read 的 X/Y/Z `mm` 序列派生，两个目标保持独立 RMSE、coverage、单位和门禁。
+- R5-H 网页的登记、评估和 JSON 下载改用保留 IEEE-754 `-0` 的序列化器，M5 关节坐标会写成 `-0.0`；sealed dossier、Registration report 与现场报告在 OpenAPI 输入侧作为 canonical JSON artifact 提交，服务端仍恢复完整类型并重验嵌套哈希，同时保持既有 R7-E OpenAPI 组件名不变。
+- R5-I 在任何状态写入前权威重放 R5-G/R5-H，并要求独立决定人与 R5-G 准备者分离、决定签名绑定 dossier、assessment、候选及冻结回滚基线；相同决定可幂等读回，不同内容复用 ID 或 generation 冲突均 fail closed。
+- R5-I 默认模型只供显式配置该 Registry 的当前模型推理使用。既有 R6/R7 请求、历史结果和内容身份不会静默查询或跟随 Registry，避免本机激活改变已封存计算语义。
+
+### Boundary
+
+- 首版 Registration 使用 `external-owner-attestation`。Axiom 验证内容身份与时间先后，但不提供可信时间戳、数字签名或物理真实性证明；Registration 本身固定 `countsTowardReality=false`。
+- 仓库仍不包含真实 TwinCAT/TF6100 capture 或正向真实 holdout。Campaign/Intake 不连接或写入设备，不开放 Controlled Trial、Closed Loop、DeviceSafe 或 ProcessSafe。
+- R5-C 数据全部来自同一冻结 R4 synthetic SIL 模型与 canonical head-table path；`syntheticConditionalEffectContractStatus=Passed` 不关闭 `realWorldGeneralizationStatus=Open`，域外预测只弃权，且不存在 Recommendation、设备写回或在线学习入口。
+- R6 v2 的 `globalOptimalityStatus=NotClaimed`、`permissionLevel=Offline`、`deviceWriteAllowed=false`、`realityValidationStatus=Open`。它不产生 AcceptanceRecord、DeviceSafe、ProcessSafe、上机许可或任何设备写入路径。
+- R7-A v2 仍是 Windows 进程内 synthetic Shadow：Stop 只抑制晋级，Rollback 只证明离线基线未改写。Deployment Shadow、Reality、Controlled Trial、Closed Loop 和标准符合性继续为 Open/NotAssessed。
+- Goal-to-Shadow 是应用层 synthetic SIL 编排，不新增 DomainPack、Core Claim、缓存、历史持久化或设备连接。用户选择不是自动接受；报告固定 `deviceWriteAllowed=false`、Reality/Deployment Shadow/Controlled Trial/Closed Loop Open、Device/Process Safety NotAssessed。
+- R5-D 只生成 synthetic SIL 计划，不执行 F3/F4/R4、不生成标签、不更新模型，也不声明全局最优或现实收益；固定 Offline、NotExecuted、NotPerformed、零自动执行、零设备写入和 reality Open。
+- R5-E 只能在 Windows 本地执行一批冻结 synthetic SIL；不连接真实设备，不递归执行下一计划，不自动晋升、部署或回写模型。报告固定 `SYNTHETIC SIL / NOT REALITY VALIDATED / NOT DEVICE SAFE / PROMOTION NOT PERFORMED`。
+- R5-F 的 `Passed` 只表示冻结 synthetic SIL 下游场景在同预算下无精确主目标退化；报告固定 `EvaluatedOnly`、`NotPerformed`、Offline、零设备写入和 reality Open，不表示模型晋升、一般收益、全局最优或设备安全。
+- R5-G 本身不执行模型晋升；其审查包继续固定 Offline、reality Open、零部署和零设备写入。后续 R5-I 只能在真实 holdout 与独立签名决定齐备后关闭本机 registry/default/monitoring 合同，不能反向扩大 R5-G 结论。
+- R5-H 仓库不包含真实现场正例；默认 assessment 因缺证据保持 Open。即使外部报告得到 `CaseScopedPassed`，结论也只限预登记 Case；它只可作为 R5-I 的必要输入，不能单独关闭模型采用、DeviceSafe 或 ProcessSafe。
+- R5-I 首版授权证明为调用方注入的单机 HMAC-SHA256 内容绑定，不是企业 PKI、可信时间戳或不可否认性证明；密钥不进入请求、响应、SQLite、网页或日志。
+- `modelPromotionStatus=Performed` 仅表示 Axiom 本机 Registry 已切换默认纯 Python 模型。集中式 Registry、远程多机分发、控制器部署、受控试验、自动回滚、DeviceSafe、ProcessSafe 和设备写入仍不在本阶段范围内。
+
+### Verification
+
+- 最终源码共收集 `931` 项：Windows CPython 3.14 开发档案全仓 `924 passed / 7 skipped`；冻结 CPython 3.12.10 + `AXIOM_REQUIRE_ENVIRONMENT_BOUND_GOLDENS=1`、Haswell/单线程 OpenBLAS 发布档案全仓 `925 passed / 6 skipped`。R5-I/CLI/Web 定向终验另有 `44 passed`。
+- 网页全量 `17 files / 59 tests`、TypeScript 和 Vite 生产构建通过；R5-H 真实浏览器流程继续保持 `Open`，R5-I 又完成未配置 Registry、只读预检/默认模型动作边界和桌面/375px 移动布局检查，控制台 `0 errors / 0 warnings`、生命周期写动作 `0`，视觉门 `94/100`。生产 JS 为 561.72 kB，仍有既有的 Vite 大 chunk 警告。
+- R5-D Python/API 在开发与发布档案各 `12 passed`；独立 NumPy oracle 逐轮复算五个候选，双档 fixture 分别冻结 request/plan 身份，非 Windows 返回结构化 Blocked。
+- R5-D 在 1440×900 与 375×812 实页复核中无横向溢出、页面错误、失败请求或设备动作；移动端候选完整卡片化，视觉门 `94/100`。浏览器仍会请求仓库既有的缺失 `/favicon.ico` 并记录单个 404，不影响应用请求。
+- R5-E Python/API 在开发与发布档案各 `15 passed / 1 skipped`；覆盖明确批准、完整五点 exact 标签、25→30 数据、15→20 train、原 holdout 冻结、候选非回归、重规划、非 Windows 拒绝、内容篡改和跨对象 lineage 错配。
+- R5-E 在 1440×900、768×1024 和 375×812 实页上完成 plan→责任方/勾选→approve→execute 流程，无控制台错误、失败请求或设备动作；移动表格卡片化后视觉门 `94/100`。
+- R5-F Python/API 与既有 R6 v2/R5-E 联合测试在开发和发布档案均通过；覆盖三场景 135/27 等条件比较、旧 `@2` 金值不变、候选全谱系、派生状态篡改、非 Windows 拒绝和双环境内容身份。
+- R5-F 在 1440×900 与 375×812 实页完成 R5-D→R5-E→R5-F 流程，0 个应用请求失败、0 横向溢出、无设备动作；独立青绿色影响卡与移动证据卡通过视觉门 `94/100`。浏览器仍可能请求仓库既有的缺失 `/favicon.ico`，不影响应用接口。
+- R5-I 变更范围 Ruff、`git diff --check`、65 个 JSON 解析与 58 份 Markdown / 225 个本地链接检查通过（0 个缺失）。仓库级 Ruff 仍报告 6 个不属于本包的既存问题（5 个未使用导入、1 个旧 `__all__` 名称）。
+- R5-F 阶段曾在 CPython 3.12.10 下完成源码→sdist→wheel、独立 target 安装与 Goal-to-Shadow/R5-D/R5-E/R5-F/OpenAPI smoke；该阶段 wheel SHA-256 为 `0513e4038f6926b7cce11eb41084fcb3aaa930e2627e91754058660df4d4ede9`。
+- R5-H 最终 wheel 沿源码→sdist→洁净解包源码→wheel 路径构建并安装到全新 CPython 3.12.10 环境；安装后 manifest、三条 R5-H API、旧 R7-E OpenAPI `$ref` 和当前网页资产 smoke 通过。wheel 只包含 `index-CK7vlEZX.js` / `index-DmgFvKgD.css`，SHA-256 为 `45866717945a18959dfbd0798565c015d920a179fbc5cea47419eed6befce2f7`。
+- v0.23.0 最终 wheel 沿源码→sdist→洁净解包源码→wheel 路径构建并安装到全新 CPython 3.12.10 环境；安装后版本、CLI、R5-I manifest、5 条只读/预检 OpenAPI 路由、零生命周期写路由和未初始化 Registry 零落盘 smoke 通过。wheel 只包含当前 `index-BnGCl8ia.css` / `index-DGm2MFL1.js` 两份网页资产，SHA-256 为 `45f10a7bd712d04912ffe45d1b78ab13721acfd1be8aaf1007dd7f558f9e2735`。
+- 锁定 .NET SDK 8.0.424 完成 locked restore、Release build 与 Windows OPC UA conformance，`0 warnings / 0 errors`；适配器和见证写入计数均为 0，独立写入、未信任证书、过期授权、超时及多类身份错配均被拒绝。
+- R7-A v1/v2 定向 Python/API `36 passed`；Controlled Runtime 组件与 App 联合 `15 passed`，默认 v2/v1 切换、六类 handoff 场景和无设备控制入口均有覆盖。
+- R7-A v2 桌面、v1 参考与 375×812 移动端实页检查无横向溢出或控制台错误，视觉门 `94/100`；sdist→wheel、隔离安装、OpenAPI smoke 和两份当前网页资产检查通过。
+
 ## 0.22.0 - 2026-08-13
 
 ### Added

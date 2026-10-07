@@ -37,7 +37,10 @@ from .models import (
     R7_RUNNER_ID,
     ControlEvaluationRequest,
 )
+from .r7a2_models import R7A2EvaluationRequest
 from .runner import run_shadow
+
+ControlRequest = ControlEvaluationRequest | R7A2EvaluationRequest
 
 INTEGRITY_METRIC_ID = "control.runtime-audit-integrity@1"
 ADMISSION_METRIC_ID = "control.admission-policy-enforced@1"
@@ -85,6 +88,11 @@ R7_DOMAIN_PACK = register_domain_pack(
             ArtifactTypeDescriptor(
                 artifactType="axiom.optimization.recommendation-set",
                 schemaVersion=1,
+                role="context",
+            ),
+            ArtifactTypeDescriptor(
+                artifactType="axiom.optimization.recommendation-set",
+                schemaVersion=2,
                 role="context",
             ),
         ),
@@ -162,10 +170,12 @@ R7_DOMAIN_PACK = register_domain_pack(
 )
 
 
-def _parse_request(request: CoreEvaluationRequest) -> ControlEvaluationRequest:
-    return ControlEvaluationRequest.model_validate(
-        request.model_dump(mode="json", by_alias=True, exclude_unset=True)
-    )
+def _parse_request(request: CoreEvaluationRequest) -> ControlRequest:
+    payload = request.model_dump(mode="json", by_alias=True, exclude_unset=True)
+    recommendation = payload.get("recommendationSet", {})
+    if recommendation.get("schemaId") == "axiom.optimization.recommendation-set@2":
+        return R7A2EvaluationRequest.model_validate(payload)
+    return ControlEvaluationRequest.model_validate(payload)
 
 
 def _computed(metric_id: str, value: Any, **details: Any) -> MetricResult:
@@ -198,7 +208,19 @@ def _unavailable(
     )
 
 
-def _provenance(request: ControlEvaluationRequest) -> Provenance:
+def _provenance(request: ControlRequest) -> Provenance:
+    context_hashes = {
+        "runtimeSpec": _content_hash(request.runtime_spec),
+        "recommendationSet": request.recommendation_set.content_hash,
+        "acceptanceRecord": request.artifact.acceptance_record.content_hash,
+    }
+    if (
+        isinstance(request, R7A2EvaluationRequest)
+        and request.recommendation_projection is not None
+    ):
+        context_hashes["recommendationProjection"] = (
+            request.recommendation_projection.content_hash
+        )
     return Provenance(
         requestHash=_content_hash(request),
         artifactHash=_content_hash(request.artifact),
@@ -212,15 +234,11 @@ def _provenance(request: ControlEvaluationRequest) -> Provenance:
             "python": platform.python_version(),
             "pydantic": package_version("pydantic"),
         },
-        contextHashes={
-            "runtimeSpec": _content_hash(request.runtime_spec),
-            "recommendationSet": request.recommendation_set.content_hash,
-            "acceptanceRecord": request.artifact.acceptance_record.content_hash,
-        },
+        contextHashes=context_hashes,
     )
 
 
-def evaluate_control(request: ControlEvaluationRequest) -> EvaluationReport:
+def evaluate_control(request: ControlRequest) -> EvaluationReport:
     metric_ids = (
         INTEGRITY_METRIC_ID,
         ADMISSION_METRIC_ID,
@@ -250,7 +268,16 @@ def evaluate_control(request: ControlEvaluationRequest) -> EvaluationReport:
                 provenance=_provenance(request),
             )
         )
-    replay = run_shadow(request.runtime_spec, request.recommendation_set)
+    recommendation_projection = (
+        request.recommendation_projection
+        if isinstance(request, R7A2EvaluationRequest)
+        else None
+    )
+    replay = run_shadow(
+        request.runtime_spec,
+        request.recommendation_set,
+        recommendation_projection,
+    )
     if replay != request.artifact:
         results = [
             _unavailable(

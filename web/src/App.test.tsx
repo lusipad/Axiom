@@ -46,6 +46,7 @@ const catalog: Catalog = {
     { domainPackId: "machine-observation.domain-pack@1", comparisonPolicyIds: [], runnerIds: ["machine-trace-import@1"], runtimeBound: true },
     { domainPackId: "five-axis.domain-pack@6", comparisonPolicyIds: [], runnerIds: ["windows-file-import@1"], runtimeBound: true },
     { domainPackId: "intelligence.domain-pack@2", comparisonPolicyIds: [], runnerIds: ["intelligence-real-holdout-validation@1"], runtimeBound: true },
+    { domainPackId: "intelligence.domain-pack@3", comparisonPolicyIds: [], runnerIds: ["intelligence-conditional-effect-validation@1"], runtimeBound: true },
   ],
   artifactAdapters: [],
 };
@@ -431,7 +432,7 @@ describe("Axiom workbench", () => {
       if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
       if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
       if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
-      if (url.includes("/control/r7/") || url.includes("/examples/control-r7")) {
+      if (url.includes("/control/r7a-v2/") || url.includes("/control/r7/") || url.includes("/examples/control-r7")) {
         return Promise.resolve(jsonResponse({ detail: "R7 unavailable" }, 503));
       }
       return Promise.resolve(jsonResponse({}, 404));
@@ -493,6 +494,35 @@ describe("Axiom workbench", () => {
     expect(screen.getByRole("button", { name: /Intelligence.*R5-B/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /写入|控制设备|在线学习|自动部署/i })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/intelligence/r5b/manifest"))).toBe(true);
+  });
+
+  it("R5-C 入口保持合成条件效应与离线只读边界", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith("/contour-ab")) return Promise.resolve(jsonResponse(pointExample));
+      if (url.endsWith("/experiments/run")) return Promise.resolve(jsonResponse(pointReport));
+      if (
+        url.includes("/intelligence/r5c/") ||
+        url.includes("/examples/intelligence-r5c") ||
+        url.includes("/intelligence/r5d/") ||
+        url.includes("/examples/intelligence-r5d")
+      ) {
+        return Promise.resolve(jsonResponse({ detail: "R5-C unavailable" }, 503));
+      }
+      return Promise.resolve(jsonResponse({}, 404));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("证据包已封存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Intelligence.*R5-C/i }));
+
+    expect(await screen.findByText(/API 503: .*R5-C unavailable/)).toBeInTheDocument();
+    expect(screen.getByText("SYNTHETIC CONDITIONAL EFFECT · REALITY OPEN · OFFLINE ONLY")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /写入|下发|应用参数|控制设备/i })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/intelligence/r5c/manifest"))).toBe(true);
   });
 
   it("Machine R3 入口展示只读边界而不暴露写入控件", async () => {

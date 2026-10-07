@@ -1,0 +1,77 @@
+{
+  "manifestId": "axiom.intelligence.r5f-fixture-manifest@1",
+  "platform": "windows",
+  "identityScope": "numeric-environment-bound",
+  "developmentEnvironment": "windows-cpython-3.14.3",
+  "releaseEnvironment": "windows-cpython-3.12.10-openblas-haswell-single-thread",
+  "scenarioIds": [
+    "canonical-goal-conditioned-speed",
+    "canonical-goal-conditioned-quality",
+    "canonical-goal-conditioned-compact-command"
+  ],
+  "screeningCandidateCount": 135,
+  "exactValidationBudget": 27,
+  "developmentExpectedIdentities": {
+    "campaignReportContentHash": "da0e4df9e940bdbe108763fb40b8690e110a0efaf72d5998d9026990370b06f0",
+    "candidateContextHash": "7c252c4b17dbc1ef3166f24212ca756d52354066777a0a69713cb84ac4de27a5",
+    "scenarioImpacts": {
+      "canonical-goal-conditioned-speed": {
+        "candidateRecommendationContentHash": "9f13b8556291c4cfdd26ea9bc0556ff191fea4c6f21bbfd37d9013011b977e53",
+        "scenarioImpactContentHash": "8b1a82adf18b9f341930c6c02b1edb3799da6dac87a4df5d25b9d1b83b458c68",
+        "screeningOrderChanged": true,
+        "selectedCandidateOverlapCount": 27,
+        "baselineBestValue": 0.8230326497988096,
+        "candidateBestValue": 0.8230326497988096
+      },
+      "canonical-goal-conditioned-quality": {
+        "candidateRecommendationContentHash": "be7c125e907c4fbd26d7987fd47ae1a03157b2d176ee5d6e35613c3a4ba0b971",
+        "scenarioImpactContentHash": "adab1fa0b2eaf2e9ee549bb21dd4f9fd7bd2e6958a18d2626851ccc321926dc0",
+        "screeningOrderChanged": true,
+        "selectedCandidateOverlapCount": 27,
+        "baselineBestValue": 0.43596512868787585,
+        "candidateBestValue": 0.43596512868787585
+      },
+      "canonical-goal-conditioned-compact-command": {
+        "candidateRecommendationContentHash": "3aee9374ab5cf6cbbe4e42d3a360b4a65e7036983b34c4c575e18da085a96177",
+        "scenarioImpactContentHash": "a113d450de188ee8684f2272115b620fca113489a8373bbe379feb3aa871a1a8",
+        "screeningOrderChanged": false,
+        "selectedCandidateOverlapCount": 27,
+        "baselineBestValue": 12,
+        "candidateBestValue": 12
+      }
+    },
+    "reportContentHash": "c995110f3c19217973c4578e6e954370c66d840626ab6680b9e275b3745e671a"
+  },
+  "windowsReleaseExpectedIdentities": {
+    "campaignReportContentHash": "b268119e57884a178fc89b6cb6c6515419919aa1277d7ee206466218bd806528",
+    "candidateContextHash": "81e174e8f931e718443562f71f332a6ff292772f37a68a15d633b264e7df92b4",
+    "scenarioImpacts": {
+      "canonical-goal-conditioned-speed": {
+        "candidateRecommendationContentHash": "2caefaa03d1d689436884fcf3687a4e974d04c7e6bab49f4d97e22d18caecec5",
+        "scenarioImpactContentHash": "c7b1891ad552f8525a4da9e6685c068c2ba7af1686bd8102ac9bcd35c22be1b4",
+        "screeningOrderChanged": true,
+        "selectedCandidateOverlapCount": 27,
+        "baselineBestValue": 0.8230326497988096,
+        "candidateBestValue": 0.8230326497988096
+      },
+      "canonical-goal-conditioned-quality": {
+        "candidateRecommendationContentHash": "65f0d2a3f8e52b2ddcb8d602b2aa081f511504955c39cfc668b96d44c2c89009",
+        "scenarioImpactContentHash": "8977a75687ed75b9fa01fdfc8224f0f334d46ed0030fe1998ebcb1a28f256ecc",
+        "screeningOrderChanged": true,
+        "selectedCandidateOverlapCount": 27,
+        "baselineBestValue": 0.43596512868787585,
+        "candidateBestValue": 0.43596512868787585
+      },
+      "canonical-goal-conditioned-compact-command": {
+        "candidateRecommendationContentHash": "cce6efd794615d59d5013c1c65506269f4e261d7fd95721e8e6dab0b6b5ff7ce",
+        "scenarioImpactContentHash": "033e7c8753b75239592f9781cf0950f5dae9b54efd73b3599e40a735a02973a4",
+        "screeningOrderChanged": false,
+        "selectedCandidateOverlapCount": 27,
+        "baselineBestValue": 12,
+        "candidateBestValue": 12
+      }
+    },
+    "reportContentHash": "f9abd124c7c54513f7d27bad8ca7d829e1e3ba8464294cc84f39c371d338053e"
+  },
+  "boundary": "CANDIDATE DOWNSTREAM IMPACT EVALUATION / EVALUATED ONLY / NOT REALITY VALIDATED / NOT DEVICE SAFE / PROMOTION NOT PERFORMED"
+}

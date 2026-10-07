@@ -107,6 +107,15 @@ class RealHoldoutSelectionReceipt(AxiomModel):
         Literal["time"],
     ] = Field(alias="leakageDimensions", min_length=5, max_length=5)
     case_ids: tuple[str, ...] = Field(alias="caseIds", min_length=1)
+    selection_evidence_status: Literal["PreRegistered"] | None = Field(
+        default=None, alias="selectionEvidenceStatus"
+    )
+    campaign_manifest_content_hash: str | None = Field(
+        default=None, alias="campaignManifestContentHash", pattern=HASH_PATTERN
+    )
+    campaign_registration_content_hash: str | None = Field(
+        default=None, alias="campaignRegistrationContentHash", pattern=HASH_PATTERN
+    )
     content_hash: str = Field(alias="contentHash", pattern=HASH_PATTERN)
 
     @model_validator(mode="after")
@@ -117,6 +126,19 @@ class RealHoldoutSelectionReceipt(AxiomModel):
             )
         if len(self.case_ids) != len(set(self.case_ids)):
             raise ValueError("RealHoldoutSelectionReceipt caseIds must be unique")
+        campaign_hashes = (
+            self.campaign_manifest_content_hash,
+            self.campaign_registration_content_hash,
+        )
+        if self.selection_evidence_status == "PreRegistered":
+            if any(value is None for value in campaign_hashes):
+                raise ValueError(
+                    "PreRegistered selection requires campaign manifest and registration hashes"
+                )
+        elif any(value is not None for value in campaign_hashes):
+            raise ValueError(
+                "campaign manifest and registration hashes require PreRegistered selection evidence"
+            )
         if self.content_hash != canonical_hash(self, exclude={"content_hash"}):
             raise ValueError(
                 "contentHash must match RealHoldoutSelectionReceipt content"

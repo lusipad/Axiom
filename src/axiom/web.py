@@ -3,7 +3,7 @@ from __future__ import annotations
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,8 @@ from .control import (
     BECKHOFF_WITNESS_PLC_TEMPLATE_FILE,
     BeckhoffWitnessDeploymentReport,
     BeckhoffWitnessDeploymentRequest,
+    GoalToShadowReport,
+    GoalToShadowRequest,
     R7BAssessmentRequest,
     R7BExamplePayload,
     R7BManifest,
@@ -29,6 +31,10 @@ from .control import (
     R7EExamplePayload,
     R7EManifest,
     R7EScenarioSummary,
+    R7A2ExamplePayload,
+    R7A2Manifest,
+    R7A2ReplayRequest,
+    R7A2ScenarioSummary,
     R7ExamplePayload,
     R7Manifest,
     R7ReplayRequest,
@@ -36,6 +42,7 @@ from .control import (
     assess_beckhoff_witness_deployment,
     build_default_beckhoff_witness_deployment_request,
     read_beckhoff_witness_plc_template,
+    rehearse_goal_to_shadow,
 )
 from .domain import list_domain_packs
 from .experiment import contour_ab_example, run_experiment
@@ -70,15 +77,61 @@ from .five_axis import (
     load_f0_manifest,
 )
 from .intelligence import (
+    ConditionalEffectPrediction,
+    ConditionalEffectPredictionRequest,
+    PreregisteredRealHoldoutIntakeReport,
+    PreregisteredRealHoldoutIntakeRequest,
     R5BExamplePayload,
     R5BManifest,
     R5BScenarioSummary,
+    R5CExamplePayload,
+    R5CManifest,
+    R5CScenarioSummary,
+    R5DExamplePayload,
+    R5DExperimentPlanRequest,
+    R5DManifest,
+    R5EExamplePayload,
+    R5EManifest,
+    R5ECampaignApprovalCommand,
+    R5ESyntheticCampaignReport,
+    R5ESyntheticCampaignRequest,
+    R5FCandidateImpactReport,
+    R5FImpactAssessmentCommand,
+    R5FManifest,
+    R5GManifest,
+    R5GModelPromotionReadinessDossier,
+    R5GPromotionReadinessCommand,
+    R5HAssessmentCommand,
+    R5HCandidateHoldoutAssessment,
+    R5HCandidateHoldoutStudyRegistrationReport,
+    R5HManifest,
+    R5HStudyRegistrationCommand,
+    R5IActivePredictionCommand,
+    R5IManifest,
+    R5IMonitoringWindowReport,
+    R5IPreflightCommand,
+    R5IPromotionPreflightReport,
+    R5IRegistryStatus,
     R5ExamplePayload,
     R5Manifest,
     R5ScenarioSummary,
     RealHoldoutIntakeReport,
     RealHoldoutIntakeRequest,
+    RealHoldoutCampaignRegistrationReport,
+    RealHoldoutCampaignRegistrationRequest,
+    SimulationExperimentPlan,
+    assess_preregistered_real_holdout_intake,
+    assess_r5h_candidate_real_holdout,
     assess_real_holdout_intake,
+    build_r5h_assessment_request,
+    build_r5h_study_registration_request,
+    build_r5i_manifest,
+    list_r5i_monitoring_windows,
+    predict_r5i_active_model,
+    preflight_r5i_model_promotion,
+    read_r5i_registry_status,
+    register_real_holdout_campaign,
+    register_r5h_candidate_holdout_study,
 )
 from .machine import (
     list_machine_r3_scenarios,
@@ -91,6 +144,10 @@ from .optimization import (
     R6ExamplePayload,
     R6Manifest,
     R6ScenarioSummary,
+    R6V2ExamplePayload,
+    R6V2Manifest,
+    R6V2ScenarioSummary,
+    R6V2SearchRequest,
 )
 from .physical import (
     PhysicalR4ExamplePayload,
@@ -160,7 +217,13 @@ def _load_control_r7_api() -> Any:
         ) from exc
 
 
-def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None) -> FastAPI:
+def create_app(
+    *,
+    serve_frontend: bool = True,
+    frontend_dir: Path | None = None,
+    r5i_registry_path: Path | None = None,
+    r5i_authority_keys: Mapping[str, bytes] | None = None,
+) -> FastAPI:
     package_version = _package_version()
     app = FastAPI(
         title="Axiom Experiment Workbench API",
@@ -168,6 +231,7 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    r5i_keys = dict(r5i_authority_keys or {})
 
     @app.get("/api/v1/health")
     def health() -> dict[str, str]:
@@ -177,12 +241,14 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     def catalog() -> dict[str, Any]:
         return {
             "subjects": [
-                subject.model_dump(mode="json", by_alias=True) for subject in list_subjects()
+                subject.model_dump(mode="json", by_alias=True)
+                for subject in list_subjects()
             ],
             "domainPacks": [
                 {
                     **pack.model_dump(mode="json", by_alias=True),
-                    "runtimeBound": find_domain_runtime_binding(pack.domain_pack_id) is not None,
+                    "runtimeBound": find_domain_runtime_binding(pack.domain_pack_id)
+                    is not None,
                 }
                 for pack in list_domain_packs()
             ],
@@ -205,7 +271,11 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     def execute_run(spec: RunSpec) -> RunBundle:
         return evaluate_run(spec)
 
-    @app.get("/api/v1/examples/contour-ab", response_model=ExperimentSpec, response_model_by_alias=True)
+    @app.get(
+        "/api/v1/examples/contour-ab",
+        response_model=ExperimentSpec,
+        response_model_by_alias=True,
+    )
     def contour_example() -> ExperimentSpec:
         return contour_ab_example()
 
@@ -232,7 +302,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         response_model_by_alias=True,
         response_model_exclude_none=True,
     )
-    def five_axis_f1_manifest(scenarioId: str = "nominal-certified") -> F1MathStageManifest:
+    def five_axis_f1_manifest(
+        scenarioId: str = "nominal-certified",
+    ) -> F1MathStageManifest:
         try:
             return build_f1_manifest(scenarioId)
         except KeyError as exc:
@@ -261,7 +333,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         response_model_by_alias=True,
         response_model_exclude_none=True,
     )
-    def five_axis_f2_manifest(scenarioId: str = "canonical-table-table") -> F2MathStageManifest:
+    def five_axis_f2_manifest(
+        scenarioId: str = "canonical-table-table",
+    ) -> F2MathStageManifest:
         try:
             return build_f2_manifest(scenarioId)
         except KeyError as exc:
@@ -278,7 +352,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         response_model_exclude_none=True,
         response_model_exclude_unset=True,
     )
-    def five_axis_f2_example(scenarioId: str = "canonical-table-table") -> dict[str, Any]:
+    def five_axis_f2_example(
+        scenarioId: str = "canonical-table-table",
+    ) -> dict[str, Any]:
         try:
             return f2_example_payload(scenarioId)
         except KeyError as exc:
@@ -501,7 +577,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     ) -> R5ExamplePayload:
         intelligence_api = _load_intelligence_r5_api()
         try:
-            return R5ExamplePayload.model_validate(intelligence_api.r5_example_payload(scenarioId))
+            return R5ExamplePayload.model_validate(
+                intelligence_api.r5_example_payload(scenarioId)
+            )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except AttributeError as exc:
@@ -554,7 +632,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     ) -> R5BExamplePayload:
         intelligence_api = _load_intelligence_r5_api()
         try:
-            return R5BExamplePayload.model_validate(intelligence_api.r5b_example_payload(scenarioId))
+            return R5BExamplePayload.model_validate(
+                intelligence_api.r5b_example_payload(scenarioId)
+            )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except AttributeError as exc:
@@ -573,6 +653,342 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         request: RealHoldoutIntakeRequest,
     ) -> RealHoldoutIntakeReport:
         return assess_real_holdout_intake(request)
+
+    @app.post(
+        "/api/v1/intelligence/r5b/campaigns/register",
+        response_model=RealHoldoutCampaignRegistrationReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5b_campaign_register(
+        request: RealHoldoutCampaignRegistrationRequest,
+    ) -> RealHoldoutCampaignRegistrationReport:
+        return register_real_holdout_campaign(request)
+
+    @app.post(
+        "/api/v1/intelligence/r5b/intake/assess-preregistered",
+        response_model=PreregisteredRealHoldoutIntakeReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5b_preregistered_intake_assess(
+        request: PreregisteredRealHoldoutIntakeRequest,
+    ) -> PreregisteredRealHoldoutIntakeReport:
+        return assess_preregistered_real_holdout_intake(request)
+
+    @app.get(
+        "/api/v1/intelligence/r5c/manifest",
+        response_model=R5CManifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5c_manifest() -> R5CManifest:
+        return _load_intelligence_r5_api().build_r5c_manifest()
+
+    @app.get(
+        "/api/v1/intelligence/r5c/scenarios",
+        response_model=list[R5CScenarioSummary],
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5c_scenarios() -> list[R5CScenarioSummary]:
+        return list(_load_intelligence_r5_api().list_r5c_scenarios())
+
+    @app.get(
+        "/api/v1/examples/intelligence-r5c",
+        response_model=R5CExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+        response_model_exclude_unset=True,
+    )
+    def intelligence_r5c_example(
+        scenarioId: str = "canonical-head-table-conditional-effect",
+    ) -> R5CExamplePayload:
+        try:
+            return _load_intelligence_r5_api().r5c_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/intelligence/r5c/predict",
+        response_model=ConditionalEffectPrediction,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5c_predict(
+        request: ConditionalEffectPredictionRequest,
+    ) -> ConditionalEffectPrediction:
+        return _load_intelligence_r5_api().predict_conditional_effect(request)
+
+    @app.get(
+        "/api/v1/intelligence/r5d/manifest",
+        response_model=R5DManifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5d_manifest() -> R5DManifest:
+        return _load_intelligence_r5_api().build_r5d_manifest()
+
+    @app.get(
+        "/api/v1/examples/intelligence-r5d",
+        response_model=R5DExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5d_example() -> R5DExamplePayload:
+        return _load_intelligence_r5_api().r5d_example_payload()
+
+    @app.post(
+        "/api/v1/intelligence/r5d/plan",
+        response_model=SimulationExperimentPlan,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def intelligence_r5d_plan(
+        request: R5DExperimentPlanRequest,
+    ) -> SimulationExperimentPlan:
+        return _load_intelligence_r5_api().plan_r5d_simulation_experiments(request)
+
+    @app.get(
+        "/api/v1/intelligence/r5e/manifest",
+        response_model=R5EManifest,
+        tags=["intelligence-r5"],
+        summary="Get the Windows-only R5-E synthetic campaign manifest",
+    )
+    def intelligence_r5e_manifest() -> R5EManifest:
+        return _load_intelligence_r5_api().build_r5e_manifest()
+
+    @app.get(
+        "/api/v1/examples/intelligence-r5e",
+        response_model=R5EExamplePayload,
+        tags=["intelligence-r5"],
+        summary="Get the R5-E plan and explicit approval requirements",
+    )
+    def intelligence_r5e_example() -> R5EExamplePayload:
+        return _load_intelligence_r5_api().r5e_example_payload()
+
+    @app.post(
+        "/api/v1/intelligence/r5e/campaigns/approve",
+        response_model=R5ESyntheticCampaignRequest,
+        tags=["intelligence-r5"],
+        summary="Create an explicit offline-only R5-E campaign approval",
+    )
+    def intelligence_r5e_approve(
+        command: R5ECampaignApprovalCommand,
+    ) -> R5ESyntheticCampaignRequest:
+        try:
+            return _load_intelligence_r5_api().build_r5e_campaign_request(
+                accountable_party_id=command.accountable_party_id,
+                plan_request=command.plan_request,
+                plan=command.plan,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/intelligence/r5e/campaigns/execute",
+        response_model=R5ESyntheticCampaignReport,
+        tags=["intelligence-r5"],
+        summary="Execute an explicitly approved local synthetic SIL campaign",
+    )
+    def intelligence_r5e_execute(
+        request: R5ESyntheticCampaignRequest,
+    ) -> R5ESyntheticCampaignReport:
+        try:
+            return _load_intelligence_r5_api().execute_r5e_synthetic_campaign(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5f/manifest",
+        response_model=R5FManifest,
+        tags=["intelligence-r5"],
+        summary="Get the Windows-only R5-F candidate impact manifest",
+    )
+    def intelligence_r5f_manifest() -> R5FManifest:
+        return _load_intelligence_r5_api().build_r5f_manifest()
+
+    @app.post(
+        "/api/v1/intelligence/r5f/impact/assess",
+        response_model=R5FCandidateImpactReport,
+        tags=["intelligence-r5"],
+        summary="Assess an R5-E candidate against the frozen R6 exact budget",
+    )
+    def intelligence_r5f_assess(
+        command: R5FImpactAssessmentCommand,
+    ) -> R5FCandidateImpactReport:
+        try:
+            return _load_intelligence_r5_api().assess_r5f_candidate_downstream_impact(
+                command.campaign_report
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5g/manifest",
+        response_model=R5GManifest,
+        tags=["intelligence-r5"],
+        summary="Get the Windows-only R5-G promotion readiness manifest",
+    )
+    def intelligence_r5g_manifest() -> R5GManifest:
+        return _load_intelligence_r5_api().build_r5g_manifest()
+
+    @app.post(
+        "/api/v1/intelligence/r5g/promotion/readiness",
+        response_model=R5GModelPromotionReadinessDossier,
+        tags=["intelligence-r5"],
+        summary="Prepare a read-only model promotion readiness dossier",
+    )
+    def intelligence_r5g_promotion_readiness(
+        command: R5GPromotionReadinessCommand,
+    ) -> R5GModelPromotionReadinessDossier:
+        try:
+            intelligence_api = _load_intelligence_r5_api()
+            request = intelligence_api.build_r5g_promotion_readiness_request(
+                command.impact_report,
+                prepared_by=command.prepared_by,
+            )
+            return intelligence_api.prepare_r5g_model_promotion_readiness(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5h/manifest",
+        response_model=R5HManifest,
+        tags=["intelligence-r5"],
+        summary="Get the Windows-only R5-H candidate real holdout manifest",
+    )
+    def intelligence_r5h_manifest() -> R5HManifest:
+        return _load_intelligence_r5_api().build_r5h_manifest()
+
+    @app.post(
+        "/api/v1/intelligence/r5h/studies/register",
+        response_model=R5HCandidateHoldoutStudyRegistrationReport,
+        tags=["intelligence-r5"],
+        summary="Pre-register an R5-H candidate real holdout study",
+    )
+    def intelligence_r5h_register_study(
+        command: R5HStudyRegistrationCommand,
+    ) -> R5HCandidateHoldoutStudyRegistrationReport:
+        try:
+            request = build_r5h_study_registration_request(
+                command.readiness_dossier,
+                study_id=command.study_id,
+                created_at=command.created_at,
+                registered_at=command.registered_at,
+                registration_authority_id=command.registration_authority_id,
+                registration_record_id=command.registration_record_id,
+                cases=command.cases,
+            )
+            return register_r5h_candidate_holdout_study(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/intelligence/r5h/holdout/assess",
+        response_model=R5HCandidateHoldoutAssessment,
+        tags=["intelligence-r5"],
+        summary="Assess an R5-H candidate against pre-registered field evidence",
+    )
+    def intelligence_r5h_assess_holdout(
+        command: R5HAssessmentCommand,
+    ) -> R5HCandidateHoldoutAssessment:
+        try:
+            request = build_r5h_assessment_request(
+                command.readiness_dossier,
+                command.registration_report,
+                evidence_reports=command.evidence_reports,
+                assessment_id=command.assessment_id,
+            )
+            return assess_r5h_candidate_real_holdout(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5i/manifest",
+        response_model=R5IManifest,
+        tags=["intelligence-r5"],
+        summary="Get the Windows-only R5-I local model lifecycle manifest",
+    )
+    def intelligence_r5i_manifest() -> R5IManifest:
+        return build_r5i_manifest()
+
+    @app.post(
+        "/api/v1/intelligence/r5i/promotion/preflight",
+        response_model=R5IPromotionPreflightReport,
+        tags=["intelligence-r5"],
+        summary="Replay an R5-I promotion preflight without mutating registry state",
+    )
+    def intelligence_r5i_promotion_preflight(
+        command: R5IPreflightCommand,
+    ) -> R5IPromotionPreflightReport:
+        try:
+            return preflight_r5i_model_promotion(
+                command.request,
+                authority_keys=r5i_keys,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    def configured_r5i_registry() -> Path:
+        if r5i_registry_path is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "R5-I registry is not configured; start the local server with "
+                    "an explicit registry path."
+                ),
+            )
+        return r5i_registry_path
+
+    @app.get(
+        "/api/v1/intelligence/r5i/registry/status",
+        response_model=R5IRegistryStatus,
+        tags=["intelligence-r5"],
+        summary="Read the configured local R5-I registry state",
+    )
+    def intelligence_r5i_registry_status() -> R5IRegistryStatus:
+        try:
+            return read_r5i_registry_status(configured_r5i_registry())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/intelligence/r5i/monitoring/windows",
+        response_model=list[R5IMonitoringWindowReport],
+        tags=["intelligence-r5"],
+        summary="List persisted local R5-I monitoring windows",
+    )
+    def intelligence_r5i_monitoring_windows(
+        limit: int = 20,
+    ) -> list[R5IMonitoringWindowReport]:
+        try:
+            return list(
+                list_r5i_monitoring_windows(
+                    configured_r5i_registry(),
+                    limit=limit,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/intelligence/r5i/predict",
+        response_model=ConditionalEffectPrediction,
+        tags=["intelligence-r5"],
+        summary="Predict with the configured read-only local R5-I default model",
+    )
+    def intelligence_r5i_predict(
+        command: R5IActivePredictionCommand,
+    ) -> ConditionalEffectPrediction:
+        try:
+            return predict_r5i_active_model(
+                configured_r5i_registry(),
+                feed_override=command.feed_override,
+                sample_period=command.sample_period,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get(
         "/api/v1/optimization/r6/manifest",
@@ -617,7 +1033,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         response_model_exclude_none=True,
         response_model_exclude_unset=True,
     )
-    def optimization_r6_search(search_request: OptimizationSearchRequest) -> R6ExamplePayload:
+    def optimization_r6_search(
+        search_request: OptimizationSearchRequest,
+    ) -> R6ExamplePayload:
         optimization_api = _load_optimization_r6_api()
         recommendations = optimization_api.search_recommendations(search_request)
         scenario = optimization_api.list_r6_scenarios()[0]
@@ -629,6 +1047,49 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             recommendationSet=recommendations,
             runSpec=run_spec.model_dump(mode="json", by_alias=True, exclude_none=True),
         )
+
+    @app.get(
+        "/api/v1/optimization/r6v2/manifest",
+        response_model=R6V2Manifest,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def optimization_r6v2_manifest() -> R6V2Manifest:
+        return _load_optimization_r6_api().build_r6v2_manifest()
+
+    @app.get(
+        "/api/v1/optimization/r6v2/scenarios",
+        response_model=list[R6V2ScenarioSummary],
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def optimization_r6v2_scenarios() -> list[R6V2ScenarioSummary]:
+        return list(_load_optimization_r6_api().list_r6v2_scenarios())
+
+    @app.get(
+        "/api/v1/examples/optimization-r6v2",
+        response_model=R6V2ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def optimization_r6v2_example(
+        scenarioId: str = "canonical-goal-conditioned-speed",
+    ) -> R6V2ExamplePayload:
+        try:
+            return _load_optimization_r6_api().r6v2_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/optimization/r6v2/search",
+        response_model=R6V2ExamplePayload,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def optimization_r6v2_search(
+        search_request: R6V2SearchRequest,
+    ) -> R6V2ExamplePayload:
+        return _load_optimization_r6_api().r6v2_payload_for_request(search_request)
 
     @app.get(
         "/api/v1/control/r7/manifest",
@@ -669,6 +1130,57 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
             return _load_control_r7_api().r7_example_payload(request.scenario_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/v1/control/r7a-v2/manifest",
+        response_model=R7A2Manifest,
+        response_model_by_alias=True,
+    )
+    def control_r7a2_manifest() -> R7A2Manifest:
+        return _load_control_r7_api().build_r7a2_manifest()
+
+    @app.get(
+        "/api/v1/control/r7a-v2/scenarios",
+        response_model=list[R7A2ScenarioSummary],
+        response_model_by_alias=True,
+    )
+    def control_r7a2_scenarios() -> list[R7A2ScenarioSummary]:
+        return list(_load_control_r7_api().list_r7a2_scenarios())
+
+    @app.get(
+        "/api/v1/examples/control-r7a-v2",
+        response_model=R7A2ExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7a2_example(
+        scenarioId: str = "r6v2-shadow-nominal",
+    ) -> R7A2ExamplePayload:
+        try:
+            return _load_control_r7_api().r7a2_example_payload(scenarioId)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/r7a-v2/replay",
+        response_model=R7A2ExamplePayload,
+        response_model_by_alias=True,
+    )
+    def control_r7a2_replay(request: R7A2ReplayRequest) -> R7A2ExamplePayload:
+        try:
+            return _load_control_r7_api().r7a2_example_payload(request.scenario_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/control/goal-to-shadow/rehearse",
+        response_model=GoalToShadowReport,
+        response_model_by_alias=True,
+        response_model_exclude_none=True,
+    )
+    def control_goal_to_shadow_rehearse(
+        request: GoalToShadowRequest,
+    ) -> GoalToShadowReport:
+        return rehearse_goal_to_shadow(request)
 
     @app.get(
         "/api/v1/control/r7b/manifest",

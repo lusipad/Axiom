@@ -1,9 +1,9 @@
 # Axiom 工业算法评估与智能优化平台——项目规划蓝图
 
 > 文档类型：产品总纲与 Roadmap  
-> 状态：Draft / 方向重整与契约闭合版 v0.22.0
-> 当前阶段：R7-E / R4.1 Windows 双运行现场验收、Beckhoff 控制器侧只读见证、离线证据组装与 R5-B 真实 holdout intake 已实现 / 当前机器缺 TwinCAT、TF6100 与经授权的跨设备/工况 capture，真实泛化、受控试验与设备写入 gate 保持 Open
-> 更新日期：2026-08-13
+> 状态：Draft / 方向重整与契约闭合版 v0.23.0
+> 当前阶段：R7-E / R4.1 Windows 双运行现场验收、Beckhoff 控制器侧只读见证、离线证据组装与 R5-B 真实 holdout intake 已实现；v0.23.0 新增采集前 Campaign 预注册、R5-C 条件效应代理模型、R5-D synthetic SIL 实验价值规划、R5-E 显式批准的离线合成实验反馈闭环、R5-F 候选模型下游影响评估、R5-G 模型晋升就绪审查包、R5-H 候选专属真实 holdout、R5-I 本机模型生命周期、R6 v2 目标驱动代理辅助搜索，以及 exact R4 response 驱动的 Goal-to-Shadow 应用闭环 / R5-I 已闭合签名决定预检、本机 SQLite 原子晋升、默认模型读回、运行监控与显式回滚合同；当前机器仍缺 TwinCAT、TF6100 与经授权的跨设备/工况 capture，因此 R5-H 和公开晋升路径默认 Open，受控试验、设备部署与设备写入 gate 保持 Open
+> 更新日期：2026-08-14
 > 文档入口：[README](README.md)  
 > 核心规范：[Axiom 通用评估框架规范](Axiom%20通用评估框架规范.md)
 
@@ -340,9 +340,23 @@ PhysicalModel 可以覆盖驱动、伺服、机构、切削或过程、传感与
 
 ### 8.3 数据集是版本化产品
 
-R5-A 当前工作面先闭合数据集合同片，完整 R5 泛化门仍然保持 Open；R5-B 则把真实 holdout 的就绪门独立出来，默认示例只提供 Open readiness 场景，不内置真实正例。权威规范见[数据集与学习模型规范](数据集与学习模型规范.md)与[ADR-0016](架构决策记录/ADR-0016-R5可审计数据集与端侧模型边界.md)。
+R5-A 当前工作面先闭合逐样本残差合同片；R5-B 把真实 holdout 的就绪门独立出来，默认示例只提供 Open readiness 场景，不内置真实正例；R5-C 则把冻结的 R4 参数研究变成有独立空间 holdout 的条件效应代理模型；R5-D 在同一冻结设计空间里规划最能补足线性认知空洞的下一批 synthetic SIL 点；R5-E 再在显式批准后执行该批次、封存标签、生成新候选并重规划；R5-F 在不晋升的前提下检验候选对冻结 R6 v2 下游决策的影响；R5-G 把可重放证据封装为等待独立人工决定的审查包；R5-H 再为 dossier 中的唯一候选冻结专属操作点并用 R7-E/R4.1 现场证据进行 case-scoped 证伪；R5-I 只在这些真实门和独立签名决定均已闭合时，执行本机 Registry 的原子默认切换、读回、监控与显式回滚。仓库没有内置真实正例，因此默认公开路径仍停在 R5-H `Open`；R5-I 的成功路径只由测试构造验证，不能当作已取得真实晋升证据。权威规范见[数据集与学习模型规范](数据集与学习模型规范.md)、[ADR-0016](架构决策记录/ADR-0016-R5可审计数据集与端侧模型边界.md)、[ADR-0028](架构决策记录/ADR-0028-R5C条件效应代理模型与空间Holdout边界.md)、[ADR-0032](架构决策记录/ADR-0032-R5D仿真实验价值采用顺序G最优设计.md)、[ADR-0033](架构决策记录/ADR-0033-R5E离线合成实验反馈闭环与候选晋升边界.md)、[ADR-0034](架构决策记录/ADR-0034-R5F候选模型下游影响评估与晋升隔离.md)、[ADR-0035](架构决策记录/ADR-0035-R5G晋升就绪审查包与模型激活隔离.md)、[ADR-0036](架构决策记录/ADR-0036-R5H候选真实Holdout与模型晋升隔离.md)与[ADR-0037](架构决策记录/ADR-0037-R5I本机模型生命周期与设备部署隔离.md)。
 
-R5-B 不把“可以评估真实 holdout”误写成“真实泛化已经通过”。它把外部 controller-export / device-read、owner attestation、评估许可、R3 paired lineage、时钟 / 坐标对齐、`PhysicalResponseTrace`、至少 2 个 in-domain case 跨 2 台 device 和 2 个 condition、再加 1 个 OOD probe，明确拆成可上传、可验证、可拒绝的就绪门。v0.22.0 的 `axiom.adapter.r7e-to-r5b-holdout@1` 已能把多个独立 R7-E/R4.1 现场 dossier 投影为该合同，并由 CLI、HTTP 与 R5-B UI 生成可执行 RunSpec；仓库仍不冻结或内置真实正例数据。
+R5-B 不把“可以评估真实 holdout”误写成“真实泛化已经通过”。它把外部 controller-export / device-read、owner attestation、评估许可、R3 paired lineage、时钟 / 坐标对齐、`PhysicalResponseTrace`、至少 2 个 in-domain case 跨 2 台 device 和 2 个 condition、再加 1 个 OOD probe，明确拆成可上传、可验证、可拒绝的就绪门。v0.22.0 的 `axiom.adapter.r7e-to-r5b-holdout@1` 已能把多个独立 R7-E/R4.1 现场 dossier 投影为该合同；v0.23.0 进一步要求外部责任方在采集前封存 Campaign Manifest/Registration，并由严格 intake 逐项核对计划 slot 与实际 Case 后才生成 `PreRegistered` selection。CLI、HTTP 与 R5-B UI 使用同一合同；仓库仍不冻结或内置真实正例数据。
+
+R5-C 首片不直接优化参数，而是先证明“参数条件变化到多项物理结果”的模型面可审计、可证伪。它固定 `feedOverride × samplePeriod` 的 25 点 R4 synthetic SIL 网格，以 15/5/5 空间切分隔离 train、validation 与 test，并分别预测带单位的周期 `s` 和线性跟随误差 `mm`。两个目标不合成总分，域外输入必须弃权；`syntheticConditionalEffectContractStatus=Passed` 不改变 `realWorldGeneralizationStatus=Open`，也不让 R6 v1 自动消费代理结果。
+
+R5-D 首片把 §8.2 的“试验价值估计”落为应用层 `SimulationExperimentPlan`：只用 15 个 train 点构造六维信息矩阵，排除全部 25 个已观测点，再从 R6 v2 的 135 点网格余下 110 点中按顺序 greedy G-optimal leverage 规划默认 5 点。它只生成计划，不执行仿真、不更新模型、不自动接受或写设备；design leverage 是线性 epistemic proxy，不是预测误差概率、现实收益或安全证据。
+
+R5-E 首片只闭合一次有限、可审计的 synthetic 反馈循环。责任方必须批准完整五点计划；每点通过 exact F3/F4/R4 硬门后封存 M4/M5/物理响应和标签身份。R5-C v1 身份保持不变，新 v2 数据为 30 点、split 为 20/5/5，validation/test 不变。候选重训后在原 holdout 上记录指标差值，然后从 105 个剩余点中生成下一计划；它不递归执行、不自动晋升，也不把 fixture 改善外推为一般收益。
+
+R5-F 首片回答“候选用于下游筛选时会不会损害精确决策”，而不是“是否立即采用候选”。它用同一 135 点网格、同一三个意图和同一 27 次 exact 预算并排运行基线/候选；筛选顺序可以变化，精确硬门不能变化。只有候选不丢失基线预算内最佳精确目标时影响门才通过；结果仍为 `EvaluatedOnly` / `NotPerformed`，不关闭 reality 或模型晋升门。
+
+R5-G 首片回答“这些候选证据是否完整到可以提交独立审查”，而不是“是否已经批准晋升”。它确定性重放 R5-E/R5-F、冻结旧基线回滚身份并列出六个仍未关闭的门；`ReadyForIndependentReview` 不改变 default、registry、activation、deployment 或 device 状态。
+
+R5-H 首片回答“这个具体候选在预登记的真实 Case 上是否仍满足目标定义”，而不是“R5-B 的另一模型是否通过”或“是否自动采用候选”。它冻结至少两个跨设备/工况的 in-domain Case、一个 contextual OOD probe、精确 M4/M5 和阈值，只接受完整 R7-E/R4.1 报告；周期头保持 exact-planner，线性误差头才由 X/Y/Z controller-live-read 派生并计入 reality。通过也只产生 `CaseScopedPassed`，不自行产生独立决定或修改默认模型。
+
+R5-I 首片回答“在真实证据和独立决定都成立后，如何让本机默认模型以可恢复、可审计的方式改变”。它权威重放 R5-G/R5-H、验证内容绑定的 HMAC-SHA256 `PromotionDecision`，再用单个 SQLite 事务完成候选注册、generation 增长、默认指针切换与 ActivationReceipt，并在提交后重新读回。运行监控分别检查 bundle、推理、OOD、双目标 RMSE 与覆盖率；只有持久化的 `RollbackRequired` 报告和另一份显式签名决定才能回到冻结基线。所有写操作只存在于 Windows 本机 CLI，HTTP/网页只读；该层不连接控制器，也不授予设备部署或写入权限。
 
 每个 DatasetSnapshot 至少绑定：
 
@@ -419,8 +433,8 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 | **R2 五轴数学领域包** | 接入完备数学模型 | M0–M5、PathProgress、对应/重建策略、模型碰撞验证、参考求解器、证书和测试族 | 通过数学规范 Math F0–F4；R2 已闭合，面向下游的候选具备完整标准 Claim 且无 `CollisionUnchecked`；无需改写 Core |
 | **R3 设备只读接入** | 建立可信数据采集链 | Device/Profile、遥测、时钟或坐标对齐、MachineRun lineage | 数学、算法和设备 Run 可追溯；零自动写入 |
 | **R4 物理模型与现实对齐** | 解释模型—设备差异 | PhysicalModel、标定、仿真、残差分解、SIL/HIL 或等价验证 | 同一 Case 可比较数学、仿真和设备证据 |
-| **R5 数据集与学习模型** | 形成可信预测能力 | DatasetSnapshot、异常检测、残差或条件效果模型、不确定性、端侧 ModelBundle 候选、R5-B real holdout readiness | R5-A 可先闭合 syntheticLearningContractStatus；R5-B 先闭合 real holdout readiness；realWorldGeneralizationStatus 保持 Open，直至跨设备/跨工况 holdout 与治理条件到位 |
-| **R6 受约束参数推荐** | 反向寻找候选参数 | 目标或约束、代理辅助搜索、Recommendation、离线与 shadow gate | 候选不违反硬约束，建议可解释、可复验、不可自动写入 |
+| **R5 数据集与学习模型** | 形成可信预测、实验规划与本机模型生命周期能力 | DatasetSnapshot、异常检测、残差或条件效果模型、不确定性、端侧 ModelBundle 候选、R5-B real holdout readiness、R5-D SimulationExperimentPlan、R5-E approved synthetic AcquisitionReceipt/retrain/replan、R5-F candidate downstream impact report、R5-G promotion readiness dossier、R5-H candidate holdout study/assessment、R5-I PromotionDecision/local registry/activation/monitoring/rollback receipts | R5-A 闭合 syntheticLearningContractStatus；R5-C 闭合声明域内 syntheticConditionalEffectContractStatus；R5-D 在冻结未观测池生成可复算 Planned/Blocked 结果；R5-E 在显式批准后闭合单批 synthetic plan→train→replan；R5-F 在同网格/预算/精确门下比较候选影响；R5-G 只把完整证据标为 ReadyForIndependentReview；R5-H 必须预登记指定候选和 exact command，只有完整 R4.1 证据、双头非劣与 coverage 门全过才可形成 CaseScopedPassed；R5-I 只在 R5-G/R5-H 与独立签名决定均闭合后，原子写入本机 SQLite、读回 generation、监控并接受显式回滚；仓库没有真实正例，默认 realWorldGeneralizationStatus 与公开模型晋升路径仍为 Open；集中式 Registry、设备部署、受控试验和设备写入保持 Open |
+| **R6 受约束参数推荐** | 反向寻找候选参数 | 目标或约束、代理辅助搜索、精确重放、Recommendation、离线与 shadow gate | 候选不违反硬约束，建议可解释、可复验、不可自动写入 |
 | **R7 受控闭环** | 在控制包线内自动调整 | 权限、限幅、停止、回滚、审计、在线监控 | 安全论证、责任边界和运行证据满足具体部署要求 |
 
 ### 10.1 当前工作面
@@ -432,13 +446,14 @@ Roadmap 使用 R0–R7，避免与五轴领域内部的 M0–M5 混淆。阶段�
 - R2：已完成 Math F0–F4 的五轴数学领域包闭环，Reference Solver / SUT 验收现在是已关闭的数学门禁，不再新增驱动器写入或控制器上机许可；
 - R3：已完成 Windows JSON capture 的只读参考链，冻结 Device/Profile、raw telemetry、时钟/坐标上下文、paired/unpaired MachineRun lineage、五类 `Observed` 数据 Claim 和 Machine Lab；它不代表真实控制器协议或写能力已经实现；
 - R4：首片冻结 Windows 轴空间一阶响应模型、独立 synthetic SIL oracle、校准/holdout 隔离、显式时间/通道对齐和单位分组残差；这只闭合合同片，不能把真实设备 reality gate 标为完成；
-- R5：R5-A Windows synthetic learning 合同片已实现，已冻结 DatasetSnapshot、split/lineage/governance、X-only 残差、split conformal 不确定性、JSON ModelBundle、typed API/UI 和禁语边界；R5-B Windows real holdout readiness 与现场 intake 已实现，已冻结 RealPairedHoldoutSet、RealHoldoutGovernance、RealHoldoutSelectionReceipt、case-scoped Evidence、多文件 R7-E/R4.1 投影、外部上传入口和就绪阈值，但仍不能把真实跨设备泛化门标为完成；
-- R6：Windows Offline Recommendation v1 已实现，冻结 `feedOverride × samplePeriod` 六点网格、三目标无权重 Pareto、七数学硬门重放、R4 多采样率适用性证据、R5 OOD 注记和零写入验证计划；它不等于真实设备优化已经通过；
-- R7：R7-A Windows Synthetic Shadow 合同片冻结 AcceptanceRecord、Shadow 包线与 fail-closed 状态机；R7-B 用 `control.domain-pack@2` 冻结厂商无关 Deployment Shadow Readiness；R7-C 用隔离 `.NET 8` 官方 OPC UA 栈和 `control.domain-pack@3` 闭合 Windows localhost 的证书固定、加密五轴订阅、通知完整性和零写合同；R7-D 选择 Beckhoff TwinCAT 3 Build 4026+ / TF6100，以 `control.domain-pack@4` 冻结 Vendor Profile、`tcpkg`/二进制预检、许可证、BuildInfo、五轴访问级别与独立非执行 canary 拒写收据；R7-E 再用 `control.domain-pack@5` 把 command hash、sample index 与 X/Y/Z/B/C 七节点 batch Read 冻结为 exact-index Shadow Witness。Windows 现场验收包现可保留外部 `caseId`、依次重验两个 R7-E 输入并生成内容寻址的 R4.1 报告；控制器侧部署工具包进一步提供只读 `.TcPOU`、窗口 sentinel/索引最后发布协议、七节点只读属性检查和显式 namespace/NodeId 离线绑定评估；离线 `beckhoff-shadow-assessment` 与双文件 `field-evidence` 入口把采集结果确定性接入同一应用层编排器，R5-B intake 再把多个封存报告投影到跨设备/工况 holdout。整条链仍不创建新 DomainPack、安全 Claim、任意进程执行或自动 PLC 部署路径。当前开发机没有 TwinCAT/TF6100 和经授权的跨设备/工况 capture，TwinCAT compile、厂商运行时、deployment shadow、reality validation、Controlled Trial、Closed Loop 与标准符合性继续保持 Open。
+- R5：R5-A Windows synthetic learning 合同片已实现，已冻结 DatasetSnapshot、split/lineage/governance、X-only 残差、split conformal 不确定性、JSON ModelBundle、typed API/UI 和禁语边界；R5-B Windows real holdout readiness 与现场 intake 已实现，并在 v0.23.0 新增采集前 Campaign Manifest/Registration、严格 slot/时序核验和 `PreRegistered` selection；R5-C 新增 25 点 R4 SIL 参数研究、15/5/5 空间 holdout、周期与线性误差双输出代理模型、conformal/OOD/parity 门和网页工作台；R5-D 复用 R5-C 训练设计与 R6 v2 网格，以顺序 G-optimal leverage 规划默认 5 个未观测 SIL 点；R5-E 要求责任方批准完整五点批次，重放 exact F3/F4/R4，封存 acquisition receipt，以 30 点/20-5-5 split 重训 v2 候选，并在 105 个剩余点中生成下一计划；R5-F 再用同一三个 R6 v2 意图、135 点网格和 27 次精确预算并排评估 v1 基线与 v2 候选，只在预算内最佳精确结果无退化时通过影响门；R5-G 对该证据链做确定性重放，冻结 rollback baseline 并生成只读审查包；R5-H 对 dossier 唯一候选执行预登记的 Case-scoped 真实 holdout。旧自报 `selectedBeforeEvaluation` 只保留兼容重放，不能关闭现实门；R5-C/R5-D/R5-E/R5-F/R5-G 不能替代真实 holdout，R5-H 也不会自动晋升；
+- R5-I：新增内容绑定的晋升/回滚决定、本机 SQLite Registry、原子 generation/default 切换、提交后读回、当前默认模型推理、分目标运行监控与显式回滚。写权限仅在 Windows 本机 `model-lifecycle` CLI，HTTP/网页保持只读；仓库无真实 R5-H 正例，所以产品默认不产生已晋升模型，测试构造成功路径不属于发布证据；
+- R6：Windows Offline Recommendation v1 保持六点完全枚举和三目标无权重 Pareto；v2 新增 15×9 共 135 点的目标驱动代理筛选，以一个主目标和两个显式约束替代权重总分，最多选择 27 点精确重放 F3/F4/R4，最终 Recommendation 只来自精确可行候选。两版都保持零写入、零自动接受、reality Open；v2 只声明预算内 best observed，不声明全局最优；
+- R7：R7-A Windows Synthetic Shadow 合同片冻结 AcceptanceRecord、Shadow 包线与 fail-closed 状态机；新增 v2 显式接力，把 R6 v2 Recommendation、screening 与 exact candidate 身份投影为独立证据快照，再进入同一状态机，既不降级成 v1，也不自动接受。Goal-to-Shadow 应用路径进一步从 Optimization Lab 的用户选择出发，按冻结协议重新执行同一候选的 F3/F4/R4，只有 M4/M5/PhysicalResponseTrace identity 与逐样本时间、command 完全一致时，才把 X/Y/Z mm 误差无插值投影为 R7-A trace；固定合同夹具不会冒充候选响应。R7-B 用 `control.domain-pack@2` 冻结厂商无关 Deployment Shadow Readiness；R7-C 用隔离 `.NET 8` 官方 OPC UA 栈和 `control.domain-pack@3` 闭合 Windows localhost 的证书固定、加密五轴订阅、通知完整性和零写合同；R7-D 选择 Beckhoff TwinCAT 3 Build 4026+ / TF6100，以 `control.domain-pack@4` 冻结 Vendor Profile、`tcpkg`/二进制预检、许可证、BuildInfo、五轴访问级别与独立非执行 canary 拒写收据；R7-E 再用 `control.domain-pack@5` 把 command hash、sample index 与 X/Y/Z/B/C 七节点 batch Read 冻结为 exact-index Shadow Witness。Windows 现场验收包现可保留外部 `caseId`、依次重验两个 R7-E 输入并生成内容寻址的 R4.1 报告；控制器侧部署工具包进一步提供只读 `.TcPOU`、窗口 sentinel/索引最后发布协议、七节点只读属性检查和显式 namespace/NodeId 离线绑定评估；离线 `beckhoff-shadow-assessment` 与双文件 `field-evidence` 入口把采集结果确定性接入同一应用层编排器，R5-B intake 再把多个封存报告投影到跨设备/工况 holdout。整条链仍不创建安全 Claim、任意进程执行或自动 PLC 部署路径。当前开发机没有 TwinCAT/TF6100 和经授权的跨设备/工况 capture，TwinCAT compile、厂商运行时、deployment shadow、reality validation、Controlled Trial、Closed Loop 与标准符合性继续保持 Open。
 
 R4 的首个具体合同见[物理模型与现实对齐规范](物理模型与现实对齐规范.md)：`PhysicalResponseTrace` 是模型执行主 Artifact，数学命令、物理模型、标定、R3 raw observation 与对齐记录保持独立内容身份。首个参考数据来自结构不同于候选模型的 synthetic SIL oracle；阶段报告必须把 `syntheticContractStatus` 与 `realityValidationStatus` 分开。新增真实设备 source 时仍须独立冻结厂商协议、许可、最小权限和环境验收，不从文件回放结果外推。
 
-R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门；R6 只把 R5 用作 OOD 注记和晋级阻断，不把 synthetic 模型升级为物理目标或真实泛化证据。R6/R7 权威合同见[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)、[ADR-0018](架构决策记录/ADR-0018-R6多目标离线推荐与权限边界.md)、[ADR-0019](架构决策记录/ADR-0019-R7A-Shadow受控运行与设备安全边界.md)、[ADR-0020](架构决策记录/ADR-0020-R7B-部署影子就绪性与厂商边界.md)、[ADR-0021](架构决策记录/ADR-0021-R7C-Windows虚拟OPC-UA传输验收边界.md)、[ADR-0022](架构决策记录/ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md)、[ADR-0023](架构决策记录/ADR-0023-R7E样本索引采集与R41双运行现实门.md)、[ADR-0024](架构决策记录/ADR-0024-现场证据采用应用层双运行编排.md)、[ADR-0025](架构决策记录/ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md)与[ADR-0026](架构决策记录/ADR-0026-R7E现场证据到R5B真实holdout投影.md)。
+R5-A 当前实现只闭合逐样本 synthetic learning 合同；R5-C 只闭合冻结 R4 模型与声明参数域内的 synthetic 条件效应合同；R5-D 只闭合下一批 synthetic SIL 计划；R5-E 只在显式批准下闭合一批 synthetic 标签获取、候选重训和重规划；R5-F 只闭合候选在冻结下游搜索中的影响评估；R5-G 只闭合晋升审查包的证据完整性；R5-H 只闭合候选专属 Case 的真实证伪；R5-I 才在外部证据与独立决定齐备后修改本机默认模型，但仍不执行设备部署。R6 v1 仍只把 R5-A 用作 OOD 注记和晋级阻断，不消费 R5-C；R6 v2 使用新的版本化合同显式消费 R5-C 基线，R5-F 则用独立候选版本进行同条件比较；代理都只筛选 135 点参数网格，最多 27 个候选仍逐一重放 R4 与全部数学硬门。R5-C 预测、R5-D design leverage、R5-E synthetic candidate gate、R5-F impact gate、R5-G review readiness、R5-H Case-scoped assessment 和 R5-I 本机 activation 都不升级为物理目标、跨域真实泛化、设备权限或闭环控制证据。R6/R7 权威合同见[受约束优化与安全闭环规范](受约束优化与安全闭环规范.md)、[ADR-0018](架构决策记录/ADR-0018-R6多目标离线推荐与权限边界.md)、[ADR-0019](架构决策记录/ADR-0019-R7A-Shadow受控运行与设备安全边界.md)、[ADR-0020](架构决策记录/ADR-0020-R7B-部署影子就绪性与厂商边界.md)、[ADR-0021](架构决策记录/ADR-0021-R7C-Windows虚拟OPC-UA传输验收边界.md)、[ADR-0022](架构决策记录/ADR-0022-R7D-Beckhoff-TwinCAT厂商验收边界.md)、[ADR-0023](架构决策记录/ADR-0023-R7E样本索引采集与R41双运行现实门.md)、[ADR-0024](架构决策记录/ADR-0024-现场证据采用应用层双运行编排.md)、[ADR-0025](架构决策记录/ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md)、[ADR-0026](架构决策记录/ADR-0026-R7E现场证据到R5B真实holdout投影.md)、[ADR-0027](架构决策记录/ADR-0027-R5B现场Campaign预注册与选择证据边界.md)、[ADR-0028](架构决策记录/ADR-0028-R5C条件效应代理模型与空间Holdout边界.md)、[ADR-0029](架构决策记录/ADR-0029-R6V2目标驱动代理筛选与精确回放边界.md)、[ADR-0030](架构决策记录/ADR-0030-R6V2到R7A显式证据投影与兼容边界.md)、[ADR-0032](架构决策记录/ADR-0032-R5D仿真实验价值采用顺序G最优设计.md)、[ADR-0033](架构决策记录/ADR-0033-R5E离线合成实验反馈闭环与候选晋升边界.md)、[ADR-0034](架构决策记录/ADR-0034-R5F候选模型下游影响评估与晋升隔离.md)、[ADR-0035](架构决策记录/ADR-0035-R5G晋升就绪审查包与模型激活隔离.md)、[ADR-0036](架构决策记录/ADR-0036-R5H候选真实Holdout与模型晋升隔离.md)与[ADR-0037](架构决策记录/ADR-0037-R5I本机模型生命周期与设备部署隔离.md)。
 
 ### 10.2 依赖原则
 
@@ -456,7 +471,7 @@ R5-A 当前实现仍只闭合 synthetic learning 依赖、输出和阶段门；R
 | R0–R1 | Point Lab Web Workbench：导入、编辑、执行、评价、比较和下载证据包 |
 | R2 | Five-Axis Algorithm Lab：数学参考、算法适配、回归与诊断 |
 | R3–R4 | Machine Lab：仿真或设备运行、遥测对齐和差异定位 |
-| R5 | Intelligence Lab：数据集、漂移、残差、真实 holdout 就绪和效果预测 |
+| R5 | Intelligence Lab：数据集、漂移、残差、真实 holdout、效果预测、下一批实验规划，以及本机 Registry、默认模型、监控与显式回滚状态 |
 | R6 | Optimization Lab：目标或约束定义、候选参数和验证计划 |
 | R7 | Controlled Runtime：限定包线内的受控执行和监控 |
 
@@ -641,7 +656,11 @@ Axiom 借鉴其“分层、契约、逐级证据和受控升级”，但内部 C
 
 后续新增长期且存在替代方案的技术决策时，新增或替代 ADR。
 
-R3–R7 的设备、物理、学习、受约束推荐与受控运行规范已经创建。R7-E 已在 Beckhoff TwinCAT 3 / TF6100 路线上闭合 exact sample-index Shadow Witness、只读 `.NET` Adapter、DomainPack/API/UI 与 contract conformance；R4.1 已闭合双运行 calibration/holdout reality evaluator；Windows 现场验收包进一步闭合显式 Case、双 R7-E 重放、pair 构造、最终状态与报告哈希；v0.20.0 又冻结可导入的控制器锁存模板、七只读 OPC UA 符号和离线部署绑定报告；v0.21.0 把原始采集支持文件组装为两份可独立重验的 R7-E 请求；v0.22.0 则把多个 dossier 的 validation 结果、R3 上下文与外部治理确定性投影为 R5-B holdout，并提供 Python、CLI、HTTP 与网页入口。由于尚无经授权的真实 TwinCAT 环境和跨设备/工况 capture，TwinCAT compile、`vendorRuntimeStatus`、跨设备/工况 `realWorldGeneralizationStatus`、case-scoped reality validation、deployment Shadow、Controlled Trial 与自动闭环仍保持 Open。
+R3–R7 的设备、物理、学习、受约束推荐与受控运行规范已经创建。R7-E 已在 Beckhoff TwinCAT 3 / TF6100 路线上闭合 exact sample-index Shadow Witness、只读 `.NET` Adapter、DomainPack/API/UI 与 contract conformance；R4.1 已闭合双运行 calibration/holdout reality evaluator；Windows 现场验收包进一步闭合显式 Case、双 R7-E 重放、pair 构造、最终状态与报告哈希；v0.20.0 又冻结可导入的控制器锁存模板、七只读 OPC UA 符号和离线部署绑定报告；v0.21.0 把原始采集支持文件组装为两份可独立重验的 R7-E 请求；v0.22.0 则把多个 dossier 的 validation 结果、R3 上下文与外部治理确定性投影为 R5-B holdout，并提供 Python、CLI、HTTP 与网页入口。v0.23.0 又把预先选择从调用方布尔值提升为采集前 Campaign/Registration 与严格 slot 核验，用 R5-C 闭合 R4 SIL 参数研究到双输出条件效应代理模型的独立合同，用 R5-D 把顺序 G-optimal 设计接成默认五点的下一批 synthetic SIL 计划，并由 R6 v2 在显式目标/约束下把代理筛选接回精确 F3/F4/R4 回放；Goal-to-Shadow 再把用户选择的 exact candidate 以同协议重算并接入既有 R7-A 状态机，使“数据—模型—实验计划—目标—建议—候选物理响应—Shadow 结论”成为一条可操作的应用链。这些合同都不改变现实门。Campaign 登记仍是外部责任方信任边界，不是密码学可信时间证明；R5-C、R5-D、R6 v2 与 Goal-to-Shadow 结果仍只限 synthetic SIL 和 Offline/Shadow 软件合同。由于尚无经授权的真实 TwinCAT 环境和跨设备/工况 capture，TwinCAT compile、`vendorRuntimeStatus`、跨设备/跨工况 `realWorldGeneralizationStatus`、case-scoped reality validation、deployment Shadow、Controlled Trial 与自动闭环仍保持 Open。
+
+R5-H 在 v0.23.0 只闭合“候选专属研究可预登记、现场报告可导入、标签与门禁可重放”的实现合同。由于仓库没有经授权的真实报告，默认 assessment 必须保持 `Open`；测试构造数据不得进入产品 fixture 或发布证据。
+
+R5-I 在 v0.23.0 已闭合“满足证据条件后如何安全改变本机默认模型”的实现合同：独立签名决定、SQLite 原子事务、generation/readback、运行监控和显式回滚均可重放。它没有改变上述现实缺口；没有真实 `CaseScopedPassed` 就不会在产品默认路径产生晋升，且本机模型激活不等于控制器部署、受控试验或设备写入。
 
 详细触发条件见 [README](README.md)。这保证现在有清晰边界，又不把尚未验证的想法伪装成稳定规范。
 

@@ -7,6 +7,8 @@ import type {
   R5BExamplePayload,
   R5BManifest,
   R5BScenarioSummary,
+  PreregisteredRealHoldoutIntakeReport,
+  RealHoldoutCampaignRegistrationReport,
   RealHoldoutIntakeReport,
 } from "./types";
 
@@ -335,6 +337,91 @@ function intakeReport(): RealHoldoutIntakeReport {
   };
 }
 
+function campaignReport(): RealHoldoutCampaignRegistrationReport {
+  return {
+    schemaId: "axiom.intelligence.real-holdout-campaign-registration-report@1",
+    schemaVersion: 1,
+    manifest: {
+      artifactType: "axiom.intelligence.real-holdout-campaign-manifest",
+      schemaId: "axiom.intelligence.real-holdout-campaign-manifest@1",
+      schemaVersion: 1,
+      campaignId: "field.real-holdout-campaign@1",
+      holdoutSetId: "field.real-holdout-set@1",
+      selectionId: "field.real-holdout-selection@1",
+      modelBundleHash: "d".repeat(64),
+      trainingDatasetHash: "f".repeat(64),
+      selectionPolicyId: "axiom.intelligence.real-holdout-preregistered-selection@1",
+      leakageDimensions: ["device", "condition", "task", "batch", "time"],
+      platform: "windows",
+      cases: [],
+      contentHash: "8".repeat(64),
+    },
+    registration: {
+      artifactType: "axiom.intelligence.real-holdout-campaign-registration",
+      schemaId: "axiom.intelligence.real-holdout-campaign-registration@1",
+      schemaVersion: 1,
+      campaignContentHash: "8".repeat(64),
+      registeredAt: "2026-08-14T00:00:00+00:00",
+      registrationAuthorityId: "field-campaign-owner",
+      registrationRecordId: "external-record-001",
+      registrationMethod: "external-owner-attestation",
+      contentHash: "a".repeat(64),
+    },
+    registrationStatus: "Passed",
+    countsTowardReality: false,
+    trustBoundary: "external-owner-attestation",
+    controlledTrialStatus: "Open",
+    closedLoopStatus: "Open",
+    deviceSafetyStatus: "NotAssessed",
+    processSafetyStatus: "NotAssessed",
+    contentHash: "b".repeat(64),
+  };
+}
+
+function preregisteredIntakeReport(): PreregisteredRealHoldoutIntakeReport {
+  const delegated = intakeReport();
+  const generatedRunSpec = {
+    ...delegated.r5bRunSpec!,
+    request: {
+      ...delegated.r5bRunSpec!.request,
+      realHoldoutSet: {
+        ...delegated.realHoldoutSet,
+        selection: {
+          selectionEvidenceStatus: "PreRegistered",
+          campaignManifestContentHash: "8".repeat(64),
+          campaignRegistrationContentHash: "a".repeat(64),
+        },
+      },
+    },
+  };
+  return {
+    schemaId: "axiom.intelligence.preregistered-real-holdout-intake-report@1",
+    schemaVersion: 1,
+    intakeId: "field.preregistered-real-holdout-intake@1",
+    campaignManifestContentHash: "8".repeat(64),
+    campaignRegistrationContentHash: "a".repeat(64),
+    checks: [
+      {
+        checkId: "preregistered-real-holdout-intake.contract",
+        title: "Immutable campaign and base R5-B lineage",
+        status: "Passed",
+        details: {},
+      },
+    ],
+    delegatedIntakeReport: delegated,
+    realHoldoutSet: generatedRunSpec.request.realHoldoutSet,
+    r5bRunSpec: generatedRunSpec,
+    intakeStatus: "Passed",
+    countsTowardReality: true,
+    validationScope: "submitted-cases-only",
+    controlledTrialStatus: "Open",
+    closedLoopStatus: "Open",
+    deviceSafetyStatus: "NotAssessed",
+    processSafetyStatus: "NotAssessed",
+    contentHash: "c".repeat(64),
+  };
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -390,7 +477,12 @@ describe("IntelligenceR5BWorkbench", () => {
           subjectId: "imported.subject@1",
           domainPackId: "intelligence.domain-pack@2",
           runnerId: "intelligence-real-holdout-validation@1",
-          request: { realHoldoutSet: { artifactType: "axiom.intelligence.real-paired-holdout-set" } },
+          request: {
+            realHoldoutSet: {
+              artifactType: "axiom.intelligence.real-paired-holdout-set",
+              selection: { selectionEvidenceStatus: "PreRegistered" },
+            },
+          },
         });
         const supported = runBundle();
         supported.run.caseOutcome = "Passed";
@@ -418,7 +510,14 @@ describe("IntelligenceR5BWorkbench", () => {
         evaluatorVersion: "intelligence-real-holdout-evaluator@1",
         request: {
           case: { caseId: "imported-case@1" },
-          realHoldoutSet: { artifactType: "axiom.intelligence.real-paired-holdout-set" },
+          realHoldoutSet: {
+            artifactType: "axiom.intelligence.real-paired-holdout-set",
+            selection: {
+              selectionEvidenceStatus: "PreRegistered",
+              campaignManifestContentHash: "8".repeat(64),
+              campaignRegistrationContentHash: "a".repeat(64),
+            },
+          },
         },
       })],
       "r5b-runspec.json",
@@ -435,30 +534,37 @@ describe("IntelligenceR5BWorkbench", () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([request]) => String(request).endsWith("/runs/evaluate"))).toBe(true);
     });
-    expect(await screen.findByText("RunBundle: Passed；结论仅限已提交 holdout。")).toBeInTheDocument();
+    expect(await screen.findByText("RunBundle: Passed；预注册证据已绑定。")).toBeInTheDocument();
     expect(screen.getByText("证据范围仅限本次提交的 Windows holdout cases。")).toBeInTheDocument();
     expect(screen.queryByText("缺少真实配对 holdout，结论不可闭合。")).not.toBeInTheDocument();
   });
 
-  it("支持多文件现场证据投影并执行生成的 R5-B RunSpec", async () => {
+  it("要求 Campaign 预注册后投影现场证据并执行生成的 R5-B RunSpec", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/intelligence/r5b/manifest")) return Promise.resolve(jsonResponse(manifest));
       if (url.endsWith("/intelligence/r5b/scenarios")) return Promise.resolve(jsonResponse([scenario]));
       if (url.includes("/examples/intelligence-r5b")) return Promise.resolve(jsonResponse(example));
-      if (url.endsWith("/intelligence/r5b/intake/assess")) {
+      if (url.endsWith("/intelligence/r5b/campaigns/register")) {
         const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
         expect(request).toMatchObject({
-          schemaId: "axiom.intelligence.real-holdout-intake-request@1",
-          selectedBeforeEvaluation: true,
-          intakeId: "field.real-holdout-intake@1",
-          holdoutSetId: "field.real-holdout-set@1",
-          selectionId: "field.real-holdout-selection@1",
+          schemaId: "axiom.intelligence.real-holdout-campaign-registration-request@1",
+          campaignId: "field.real-holdout-campaign@1",
+        });
+        return Promise.resolve(jsonResponse(campaignReport()));
+      }
+      if (url.endsWith("/intelligence/r5b/intake/assess-preregistered")) {
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expect(request).toMatchObject({
+          schemaId: "axiom.intelligence.preregistered-real-holdout-intake-request@1",
+          intakeId: "field.preregistered-real-holdout-intake@1",
           baseRunSpec: { domainPackId: "intelligence.domain-pack@2" },
           governance: { governanceId: "field.governance@1" },
+          campaignManifest: { campaignId: "field.real-holdout-campaign@1" },
+          campaignRegistration: { registrationAuthorityId: "field-campaign-owner" },
         });
         expect(request.cases).toHaveLength(3);
-        return Promise.resolve(jsonResponse(intakeReport()));
+        return Promise.resolve(jsonResponse(preregisteredIntakeReport()));
       }
       if (url.endsWith("/runs/evaluate")) {
         expect(JSON.parse(String(init?.body))).toMatchObject({
@@ -480,6 +586,17 @@ describe("IntelligenceR5BWorkbench", () => {
     render(<IntelligenceR5BWorkbench catalog={catalog} />);
     await screen.findByText("REAL HOLDOUT VALIDATION / NOT DEVICE SAFE");
 
+    fireEvent.change(screen.getByLabelText("导入 Campaign 请求或登记报告 JSON"), {
+      target: {
+        files: [new File([JSON.stringify({
+          schemaId: "axiom.intelligence.real-holdout-campaign-registration-request@1",
+          campaignId: "field.real-holdout-campaign@1",
+          baseRunSpec: example.runSpec,
+          cases: [],
+        })], "campaign-request.json")],
+      },
+    });
+
     fireEvent.change(screen.getByLabelText("导入治理记录 JSON"), {
       target: {
         files: [new File([JSON.stringify({ governanceId: "field.governance@1" })], "governance.json")],
@@ -494,9 +611,11 @@ describe("IntelligenceR5BWorkbench", () => {
       },
     });
 
+    expect(await screen.findByText(/已登记 campaign-request\.json/)).toBeInTheDocument();
+    expect(screen.getByText("field-campaign-owner")).toBeInTheDocument();
     expect(await screen.findByText("治理记录：governance.json")).toBeInTheDocument();
     expect(await screen.findByText(/已选择 3 个 Case/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "评估并生成 R5-B RunSpec" }));
+    fireEvent.click(screen.getByRole("button", { name: "验证预注册并生成 R5-B RunSpec" }));
 
     expect(await screen.findByText("可进入 R5-B 评估；尚非泛化结论")).toBeInTheDocument();
     expect(screen.getByText("submitted-cases-only")).toBeInTheDocument();
@@ -523,7 +642,7 @@ describe("IntelligenceR5BWorkbench", () => {
     }
 
     fireEvent.click(screen.getByRole("button", { name: "执行生成的 R5-B RunSpec" }));
-    expect(await screen.findByText("RunBundle: Passed；结论仅限已提交 holdout。")).toBeInTheDocument();
+    expect(await screen.findByText("RunBundle: Passed；预注册证据已绑定。")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("导入 RunSpec JSON"), {
       target: {

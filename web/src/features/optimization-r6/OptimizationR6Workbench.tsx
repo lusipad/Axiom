@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Catalog } from "../../types";
 import { loadR6Example, loadR6Manifest, loadR6Scenarios, runR6Search } from "./api";
+import { OptimizationR6V2Workbench } from "./OptimizationR6V2Workbench";
+import { OptimizationVersionSwitch, type OptimizationVersion } from "./OptimizationVersionSwitch";
 import type { OptimizationSearchRequest, R6ExamplePayload, R6Manifest, R6ScenarioSummary } from "./types";
 import "./styles.css";
 
@@ -34,6 +36,19 @@ function optionalPositiveInteger(value: string, label: string): number | undefin
 }
 
 export function OptimizationR6Workbench({ catalog }: { catalog: Catalog | null }) {
+  const [version, setVersion] = useState<OptimizationVersion>("v2");
+  return version === "v2"
+    ? <OptimizationR6V2Workbench catalog={catalog} onVersionChange={setVersion} />
+    : <OptimizationR6V1Workbench catalog={catalog} onVersionChange={setVersion} />;
+}
+
+function OptimizationR6V1Workbench({
+  catalog,
+  onVersionChange,
+}: {
+  catalog: Catalog | null;
+  onVersionChange: (value: OptimizationVersion) => void;
+}) {
   const [manifest, setManifest] = useState<R6Manifest | null>(null);
   const [scenarios, setScenarios] = useState<R6ScenarioSummary[]>([]);
   const [example, setExample] = useState<R6ExamplePayload | null>(null);
@@ -107,6 +122,7 @@ export function OptimizationR6Workbench({ catalog }: { catalog: Catalog | null }
       {error && <div className="error-banner" role="alert"><strong>R6 未完成</strong><span>{error}</span><button type="button" onClick={() => setError(null)}>×</button></div>}
       <main className="workspace optimization-r6-workspace">
         <aside className="config-panel optimization-r6-config">
+          <OptimizationVersionSwitch value="v1" onChange={onVersionChange} />
           <div className="panel-heading">
             <div><span className="eyebrow">OPTIMIZATION R6 LAB</span><h1>受约束参数推荐</h1></div>
             <span className="schema-badge">@1</span>

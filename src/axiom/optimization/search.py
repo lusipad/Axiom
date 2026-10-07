@@ -3,17 +3,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from ..five_axis.f3_sampling import POLYNOMIAL_POLICY_ID, verify_interval_reconstruction
-from ..five_axis.f3_timing import (
-    plan_jerk_feasible_time_law,
-    verify_continuous_trajectory,
-)
-from ..five_axis.f4_adapters import (
-    SUT_ADAPTER_DESCRIPTOR,
-    build_adapter_invocation,
-    execute_adapter,
-)
-from ..five_axis.f4_collision import verify_m5_configuration_collision
 from ..five_axis.f4_scenarios import load_f4_scenario
 from ..intelligence.interpreter import pure_python_predict_observation
 from ..intelligence.models import IntelligenceSample
@@ -22,8 +11,7 @@ from ..models import ParameterSet
 from ..physical import (
     build_r4_multirate_applicability_evidence,
     build_r4_multirate_physical_model,
-    require_physical_model_sample_period,
-    simulate_physical_response,
+    evaluate_canonical_parameter_point,
 )
 from .models import (
     R6_GATE_IDS,
@@ -50,36 +38,6 @@ def _parameter_set(feed_override: float, sample_period: float) -> ParameterSet:
         schemaVersion=1,
         values={"feedOverride": feed_override, "samplePeriod": sample_period},
         units={"feedOverride": "ratio", "samplePeriod": "s"},
-    )
-
-
-def _derated_motion_profile(base, feed_override: float):
-    axis_constraints = tuple(
-        constraint.model_copy(
-            update={
-                "maximum_velocity": constraint.maximum_velocity * feed_override,
-                "maximum_acceleration": constraint.maximum_acceleration
-                * feed_override**2,
-                "maximum_jerk": (
-                    constraint.maximum_jerk * feed_override**3
-                    if constraint.maximum_jerk is not None
-                    else None
-                ),
-            }
-        )
-        for constraint in base.axis_constraints
-    )
-    return base.model_copy(
-        update={
-            "profile_id": f"five-axis.r6.motion-profile.feed-{_feed_code(feed_override)}@1",
-            "axis_constraints": axis_constraints,
-            "maximum_path_velocity": (
-                base.maximum_path_velocity * feed_override
-                if base.maximum_path_velocity is not None
-                else None
-            ),
-            "feed_source": "optimization.r6.feed-override-derating@1",
-        }
     )
 
 
@@ -196,50 +154,28 @@ def search_recommendations(
     candidates: list[dict[str, Any]] = []
 
     for feed_override in request.grid.feed_overrides:
-        profile = _derated_motion_profile(
-            upstream.motionConstraintProfile, feed_override
-        )
-        m4 = plan_jerk_feasible_time_law(
-            upstream.axisPath,
-            profile,
-            trajectory_id=f"five-axis.r6.m4.feed-{_feed_code(feed_override)}-v1",
-        )
-        m4_verification = verify_continuous_trajectory(m4)
         for sample_period in request.grid.sample_periods:
-            require_physical_model_sample_period(physical_model, sample_period)
-            invocation = build_adapter_invocation(
-                SUT_ADAPTER_DESCRIPTOR,
-                m4,
+            point = evaluate_canonical_parameter_point(
+                physical_model,
+                feed_override=feed_override,
                 sample_period=sample_period,
-                policy=POLYNOMIAL_POLICY_ID,
-                final_hold=False,
+                profile_id=f"five-axis.r6.motion-profile.feed-{_feed_code(feed_override)}@1",
+                feed_source="optimization.r6.feed-override-derating@1",
+                trajectory_id=f"five-axis.r6.m4.feed-{_feed_code(feed_override)}-v1",
                 invocation_id=(
                     f"optimization.r6.feed-{_feed_code(feed_override)}.period-{_period_code(sample_period)}.invoke"
                 ),
-            )
-            receipt, command = execute_adapter(invocation, m4)
-            if receipt.status != "Succeeded" or command is None:
-                raise ValueError(f"R6 adapter failed: {receipt.failure_code}")
-            interval_verification = verify_interval_reconstruction(command)
-            collision_verification = verify_m5_configuration_collision(
-                command,
-                collision_model=upstream.collisionModel,
-            )
-            response = simulate_physical_response(
-                physical_model,
-                command,
                 response_trace_id=(
                     f"optimization.r6.feed-{_feed_code(feed_override)}.period-{_period_code(sample_period)}.response@1"
                 ),
             )
-            linear_error = max(
-                abs(float(sample.command[axis]) - float(sample.simulated[axis]))
-                for sample in response.samples
-                for axis in range(3)
-            )
+            m4 = point.continuous_trajectory
+            m4_verification = point.continuous_verification
+            command = point.command
+            response = point.response
             objectives = {
                 "cycleTimeSeconds": m4_verification.total_duration_seconds,
-                "linearFollowingErrorMaxMm": linear_error,
+                "linearFollowingErrorMaxMm": point.linear_following_error_max_mm,
                 "commandSampleCount": len(command.samples),
             }
             gate_statuses = {
@@ -250,18 +186,22 @@ def search_recommendations(
                 m4_verification.overall_status
             )
             gate_statuses[R6_GATE_IDS[5]] = _gate_claim_status(
-                interval_verification.status
+                point.interval_verification.status
             )
             gate_statuses[R6_GATE_IDS[6]] = _gate_claim_status(
-                collision_verification.status
+                point.collision_verification.status
             )
             evidence_by_gate = {
                 claim_id: canonical_hash(upstream_gates[claim_id])
                 for claim_id in R6_GATE_IDS[:4]
             }
             evidence_by_gate[R6_GATE_IDS[4]] = canonical_hash(m4_verification)
-            evidence_by_gate[R6_GATE_IDS[5]] = canonical_hash(interval_verification)
-            evidence_by_gate[R6_GATE_IDS[6]] = canonical_hash(collision_verification)
+            evidence_by_gate[R6_GATE_IDS[5]] = canonical_hash(
+                point.interval_verification
+            )
+            evidence_by_gate[R6_GATE_IDS[6]] = canonical_hash(
+                point.collision_verification
+            )
             gate_receipts = [
                 {
                     "claimId": claim_id,

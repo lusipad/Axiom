@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..optimization import RecommendationSet
+from ..optimization import RecommendationSet, RecommendationSetV2
 from .models import (
     AcceptanceRecord,
     AdmissionDecision,
@@ -14,6 +14,12 @@ from .models import (
     StopReceipt,
     canonical_hash,
 )
+from .r7a2_models import (
+    RecommendationEvidenceProjection,
+    recommendation_projection_reason_codes,
+)
+
+RecommendationContext = RecommendationSet | RecommendationSetV2
 
 
 def _record(model_type, **payload):
@@ -37,7 +43,9 @@ def build_control_envelope(*, baseline_parameter_set_id: str) -> ControlEnvelope
 
 
 def _admission_reasons(
-    spec: RuntimeSpec, recommendation: RecommendationSet
+    spec: RuntimeSpec,
+    recommendation: RecommendationContext,
+    recommendation_projection: RecommendationEvidenceProjection | None = None,
 ) -> tuple[str, ...]:
     reasons: list[str] = []
     if spec.requested_permission in {"ControlledTrial", "ClosedLoop"}:
@@ -53,18 +61,29 @@ def _admission_reasons(
         reasons.append("DeploymentShadowEvidenceMissing")
     elif spec.require_deployment_shadow_evidence:
         reasons.append("DeploymentShadowEvidenceUnverified")
-    candidate = next(
-        (
-            item
-            for item in recommendation.candidates
-            if item.candidate_id == spec.candidate_id
-        ),
-        None,
+    candidates = (
+        recommendation.exact_candidates
+        if isinstance(recommendation, RecommendationSetV2)
+        else recommendation.candidates
     )
+    candidate = next(
+        (item for item in candidates if item.candidate_id == spec.candidate_id), None
+    )
+    if isinstance(recommendation, RecommendationSetV2):
+        reasons.extend(
+            recommendation_projection_reason_codes(
+                recommendation, spec.candidate_id, recommendation_projection
+            )
+        )
     if candidate is None:
         reasons.append("RecommendationCandidateMissing")
     elif not candidate.hard_constraints_satisfied:
         reasons.append("RecommendationHardGateFailed")
+    elif isinstance(recommendation, RecommendationSetV2) and (
+        not candidate.exact_constraints_satisfied
+        or not candidate.recommendation_eligible
+    ):
+        reasons.append("RecommendationGoalConstraintFailed")
     return tuple(reasons)
 
 
@@ -98,9 +117,11 @@ def _findings(spec: RuntimeSpec) -> tuple[MonitorFinding, ...]:
 
 
 def run_shadow(
-    spec: RuntimeSpec, recommendation: RecommendationSet
+    spec: RuntimeSpec,
+    recommendation: RecommendationContext,
+    recommendation_projection: RecommendationEvidenceProjection | None = None,
 ) -> ControlledRuntimeAudit:
-    reasons = _admission_reasons(spec, recommendation)
+    reasons = _admission_reasons(spec, recommendation, recommendation_projection)
     granted = "Denied" if reasons else "Shadow"
     admission = AdmissionDecision(
         status="Blocked" if reasons else "Admitted",
@@ -117,7 +138,12 @@ def run_shadow(
         grantedPermission=granted,
         recommendationSetContentHash=recommendation.content_hash,
         candidateId=spec.candidate_id,
-        evidenceSnapshotHash=recommendation.content_hash,
+        evidenceSnapshotHash=(
+            recommendation_projection.content_hash
+            if isinstance(recommendation, RecommendationSetV2)
+            and recommendation_projection is not None
+            else recommendation.content_hash
+        ),
         responsibility=ResponsibilitySnapshot(
             accountablePartyId="axiom.reference-policy-owner",
             decisionPolicyId="control.r7.fail-closed-shadow-policy@1",

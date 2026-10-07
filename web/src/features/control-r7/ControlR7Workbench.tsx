@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { Catalog } from "../../types";
-import { loadR7Example, loadR7Manifest, loadR7Scenarios, replayR7Scenario } from "./api";
+import {
+  loadR7A2Example,
+  loadR7A2Manifest,
+  loadR7A2Scenarios,
+  loadR7Example,
+  loadR7Manifest,
+  loadR7Scenarios,
+  replayR7A2Scenario,
+  replayR7Scenario,
+} from "./api";
 import type { R7ExamplePayload, R7Manifest, R7ScenarioSummary } from "./types";
 import "./styles.css";
 
@@ -17,10 +26,11 @@ function statusClass(value?: string): string {
 }
 
 export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
+  const [contractVersion, setContractVersion] = useState<"v1" | "v2">("v2");
   const [manifest, setManifest] = useState<R7Manifest | null>(null);
   const [scenarios, setScenarios] = useState<R7ScenarioSummary[]>([]);
   const [payload, setPayload] = useState<R7ExamplePayload | null>(null);
-  const [selectedId, setSelectedId] = useState("synthetic-shadow-nominal");
+  const [selectedId, setSelectedId] = useState("r6v2-shadow-nominal");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,13 +38,17 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
     const active = { value: true };
     (async () => {
       try {
+        const isV2 = contractVersion === "v2";
         const [nextManifest, nextScenarios, nextPayload] = await Promise.all([
-          loadR7Manifest(), loadR7Scenarios(), loadR7Example(),
+          isV2 ? loadR7A2Manifest() : loadR7Manifest(),
+          isV2 ? loadR7A2Scenarios() : loadR7Scenarios(),
+          isV2 ? loadR7A2Example() : loadR7Example(),
         ]);
         if (!active.value) return;
         setManifest(nextManifest);
         setScenarios(nextScenarios);
         setPayload(nextPayload);
+        setSelectedId(nextScenarios[0]?.scenarioId ?? (isV2 ? "r6v2-shadow-nominal" : "synthetic-shadow-nominal"));
       } catch (reason) {
         if (active.value) setError(reason instanceof Error ? reason.message : "R7 初始化失败。");
       } finally {
@@ -42,7 +56,7 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
       }
     })();
     return () => { active.value = false; };
-  }, []);
+  }, [contractVersion]);
 
   const runtimeBound = Boolean(catalog?.domainPacks.find((item) => item.domainPackId === "control.domain-pack@1")?.runtimeBound);
   const findings = useMemo(() => new Map(payload?.runtimeAudit.monitorFindings.map((item) => [item.sampleSequence, item])), [payload]);
@@ -51,7 +65,7 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
     setBusy(true);
     setError(null);
     try {
-      setPayload(await replayR7Scenario(selectedId));
+      setPayload(contractVersion === "v2" ? await replayR7A2Scenario(selectedId) : await replayR7Scenario(selectedId));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "R7 Shadow 重放失败。");
     } finally {
@@ -76,10 +90,14 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
         <aside className="config-panel control-r7-config">
           <div className="panel-heading">
             <div><span className="eyebrow">CONTROLLED RUNTIME · R7-A</span><h1>Shadow 安全合同</h1></div>
-            <span className="schema-badge">@1</span>
+            <span className="schema-badge">@{contractVersion === "v2" ? "2" : "1"}</span>
           </div>
 
           <section className="config-section">
+            <div className="control-r7-version-switch" role="group" aria-label="R7-A 输入合同版本">
+              <button type="button" className={contractVersion === "v2" ? "active" : ""} aria-pressed={contractVersion === "v2"} onClick={() => setContractVersion("v2")}>v2 · R6 精确接力</button>
+              <button type="button" className={contractVersion === "v1" ? "active" : ""} aria-pressed={contractVersion === "v1"} onClick={() => setContractVersion("v1")}>v1 · 旧合同</button>
+            </div>
             <div className="notice-card control-r7-boundary" role="note">
               <strong>NO DEVICE AUTHORITY</strong>
               <p>只重放、监控和审计。这里的 Stop 阻止晋级，不是机床急停或安全功能。</p>
@@ -90,7 +108,7 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
           <section className="config-section">
             <div className="section-title"><span>01</span><h2>权限阶梯</h2><em>ceiling: Shadow</em></div>
             <ol className="control-r7-ladder" aria-label="权限阶梯">
-              <li className="done"><b>01</b><span>Offline</span><small>R6 evidence</small></li>
+              <li className="done"><b>01</b><span>Offline</span><small>{contractVersion === "v2" ? "R6 v2 exact" : "R6 evidence"}</small></li>
               <li className="done"><b>02</b><span>Advisory</span><small>display only</small></li>
               <li className="active"><b>03</b><span>Shadow</span><small>synthetic contract</small></li>
               <li><b>04</b><span>Controlled Trial</span><small>Open</small></li>
@@ -131,6 +149,22 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
             <section className="report-card control-r7-hero">
               <div><span className="eyebrow">FAIL-CLOSED SHADOW REPLAY</span><h2>可执行的是证据状态机，不是机床安全功能</h2><p>AcceptanceRecord、控制包线、停止路径与基线保留都有独立身份；现实部署、受控试验与闭环授权仍保持 Open。</p></div>
               <div className="control-r7-verdict"><strong className={statusClass(payload?.runtimeAudit.admissionDecision.status)}>{payload?.runtimeAudit.admissionDecision.status ?? "—"}</strong><span>{payload?.runtimeAudit.acceptanceRecord.grantedPermission ?? "—"}</span><small>write = false</small></div>
+            </section>
+
+            <section className="report-card control-r7-projection">
+              <div className="section-title compact"><span>00</span><h2>Recommendation → Shadow 证据接力</h2><em>{payload?.recommendationProjection ? "typed projection" : "legacy context"}</em></div>
+              {payload?.recommendationProjection ? (
+                <dl className="data-list compact-list">
+                  <div><dt>Source schema</dt><dd>{payload.recommendationSet.schemaId ?? "@2"}</dd></div>
+                  <div><dt>Candidate evidence</dt><dd className={statusClass(payload.recommendationProjection.sourceCandidateStatus === "ExactEligible" ? "Passed" : "Blocked")}>{payload.recommendationProjection.sourceCandidateStatus}</dd></div>
+                  <div><dt>Selection class</dt><dd>{payload.recommendationProjection.selectionClass}</dd></div>
+                  <div><dt>Global optimum</dt><dd className="status-neutral">{payload.recommendationProjection.globalOptimalityStatus}</dd></div>
+                  <div><dt>Adapter</dt><dd title={payload.recommendationProjection.adapterId}>{payload.recommendationProjection.adapterId}</dd></div>
+                  <div><dt>Projection</dt><dd title={payload.recommendationProjection.contentHash}>{shortHash(payload.recommendationProjection.contentHash)}</dd></div>
+                  <div><dt>Auto acceptance</dt><dd className="status-negative">false</dd></div>
+                  <div><dt>Device write</dt><dd className="status-negative">false</dd></div>
+                </dl>
+              ) : <p>R7-A v1 直接绑定只读 Recommendation 内容身份；切换到 v2 可查看精确候选与代理筛选证据的显式投影。</p>}
             </section>
 
             <div className="control-r7-grid">
@@ -184,7 +218,7 @@ export function ControlR7Workbench({ catalog }: { catalog: Catalog | null }) {
           </div>
         </section>
       </main>
-      <footer className="statusbar control-r7-statusbar"><span><i /> {error ? "1 error" : "0 errors"}</span><span>domain: <code>{manifest?.domainPackId ?? "control.domain-pack@1"}</code></span><span className="statusbar-right">{shortHash(payload?.runtimeAudit.contentHash)} · SHADOW ONLY · NOT A DEVICE SAFETY CLAIM</span></footer>
+      <footer className="statusbar control-r7-statusbar"><span><i /> {error ? "1 error" : "0 errors"}</span><span>domain: <code>{manifest?.domainPackId ?? "control.domain-pack@1"}</code></span><span className="statusbar-right">{shortHash(payload?.runtimeAudit.contentHash)} · {contractVersion === "v2" ? "R6 V2 HANDOFF · " : ""}SHADOW ONLY · NOT A DEVICE SAFETY CLAIM</span></footer>
     </>
   );
 }

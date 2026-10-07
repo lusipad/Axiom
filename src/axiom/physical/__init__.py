@@ -24,6 +24,11 @@ from .models import (
     PhysicalRunAlignment,
     PhysicalValidationAnalysis,
 )
+from .parameter_study import (
+    CanonicalParameterPointEvaluation,
+    derate_motion_profile,
+    evaluate_canonical_parameter_point,
+)
 from .reality_models import (
     FIVE_AXIS_REALITY_DOMAIN_PACK_ID,
     PHYSICAL_REALITY_EVALUATOR_ID,
@@ -101,6 +106,7 @@ __all__ = [
     "AxisValidationSeries",
     "CalibrationAxisResult",
     "CalibrationResult",
+    "CanonicalParameterPointEvaluation",
     "PhysicalApplicability",
     "PhysicalApplicabilityEndpointEvidence",
     "PhysicalAxisParameter",
@@ -133,8 +139,10 @@ __all__ = [
     "build_r4_multirate_physical_model",
     "build_r41_manifest",
     "build_reality_evidence_pair",
+    "derate_motion_profile",
     "evaluate_physical_model",
     "evaluate_physical_reality",
+    "evaluate_canonical_parameter_point",
     "exact_zoh_response",
     "fit_first_order_axis",
     "fit_first_order_model",

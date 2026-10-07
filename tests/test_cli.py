@@ -281,7 +281,14 @@ def test_cli_serve_forwards_the_explicit_bind_address(monkeypatch):
     app = object()
     captured = {}
 
-    monkeypatch.setattr(web_module, "create_app", lambda: app)
+    def fake_create_app(*, r5i_registry_path, r5i_authority_keys):
+        captured.update(
+            r5i_registry_path=r5i_registry_path,
+            r5i_authority_keys=r5i_authority_keys,
+        )
+        return app
+
+    monkeypatch.setattr(web_module, "create_app", fake_create_app)
 
     def fake_run(received_app, *, host, port):
         captured.update(app=received_app, host=host, port=port)
@@ -289,4 +296,51 @@ def test_cli_serve_forwards_the_explicit_bind_address(monkeypatch):
     monkeypatch.setattr(uvicorn, "run", fake_run)
 
     assert main(["serve", "--host", "0.0.0.0", "--port", "9123"]) == 0
-    assert captured == {"app": app, "host": "0.0.0.0", "port": 9123}
+    assert captured == {
+        "r5i_registry_path": None,
+        "r5i_authority_keys": {},
+        "app": app,
+        "host": "0.0.0.0",
+        "port": 9123,
+    }
+
+
+def test_cli_serve_forwards_explicit_r5i_read_only_config(tmp_path, monkeypatch):
+    app = object()
+    captured = {}
+    registry_path = tmp_path / "registry.sqlite"
+    key_path = tmp_path / "authority.key"
+    key_path.write_bytes(b"r5i-test-authority-key")
+
+    def fake_create_app(*, r5i_registry_path, r5i_authority_keys):
+        captured.update(
+            r5i_registry_path=r5i_registry_path,
+            r5i_authority_keys=r5i_authority_keys,
+        )
+        return app
+
+    monkeypatch.setattr(web_module, "create_app", fake_create_app)
+    monkeypatch.setattr(uvicorn, "run", lambda *_args, **_kwargs: None)
+
+    assert main([
+        "serve",
+        "--r5i-registry",
+        str(registry_path),
+        "--r5i-authority-key-id",
+        "review-authority",
+        "--r5i-authority-key-file",
+        str(key_path),
+    ]) == 0
+    assert captured == {
+        "r5i_registry_path": registry_path,
+        "r5i_authority_keys": {"review-authority": b"r5i-test-authority-key"},
+    }
+
+
+def test_cli_serve_rejects_partial_r5i_authority_config(tmp_path, capsys):
+    assert main([
+        "serve",
+        "--r5i-authority-key-file",
+        str(tmp_path / "authority.key"),
+    ]) == 2
+    assert "必须同时提供" in capsys.readouterr().err

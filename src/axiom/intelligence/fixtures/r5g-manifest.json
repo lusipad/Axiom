@@ -1,0 +1,26 @@
+{
+  "manifestId": "axiom.intelligence.r5g-fixture-manifest@1",
+  "platform": "windows",
+  "identityScope": "numeric-environment-bound",
+  "developmentEnvironment": "windows-cpython-3.14.3",
+  "releaseEnvironment": "windows-cpython-3.12.10-openblas-haswell-single-thread",
+  "preparedBy": "promotion-readiness-preparer",
+  "reviewScope": "synthetic-offline-review",
+  "developmentExpectedIdentities": {
+    "impactReportContentHash": "c995110f3c19217973c4578e6e954370c66d840626ab6680b9e275b3745e671a",
+    "requestContentHash": "7c63f19e29700938d918431e91ee48ec238baab428bab89ec29eb709f34a38dc",
+    "dossierContentHash": "61156d92ec989b275e476f30c8f491fc25540686b298922c8a008186ac9311fb",
+    "baselineModelBundleHash": "4202c928a63899da370a12d9a8fe7a90965a497605f79ddc4b2301b3895a36d1",
+    "candidateModelBundleHash": "cc6a08dc31256ca2e3e826d2ff140044ae6f3bb37ee9d6e702b2cc291c02e3cc",
+    "candidateContextHash": "7c252c4b17dbc1ef3166f24212ca756d52354066777a0a69713cb84ac4de27a5"
+  },
+  "windowsReleaseExpectedIdentities": {
+    "impactReportContentHash": "f9abd124c7c54513f7d27bad8ca7d829e1e3ba8464294cc84f39c371d338053e",
+    "requestContentHash": "ac6350e5cc8c12684a0a92c591cc55cb4af4e0f1d45d2d507003c4f562b94504",
+    "dossierContentHash": "f6f0756e12f0ce956b8237e73dbe26612552acdd6715e5d77c2223b0a537d26c",
+    "baselineModelBundleHash": "dbcbfe28aa6513046baf9d4de07785049dae811ff2830d5b874d5eb52b37f222",
+    "candidateModelBundleHash": "4e2b92f37cc21c6ee24ff547033622f6f91b94d55f948b561cc50bfffaf0437f",
+    "candidateContextHash": "81e174e8f931e718443562f71f332a6ff292772f37a68a15d633b264e7df92b4"
+  },
+  "boundary": "PROMOTION READINESS REVIEW / AWAITING INDEPENDENT HUMAN DECISION / NO MODEL ACTIVATION / NOT REALITY VALIDATED / NOT DEVICE SAFE"
+}

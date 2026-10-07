@@ -2,20 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Catalog, Claim, MetricResult, RunBundle, RunSpec } from "../../types";
 import {
-  assessRealHoldoutIntake,
+  assessPreregisteredRealHoldoutIntake,
   executeR5BRunSpec,
   loadR5BExample,
   loadR5BManifest,
   loadR5BScenarios,
+  registerRealHoldoutCampaign,
 } from "./api";
 import type {
+  PreregisteredRealHoldoutIntakeReport,
+  PreregisteredRealHoldoutIntakeRequest,
   R5BExamplePayload,
   R5BManifest,
   R5BReadinessCheck,
   R5BRunSpec,
   R5BScenarioSummary,
-  RealHoldoutIntakeReport,
-  RealHoldoutIntakeRequest,
+  RealHoldoutCampaignRegistrationReport,
+  RealHoldoutCampaignRegistrationRequest,
 } from "./types";
 import "./styles.css";
 
@@ -136,6 +139,36 @@ function parseImportedObject(payload: string, label: string): Record<string, unk
   return parsed;
 }
 
+function isCampaignRegistrationReport(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & RealHoldoutCampaignRegistrationReport {
+  return (
+    value.schemaId === "axiom.intelligence.real-holdout-campaign-registration-report@1" &&
+    isObject(value.manifest) &&
+    isObject(value.registration)
+  );
+}
+
+function isCampaignRegistrationRequest(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & RealHoldoutCampaignRegistrationRequest {
+  return (
+    value.schemaId === "axiom.intelligence.real-holdout-campaign-registration-request@1" &&
+    isObject(value.baseRunSpec) &&
+    Array.isArray(value.cases)
+  );
+}
+
+function hasPreRegisteredSelection(runSpec: R5BRunSpec | null | undefined): boolean {
+  const holdout = runSpec?.request.realHoldoutSet;
+  if (!isObject(holdout) || !isObject(holdout.selection)) return false;
+  return (
+    holdout.selection.selectionEvidenceStatus === "PreRegistered" &&
+    typeof holdout.selection.campaignManifestContentHash === "string" &&
+    typeof holdout.selection.campaignRegistrationContentHash === "string"
+  );
+}
+
 async function readFileAsText(file: File): Promise<string> {
   return file.text();
 }
@@ -169,11 +202,15 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
   const [importedSpec, setImportedSpec] = useState<R5BRunSpec | null>(null);
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [submittedRealHoldout, setSubmittedRealHoldout] = useState<boolean | null>(null);
+  const [submittedPreRegistered, setSubmittedPreRegistered] = useState<boolean | null>(null);
+  const [campaignReport, setCampaignReport] = useState<RealHoldoutCampaignRegistrationReport | null>(null);
+  const [campaignFileName, setCampaignFileName] = useState("");
+  const [campaignBusy, setCampaignBusy] = useState(false);
   const [intakeCases, setIntakeCases] = useState<Record<string, unknown>[]>([]);
   const [intakeCaseFiles, setIntakeCaseFiles] = useState<string[]>([]);
   const [intakeGovernance, setIntakeGovernance] = useState<Record<string, unknown> | null>(null);
   const [intakeGovernanceFile, setIntakeGovernanceFile] = useState("");
-  const [intakeReport, setIntakeReport] = useState<RealHoldoutIntakeReport | null>(null);
+  const [intakeReport, setIntakeReport] = useState<PreregisteredRealHoldoutIntakeReport | null>(null);
   const [intakeBusy, setIntakeBusy] = useState(false);
 
   const displayedManifest = example?.manifest ?? manifest;
@@ -204,14 +241,21 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
   );
   const candidateHasRealHoldout = isObject(importedSpec?.request.realHoldoutSet);
   const intakeBaseRunSpec = importedSpec ?? example?.runSpec ?? null;
+  const projectionReport = intakeReport?.delegatedIntakeReport ?? null;
   const holdoutPresent = bundle
     ? submittedRealHoldout === true
     : Boolean(intakeReport?.realHoldoutSet) || candidateHasRealHoldout || Boolean(example?.realHoldoutSet);
+  const preRegistrationPresent = bundle
+    ? submittedPreRegistered === true
+    : Boolean(intakeReport?.realHoldoutSet) || hasPreRegisteredSelection(importedSpec);
 
   const loadScenario = async (nextId: string, active?: { value: boolean }) => {
     setBusy(true);
     setBundle(null);
     setSubmittedRealHoldout(null);
+    setSubmittedPreRegistered(null);
+    setCampaignReport(null);
+    setCampaignFileName("");
     setIntakeReport(null);
     setError(null);
     try {
@@ -237,9 +281,11 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
       const nextBundle = await executeR5BRunSpec(runSpec);
       setBundle(nextBundle);
       setSubmittedRealHoldout(isObject(runSpec.request.realHoldoutSet));
+      setSubmittedPreRegistered(hasPreRegisteredSelection(runSpec));
     } catch (reason) {
       setBundle(null);
       setSubmittedRealHoldout(null);
+      setSubmittedPreRegistered(null);
       setError(
         reason instanceof Error
           ? `执行失败：${reason.message}`
@@ -255,6 +301,8 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
     if (!file) return;
     setImportError(null);
     setIntakeReport(null);
+    setCampaignReport(null);
+    setCampaignFileName("");
     setImportedSpec(null);
     setImportedFileName(file.name);
     try {
@@ -264,6 +312,41 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
     } catch (reason) {
       setImportError(reason instanceof Error ? reason.message : "导入失败：无法读取 RunSpec 文件。");
     } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleCampaignImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setIntakeReport(null);
+    setCampaignReport(null);
+    setCampaignFileName(file.name);
+    setCampaignBusy(true);
+    try {
+      const payload = parseImportedObject(
+        await readFileAsText(file),
+        "Campaign 请求或登记报告",
+      );
+      if (isCampaignRegistrationReport(payload)) {
+        setCampaignReport(payload);
+      } else if (isCampaignRegistrationRequest(payload)) {
+        setCampaignReport(await registerRealHoldoutCampaign(payload));
+      } else {
+        throw new Error(
+          "导入失败：Campaign 文件必须是 registration-request@1 或 registration-report@1。",
+        );
+      }
+    } catch (reason) {
+      setCampaignFileName("");
+      setImportError(
+        reason instanceof Error
+          ? reason.message
+          : "Campaign 登记失败：服务返回未知错误。",
+      );
+    } finally {
+      setCampaignBusy(false);
       event.target.value = "";
     }
   };
@@ -304,23 +387,27 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
   };
 
   const assessIntake = async () => {
-    if (!intakeBaseRunSpec || !intakeGovernance || intakeCases.length === 0) return;
+    if (
+      !intakeBaseRunSpec ||
+      !intakeGovernance ||
+      !campaignReport ||
+      intakeCases.length === 0
+    ) return;
     setIntakeBusy(true);
     setImportError(null);
     setIntakeReport(null);
-    const request: RealHoldoutIntakeRequest = {
-      schemaId: "axiom.intelligence.real-holdout-intake-request@1",
+    const request: PreregisteredRealHoldoutIntakeRequest = {
+      schemaId: "axiom.intelligence.preregistered-real-holdout-intake-request@1",
       schemaVersion: 1,
-      intakeId: "field.real-holdout-intake@1",
-      holdoutSetId: "field.real-holdout-set@1",
-      selectionId: "field.real-holdout-selection@1",
-      selectedBeforeEvaluation: true,
+      intakeId: "field.preregistered-real-holdout-intake@1",
       baseRunSpec: intakeBaseRunSpec,
       governance: intakeGovernance,
+      campaignManifest: campaignReport.manifest,
+      campaignRegistration: campaignReport.registration,
       cases: intakeCases,
     };
     try {
-      setIntakeReport(await assessRealHoldoutIntake(request));
+      setIntakeReport(await assessPreregisteredRealHoldoutIntake(request));
     } catch (reason) {
       setImportError(
         reason instanceof Error
@@ -505,13 +592,36 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
           </section>
 
           <section className="config-section">
-            <div className="section-title"><span>06</span><h2>现场证据 Intake</h2><em>R7-E → R5-B</em></div>
+            <div className="section-title"><span>06</span><h2>Campaign 与 Intake</h2><em>pre-register → R7-E → R5-B</em></div>
+            <label className="field-label" htmlFor="r5b-campaign-file">导入 Campaign 请求或登记报告 JSON</label>
+            <input
+              id="r5b-campaign-file"
+              type="file"
+              accept="application/json,.json"
+              disabled={campaignBusy || intakeBusy || Boolean(executing)}
+              onChange={(event) => void handleCampaignImport(event)}
+            />
+            <p>
+              {campaignReport
+                ? `已登记 ${campaignFileName}：${shortHash(campaignReport.manifest.contentHash)}`
+                : campaignBusy
+                  ? "正在生成不可变 Manifest 与外部登记绑定…"
+                  : "必须在任何 capture 打开前冻结 case/device/condition/task/batch/command 身份。"}
+            </p>
+            {campaignReport && (
+              <dl className="identity-list intelligence-r5b-import-summary">
+                <div><dt>Campaign</dt><dd>{campaignReport.manifest.campaignId}</dd></div>
+                <div><dt>Authority</dt><dd>{campaignReport.registration.registrationAuthorityId}</dd></div>
+                <div><dt>Registered at</dt><dd>{campaignReport.registration.registeredAt}</dd></div>
+                <div><dt>Trust</dt><dd>{campaignReport.trustBoundary}</dd></div>
+              </dl>
+            )}
             <label className="field-label" htmlFor="r5b-governance-file">导入治理记录 JSON</label>
             <input
               id="r5b-governance-file"
               type="file"
               accept="application/json,.json"
-              disabled={intakeBusy || Boolean(executing)}
+              disabled={campaignBusy || intakeBusy || Boolean(executing)}
               onChange={(event) => void handleGovernanceImport(event)}
             />
             <p>
@@ -525,7 +635,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
               type="file"
               accept="application/json,.json"
               multiple
-              disabled={intakeBusy || Boolean(executing)}
+              disabled={campaignBusy || intakeBusy || Boolean(executing)}
               onChange={(event) => void handleCaseImport(event)}
             />
             <p>
@@ -535,7 +645,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
             </p>
             <dl className="identity-list intelligence-r5b-import-summary">
               <div><dt>Base RunSpec</dt><dd>{importedSpec ? "imported" : example ? "built-in Open baseline" : "—"}</dd></div>
-              <div><dt>Selection</dt><dd>before evaluation</dd></div>
+              <div><dt>Selection</dt><dd>{campaignReport ? "PreRegistered" : "required"}</dd></div>
               <div><dt>Cases</dt><dd>{intakeCases.length}</dd></div>
               <div><dt>Safety</dt><dd>NotAssessed</dd></div>
             </dl>
@@ -543,18 +653,34 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
               className="button button-primary"
               type="button"
               onClick={() => void assessIntake()}
-              disabled={intakeBusy || Boolean(executing) || !intakeBaseRunSpec || !intakeGovernance || intakeCases.length === 0}
+              disabled={campaignBusy || intakeBusy || Boolean(executing) || !intakeBaseRunSpec || !intakeGovernance || !campaignReport || intakeCases.length === 0}
             >
               {intakeBusy ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">⌁</span>}
-              {intakeBusy ? "投影中" : "评估并生成 R5-B RunSpec"}
+              {intakeBusy ? "验证中" : "验证预注册并生成 R5-B RunSpec"}
             </button>
             {intakeReport && (
               <div className="intelligence-r5b-intake-result" role="status">
                 <strong className={statusClass(intakeReport.intakeStatus)}>{intakeReport.intakeStatus}</strong>
-                <span>{intakeReport.projectedCases.length} cases · {shortHash(intakeReport.contentHash)}</span>
+                <span>{projectionReport?.projectedCases.length ?? 0} cases · {shortHash(intakeReport.contentHash)}</span>
               </div>
             )}
             <div className="intelligence-r5b-intake-downloads">
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => campaignReport && downloadJson("r5b-campaign-manifest.json", campaignReport.manifest)}
+                disabled={!campaignReport}
+              >
+                ⇩ 下载 Campaign Manifest
+              </button>
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => campaignReport && downloadJson("r5b-campaign-registration.json", campaignReport.registration)}
+                disabled={!campaignReport}
+              >
+                ⇩ 下载 Campaign Registration
+              </button>
               <button
                 className="button button-secondary"
                 type="button"
@@ -576,7 +702,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
               className="button"
               type="button"
               onClick={() => intakeReport?.r5bRunSpec && void executeRun(intakeReport.r5bRunSpec, "intake")}
-              disabled={intakeBusy || Boolean(executing) || !intakeReport?.r5bRunSpec}
+              disabled={campaignBusy || intakeBusy || Boolean(executing) || !intakeReport?.r5bRunSpec}
             >
               {executing === "intake" ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">▶</span>}
               {executing === "intake" ? "执行中" : "执行生成的 R5-B RunSpec"}
@@ -629,6 +755,9 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
               <span className={holdoutPresent ? "status-positive" : "status-neutral"}>
                 real capture: {holdoutPresent ? "present" : "absent"}
               </span>
+              <span className={preRegistrationPresent ? "status-positive" : "status-neutral"}>
+                selection: {preRegistrationPresent ? "pre-registered" : "open"}
+              </span>
               <span className="status-neutral">claim: case-scoped</span>
               <span className="status-negative">device write: blocked</span>
             </div>
@@ -645,7 +774,9 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
                 <p>
                   {bundle
                     ? submittedRealHoldout
-                      ? `RunBundle: ${bundle.report.caseOutcome}；结论仅限已提交 holdout。`
+                      ? submittedPreRegistered
+                        ? `RunBundle: ${bundle.report.caseOutcome}；预注册证据已绑定。`
+                        : `RunBundle: ${bundle.report.caseOutcome}；selection 未预注册。`
                       : `RunBundle: ${bundle.report.caseOutcome}；缺少真实配对 holdout。`
                     : "没有 bundled real capture；执行内置场景只会证明该门仍为 Open。"}
                 </p>
@@ -654,7 +785,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
 
             {intakeReport && (
               <section className="report-card intelligence-r5b-intake-report">
-                <div className="section-title compact"><span>IN</span><h2>现场证据投影</h2><em>submitted cases only</em></div>
+                <div className="section-title compact"><span>IN</span><h2>预注册与现场证据投影</h2><em>submitted cases only</em></div>
                 <div className="intelligence-r5b-intake-summary">
                   <article>
                     <span>Intake</span>
@@ -663,7 +794,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
                   </article>
                   <article>
                     <span>Projected cases</span>
-                    <strong>{intakeReport.projectedCases.length}</strong>
+                    <strong>{projectionReport?.projectedCases.length ?? 0}</strong>
                     <small>{intakeReport.validationScope}</small>
                   </article>
                   <article>
@@ -689,7 +820,7 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
                   ))}
                 </div>
                 <div className="intelligence-r5b-intake-receipts">
-                  {intakeReport.projectedCases.map((receipt) => (
+                  {(projectionReport?.projectedCases ?? []).map((receipt) => (
                     <article key={receipt.contentHash}>
                       <header>
                         <strong>{receipt.caseId}</strong>
@@ -716,7 +847,9 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
                   <header><strong>Bundle</strong><span className={statusClass(bundle?.report.caseOutcome)}>{bundle?.report.caseOutcome ?? "Inconclusive"}</span></header>
                   <p>{bundle
                     ? submittedRealHoldout
-                      ? `${bundle.report.caseOutcome}；结论仅限已提交 cases。`
+                      ? submittedPreRegistered
+                        ? `${bundle.report.caseOutcome}；结论仅限预注册并提交的 cases。`
+                        : `${bundle.report.caseOutcome}；selection 证据不足。`
                       : `${bundle.report.caseOutcome}；不发布 CaseScopedPassed。`
                     : "默认保持 Inconclusive。"}
                   </p>
@@ -725,9 +858,11 @@ export function IntelligenceR5BWorkbench({ catalog }: { catalog: Catalog | null 
                   <header><strong>Reality claim</strong><span className={statusClass(realWorldClaim?.status ?? "Inconclusive")}>{claimLabel(realWorldClaim)}</span></header>
                   <p>{realWorldClaim
                     ? submittedRealHoldout
-                      ? realWorldClaim.status === "Supported"
+                      ? submittedPreRegistered && realWorldClaim.status === "Supported"
                         ? "证据范围仅限本次提交的 Windows holdout cases。"
-                        : "已评估提交的 holdout；请按指标和 reasonCode 修正。"
+                        : submittedPreRegistered
+                          ? "已评估预注册 holdout；请按指标和 reasonCode 修正。"
+                          : "selection 未在 capture/evaluation 前登记，结论不可闭合。"
                       : "缺少真实配对 holdout，结论不可闭合。"
                     : "需要外部 Windows 只读 holdout。"}
                   </p>

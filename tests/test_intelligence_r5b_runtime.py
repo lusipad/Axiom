@@ -9,6 +9,7 @@ from axiom.intelligence import load_r5_scenario
 from axiom.intelligence.r5b_models import R5BIntelligenceEvaluationRequest
 from axiom.intelligence.r5b_runtime import (
     R5B_ALIGNMENT_COVERAGE_METRIC_ID,
+    R5B_HOLDOUT_ISOLATION_METRIC_ID,
     R5B_MODEL_INTEGRITY_METRIC_ID,
     R5B_REAL_WORLD_GENERALIZATION_METRIC_ID,
     R5B_SOURCE_DECLARED_REAL_METRIC_ID,
@@ -42,6 +43,7 @@ def _base_payload() -> dict:
             ],
             "optionalMetrics": [
                 "intelligence.r5b.source-declared-real@1",
+                "intelligence.r5b.holdout-isolation@1",
                 "intelligence.r5b.alignment-coverage@1",
             ],
         },
@@ -93,7 +95,7 @@ def test_r5b_runtime_non_windows_returns_unsupported(
     )
 
 
-def test_r5b_runtime_evaluates_case_scoped_holdout_without_emitting_false_positive(
+def test_r5b_runtime_legacy_selection_cannot_close_case_scoped_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
@@ -107,11 +109,21 @@ def test_r5b_runtime_evaluates_case_scoped_holdout_without_emitting_false_positi
 
     metrics = {item.metric_id: item for item in report.metric_results}
     assert report.execution_status.value == "Succeeded"
-    assert report.case_outcome.value == "Failed"
+    assert report.case_outcome.value == "Inconclusive"
     assert metrics[R5B_SOURCE_DECLARED_REAL_METRIC_ID].status.value == "Computed"
     assert metrics[R5B_SOURCE_DECLARED_REAL_METRIC_ID].value is True
     assert metrics[R5B_ALIGNMENT_COVERAGE_METRIC_ID].status.value == "Computed"
     assert metrics[R5B_ALIGNMENT_COVERAGE_METRIC_ID].value is True
-    assert metrics[R5B_REAL_WORLD_GENERALIZATION_METRIC_ID].status.value == "Computed"
-    assert metrics[R5B_REAL_WORLD_GENERALIZATION_METRIC_ID].value is False
-    assert metrics[R5B_REAL_WORLD_GENERALIZATION_METRIC_ID].details["status"] == "Open"
+    assert (
+        metrics[R5B_HOLDOUT_ISOLATION_METRIC_ID].status.value == "InsufficientContext"
+    )
+    assert metrics[R5B_HOLDOUT_ISOLATION_METRIC_ID].reason_code == (
+        "RealHoldoutSelectionNotPreRegistered"
+    )
+    assert (
+        metrics[R5B_REAL_WORLD_GENERALIZATION_METRIC_ID].status.value
+        == "InsufficientContext"
+    )
+    assert metrics[R5B_REAL_WORLD_GENERALIZATION_METRIC_ID].reason_code == (
+        "RealHoldoutSelectionNotPreRegistered"
+    )

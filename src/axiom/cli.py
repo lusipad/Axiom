@@ -18,8 +18,21 @@ from .evaluator import evaluate
 from .experiment import run_experiment
 from .field_evidence import FieldEvidenceAssessmentRequest, assess_field_evidence
 from .intelligence import (
+    PreregisteredRealHoldoutIntakeRequest,
+    R5IMonitoringWindowRequest,
+    R5IPromotionPreflightRequest,
+    R5IRollbackRequest,
+    RealHoldoutCampaignRegistrationRequest,
     RealHoldoutIntakeRequest,
+    apply_r5i_promotion_transaction,
+    apply_r5i_rollback_transaction,
+    assess_r5i_monitoring_window,
+    assess_preregistered_real_holdout_intake,
     assess_real_holdout_intake,
+    predict_r5i_active_model,
+    preflight_r5i_model_promotion,
+    read_r5i_registry_status,
+    register_real_holdout_campaign,
 )
 from .models import CaseOutcome, ExecutionStatus
 from .run import evaluate_run
@@ -30,6 +43,8 @@ MAX_COMPARISON_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_EXPERIMENT_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_FIELD_EVIDENCE_BYTES = 2 * MAX_REQUEST_BYTES
 MAX_REAL_HOLDOUT_INTAKE_BYTES = 8 * MAX_REQUEST_BYTES
+MAX_R5I_LIFECYCLE_BYTES = 8 * MAX_REQUEST_BYTES
+MAX_AUTHORITY_KEY_BYTES = 4096
 
 
 class _CliInputError(Exception):
@@ -213,6 +228,132 @@ def _assembled_real_holdout_intake_request(
         ) from exc
 
 
+def _read_json_file(path: Path, *, limit: int, label: str) -> object:
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            raise _CliInputError({"code": f"{label}TooLarge"})
+        return json.loads(raw.decode("utf-8"))
+    except _CliInputError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _CliInputError(
+            {"code": f"Unreadable{label}", "message": str(exc)}
+        ) from exc
+
+
+def _read_authority_key(path: Path) -> bytes:
+    try:
+        with path.open("rb") as stream:
+            key = stream.read(MAX_AUTHORITY_KEY_BYTES + 1)
+    except OSError as exc:
+        raise _CliInputError(
+            {"code": "UnreadableR5IAuthorityKey", "message": str(exc)}
+        ) from exc
+    if not 16 <= len(key) <= MAX_AUTHORITY_KEY_BYTES:
+        raise _CliInputError({"code": "InvalidR5IAuthorityKeyLength"})
+    return key
+
+
+def _r5i_authority_keys(request: object, key_file: Path) -> dict[str, bytes]:
+    key_id = getattr(
+        getattr(request, "promotion_decision", request),
+        "authority_key_id",
+        None,
+    )
+    if not isinstance(key_id, str):
+        raise _CliInputError({"code": "MissingR5IAuthorityKeyId"})
+    return {key_id: _read_authority_key(key_file)}
+
+
+def _handle_r5i_lifecycle(args: argparse.Namespace) -> int:
+    action = args.lifecycle_action
+    try:
+        if action == "status":
+            result = read_r5i_registry_status(args.registry)
+            print(result.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+            return 0
+        if action == "predict":
+            result = predict_r5i_active_model(
+                args.registry,
+                feed_override=args.feed_override,
+                sample_period=args.sample_period,
+            )
+            print(result.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+            return 0 if result.status == "Predicted" else 1
+
+        payload = _read_json_file(
+            args.request,
+            limit=MAX_R5I_LIFECYCLE_BYTES,
+            label="R5ILifecycleRequest",
+        )
+        if action in {"preflight", "promote"}:
+            request = R5IPromotionPreflightRequest.model_validate(payload)
+            keys = _r5i_authority_keys(request, args.authority_key_file)
+            if action == "preflight":
+                result = preflight_r5i_model_promotion(
+                    request,
+                    authority_keys=keys,
+                )
+                print(
+                    result.model_dump_json(
+                        indent=2, by_alias=True, exclude_none=True
+                    )
+                )
+                return 0 if result.overall_status == "Passed" else 1
+            result = apply_r5i_promotion_transaction(
+                args.registry,
+                request,
+                authority_keys=keys,
+                event_id=args.event_id,
+                activated_at=args.activated_at,
+                expected_generation=args.expected_generation,
+            )
+        elif action == "monitor":
+            request = R5IMonitoringWindowRequest.model_validate(payload)
+            result = assess_r5i_monitoring_window(args.registry, request)
+        else:
+            request = R5IRollbackRequest.model_validate(payload)
+            result = apply_r5i_rollback_transaction(
+                args.registry,
+                request,
+                authority_keys=_r5i_authority_keys(
+                    request,
+                    args.authority_key_file,
+                ),
+                event_id=args.event_id,
+            )
+        print(result.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        if action == "monitor":
+            return 0 if result.monitoring_status == "Healthy" else 1
+        return 0
+    except ValidationError as exc:
+        print(
+            json.dumps(
+                {
+                    "code": "MalformedR5ILifecycleRequest",
+                    "path": _validation_path(exc),
+                },
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    except _CliInputError as exc:
+        print(json.dumps(exc.payload, ensure_ascii=False), file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(
+            json.dumps(
+                {"code": "R5ILifecycleBlocked", "message": str(exc)},
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="axiom",
@@ -289,9 +430,94 @@ def _parser() -> argparse.ArgumentParser:
     intake_command.add_argument("--intake-id")
     intake_command.add_argument("--holdout-set-id")
     intake_command.add_argument("--selection-id")
+    campaign_command = commands.add_parser(
+        "real-holdout-campaign",
+        help="freeze and externally register an R5-B field campaign before capture",
+    )
+    campaign_command.add_argument(
+        "request",
+        type=Path,
+        help=(
+            "path to an axiom.intelligence.real-holdout-campaign-"
+            "registration-request@1 JSON file"
+        ),
+    )
+    lifecycle_command = commands.add_parser(
+        "model-lifecycle",
+        help="inspect or mutate the local Windows R5-I model registry",
+    )
+    lifecycle_actions = lifecycle_command.add_subparsers(
+        dest="lifecycle_action",
+        required=True,
+    )
+    lifecycle_status = lifecycle_actions.add_parser(
+        "status",
+        help="read the local registry status without creating it",
+    )
+    lifecycle_status.add_argument("--registry", required=True, type=Path)
+    lifecycle_predict = lifecycle_actions.add_parser(
+        "predict",
+        help="run read-only inference with the active local model",
+    )
+    lifecycle_predict.add_argument("--registry", required=True, type=Path)
+    lifecycle_predict.add_argument("--feed-override", required=True, type=float)
+    lifecycle_predict.add_argument("--sample-period", required=True, type=float)
+    lifecycle_preflight = lifecycle_actions.add_parser(
+        "preflight",
+        help="verify a signed promotion request without writing the registry",
+    )
+    lifecycle_preflight.add_argument("request", type=Path)
+    lifecycle_preflight.add_argument(
+        "--authority-key-file",
+        required=True,
+        type=Path,
+    )
+    lifecycle_promote = lifecycle_actions.add_parser(
+        "promote",
+        help="atomically activate a preflight-approved candidate model",
+    )
+    lifecycle_promote.add_argument("request", type=Path)
+    lifecycle_promote.add_argument("--registry", required=True, type=Path)
+    lifecycle_promote.add_argument(
+        "--authority-key-file",
+        required=True,
+        type=Path,
+    )
+    lifecycle_promote.add_argument("--event-id", required=True)
+    lifecycle_promote.add_argument("--activated-at", required=True)
+    lifecycle_promote.add_argument(
+        "--expected-generation",
+        required=True,
+        type=int,
+    )
+    lifecycle_monitor = lifecycle_actions.add_parser(
+        "monitor",
+        help="evaluate and persist one active-model monitoring window",
+    )
+    lifecycle_monitor.add_argument("request", type=Path)
+    lifecycle_monitor.add_argument("--registry", required=True, type=Path)
+    lifecycle_rollback = lifecycle_actions.add_parser(
+        "rollback",
+        help="explicitly roll back after a persisted RollbackRequired window",
+    )
+    lifecycle_rollback.add_argument("request", type=Path)
+    lifecycle_rollback.add_argument("--registry", required=True, type=Path)
+    lifecycle_rollback.add_argument(
+        "--authority-key-file",
+        required=True,
+        type=Path,
+    )
+    lifecycle_rollback.add_argument("--event-id", required=True)
     serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
     serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
+    serve_command.add_argument(
+        "--r5i-registry",
+        type=Path,
+        help="optional local R5-I SQLite registry exposed read-only to the web UI",
+    )
+    serve_command.add_argument("--r5i-authority-key-id")
+    serve_command.add_argument("--r5i-authority-key-file", type=Path)
     return parser
 
 
@@ -302,8 +528,41 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         from .web import create_app
 
-        uvicorn.run(create_app(), host=args.host, port=args.port)
+        key_options = (
+            args.r5i_authority_key_id,
+            args.r5i_authority_key_file,
+        )
+        if any(key_options) and not all(key_options):
+            print(
+                "--r5i-authority-key-id 与 --r5i-authority-key-file 必须同时提供",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            authority_keys = (
+                {
+                    args.r5i_authority_key_id: _read_authority_key(
+                        args.r5i_authority_key_file
+                    )
+                }
+                if all(key_options)
+                else {}
+            )
+        except _CliInputError as exc:
+            print(json.dumps(exc.payload, ensure_ascii=False), file=sys.stderr)
+            return 2
+        uvicorn.run(
+            create_app(
+                r5i_registry_path=args.r5i_registry,
+                r5i_authority_keys=authority_keys,
+            ),
+            host=args.host,
+            port=args.port,
+        )
         return 0
+
+    if args.command == "model-lifecycle":
+        return _handle_r5i_lifecycle(args)
 
     if args.command == "field-evidence":
         try:
@@ -339,6 +598,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         path, label, limit = (
             args.request,
             "真实 holdout intake 请求",
+            MAX_REAL_HOLDOUT_INTAKE_BYTES,
+        )
+    elif args.command == "real-holdout-campaign":
+        path, label, limit = (
+            args.request,
+            "真实 holdout campaign 登记请求",
             MAX_REAL_HOLDOUT_INTAKE_BYTES,
         )
     elif args.command == "beckhoff-witness-deployment":
@@ -413,6 +678,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if report.overall_status == "Passed" else 1
 
     if args.command == "real-holdout-intake":
+        if payload.get("schemaId") == (
+            "axiom.intelligence.preregistered-real-holdout-intake-request@1"
+        ):
+            try:
+                request = PreregisteredRealHoldoutIntakeRequest.model_validate(payload)
+            except ValidationError as exc:
+                print(
+                    json.dumps(
+                        {
+                            "code": "MalformedPreregisteredRealHoldoutIntakeRequest",
+                            "path": _validation_path(exc),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    file=sys.stderr,
+                )
+                return 2
+            report = assess_preregistered_real_holdout_intake(request)
+            print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+            return 0 if report.intake_status == "Passed" else 1
         try:
             request = RealHoldoutIntakeRequest.model_validate(payload)
         except ValidationError as exc:
@@ -430,6 +715,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = assess_real_holdout_intake(request)
         print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
         return 0 if report.intake_status == "Passed" else 1
+
+    if args.command == "real-holdout-campaign":
+        try:
+            request = RealHoldoutCampaignRegistrationRequest.model_validate(payload)
+        except ValidationError as exc:
+            print(
+                json.dumps(
+                    {
+                        "code": "MalformedRealHoldoutCampaignRegistrationRequest",
+                        "path": _validation_path(exc),
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        report = register_real_holdout_campaign(request)
+        print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        return 0
 
     if args.command == "experiment":
         try:

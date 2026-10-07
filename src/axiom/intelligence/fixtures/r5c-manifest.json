@@ -1,0 +1,53 @@
+{
+  "manifestId": "axiom.intelligence.r5c-fixture-manifest@1",
+  "platform": "windows",
+  "identityScope": "numeric-environment-bound",
+  "developmentEnvironment": "windows-cpython-3.14",
+  "releaseEnvironment": "windows-cpython-3.12.10-openblas-haswell-single-thread",
+  "scenarioId": "canonical-head-table-conditional-effect",
+  "sourceScenarioId": "canonical-head-table-solver",
+  "parameterGrid": {
+    "feedOverrides": [0.65, 0.725, 0.8, 0.9, 1.0],
+    "samplePeriods": [0.04, 0.05, 0.06, 0.07, 0.08],
+    "splitCounts": {
+      "train": 15,
+      "validation": 5,
+      "test": 5
+    }
+  },
+  "expectedIdentities": {
+    "datasetContentHash": "b7ce36956d80b6a95358994043aecbb8fc67e750b1b42f4045423e76bc6a036d",
+    "splitManifestContentHash": "293beda03ffc265cb24b37fd047b79911f52c027f6ca257cc6665002fcfc0303",
+    "trainingReceiptContentHash": "c60e9ada1935922990fc76eb784376006f8dd5ff550c100baaef0c6c0e2ff486",
+    "modelBundleContentHash": "4202c928a63899da370a12d9a8fe7a90965a497605f79ddc4b2301b3895a36d1",
+    "parityReceiptContentHash": "ef83e429d5754450a04ba03f32c50e7f97473f5636b2ced51550c8ad4768a7d4"
+  },
+  "expectedGates": {
+    "syntheticConditionalEffectContractStatus": "Passed",
+    "realWorldGeneralizationStatus": "Open",
+    "cycleTimeNormalizedRmse": 3.421370390311141e-7,
+    "linearFollowingErrorNormalizedRmse": 0.018749778555975316,
+    "cycleTimeConformalCoverage": 1.0,
+    "linearFollowingErrorConformalCoverage": 0.8,
+    "oodAbstentionRate": 1.0,
+    "targetParityMaxAbsGap": 1.1102230246251565e-16
+  },
+  "windowsReleaseExpectedIdentities": {
+    "datasetContentHash": "779ac5919540b31123c948ab4a5a45d6d06be34139ca63b95e98e78bd2bb5e86",
+    "splitManifestContentHash": "a4fa9b687ca09319bd7df057a1b9d49394ad0b6a381e231bfd21791cc9a6efda",
+    "trainingReceiptContentHash": "b23a285743682bdaeeb8f414bf682bc76a71a0429a34641e36bc1285daa4c68c",
+    "modelBundleContentHash": "dbcbfe28aa6513046baf9d4de07785049dae811ff2830d5b874d5eb52b37f222",
+    "parityReceiptContentHash": "0b2468d9c6bc29b5df023fd51f987cd79a9e9b30729e5269f21e8d049c5b0980"
+  },
+  "windowsReleaseExpectedGates": {
+    "syntheticConditionalEffectContractStatus": "Passed",
+    "realWorldGeneralizationStatus": "Open",
+    "cycleTimeNormalizedRmse": 3.421370407065058e-7,
+    "linearFollowingErrorNormalizedRmse": 0.018749778555975316,
+    "cycleTimeConformalCoverage": 1.0,
+    "linearFollowingErrorConformalCoverage": 0.8,
+    "oodAbstentionRate": 1.0,
+    "targetParityMaxAbsGap": 2.220446049250313e-16
+  },
+  "boundary": "SYNTHETIC CONDITIONAL EFFECT / NOT REALITY VALIDATED / NOT DEVICE SAFE"
+}

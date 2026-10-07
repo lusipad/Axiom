@@ -1,0 +1,31 @@
+{
+  "manifestId": "axiom.intelligence.r5d-fixture-manifest@1",
+  "platform": "windows",
+  "identityScope": "numeric-environment-bound",
+  "developmentEnvironment": "windows-cpython-3.14",
+  "releaseEnvironment": "windows-cpython-3.12.10-openblas-haswell-single-thread",
+  "plannerId": "axiom.intelligence.greedy-g-optimal-linear-design@1",
+  "candidatePoolId": "axiom.optimization.r6v2-grid@1",
+  "defaultBatchSize": 5,
+  "expectedProposalIds": [
+    "axiom.intelligence.r5d.feed-0675.period-040ms@1",
+    "axiom.intelligence.r5d.feed-0650.period-045ms@1",
+    "axiom.intelligence.r5d.feed-0750.period-080ms@1",
+    "axiom.intelligence.r5d.feed-1000.period-055ms@1",
+    "axiom.intelligence.r5d.feed-0975.period-080ms@1"
+  ],
+  "expectedDesignGates": {
+    "maximumCandidateLeverageBefore": 2.51493750502277,
+    "maximumCandidateLeverageAfter": 0.427556838778371,
+    "relativeMaximumLeverageReduction": 0.82999305631871
+  },
+  "developmentExpectedIdentities": {
+    "requestContentHash": "352009b47a1e86fc535531b8a7a5272cd3f1f4452fc557665a0b9fea845819c3",
+    "planContentHash": "3d2d7d43ea156c08cb80cd9089b6f22d33aea4d4022aa17a147501cee0528ed2"
+  },
+  "windowsReleaseExpectedIdentities": {
+    "requestContentHash": "f315e731743f8664d696e4641e42fd485ca39e67c985826742ec1bced83f8947",
+    "planContentHash": "5c672c640296e7cc52e8a90d9033adc872d1e75975b88b6cdeaa93fe79410fb0"
+  },
+  "boundary": "SYNTHETIC EXPERIMENT PLAN / NOT EXECUTED / NOT REALITY VALIDATED / NOT DEVICE SAFE"
+}

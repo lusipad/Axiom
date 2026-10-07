@@ -135,13 +135,15 @@ def _complete_test_r7e_request(
     case_id: str = "site.test-case@1",
     machine_id: str = "test-five-axis-01",
     identity_suffix: str = "",
+    override_command: M5DiscreteCommand | None = None,
+    axis_biases: tuple[float, float, float, float, float] | None = None,
 ) -> R7EAssessmentRequest:
     profile, runtime, controller, authority = _controller_context(
         machine_id=machine_id,
         identity_suffix=identity_suffix,
     )
     suffix = f"-{identity_suffix}" if identity_suffix else ""
-    command = _test_command(role, shift)
+    command = override_command or _test_command(role, shift)
     nodes: list[dict[str, object]] = [
         {
             "canonicalSignalId": "command.content-hash",
@@ -227,7 +229,7 @@ def _complete_test_r7e_request(
         tuple(float(sample.q[axis]) for sample in command.samples)
         for axis in range(5)
     )
-    biases = (0.02, -0.01, 0.03, 0.002, -0.003)
+    biases = axis_biases or (0.02, -0.01, 0.03, 0.002, -0.003)
     observations = tuple(
         exact_zoh_response(
             commands[axis],

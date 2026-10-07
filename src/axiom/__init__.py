@@ -1,6 +1,8 @@
 """Axiom evaluation framework public API."""
 
-from .benchmark import CncAlgorithmExport, CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
+from .benchmark import CncAlgorithmExport, CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports, render_report_table
+from .benchmark_standard import StandardCaseSettings, render_nc_program, standard_case, standard_cases
+from .benchmark_trace import TraceColumns, TraceImportError, TraceImportOptions, import_controller_trace
 from .comparison import compare, compare_runs
 from .domain import (
     ORDERED_POINT_DOMAIN_PACK,
@@ -274,6 +276,15 @@ __all__ = [
     "benchmark_case_hash",
     "cnc_benchmark_example",
     "compare_cnc_exports",
+    "render_report_table",
+    "StandardCaseSettings",
+    "render_nc_program",
+    "standard_case",
+    "standard_cases",
+    "TraceColumns",
+    "TraceImportError",
+    "TraceImportOptions",
+    "import_controller_trace",
     "ArtifactAdapter",
     "ArtifactAdapterProvenance",
     "ArtifactEnvelope",

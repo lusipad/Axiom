@@ -9,7 +9,9 @@ from typing import Sequence
 from pydantic import ValidationError
 
 from .comparison import compare
-from .benchmark import benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
+from .benchmark import CncBenchmarkCase, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports, render_report_table
+from .benchmark_standard import STANDARD_CASE_NAMES, StandardCaseSettings, render_nc_program, standard_cases
+from .benchmark_trace import TraceColumns, TraceImportOptions, import_controller_trace
 from .control import (
     BeckhoffWitnessDeploymentRequest,
     R7EAssessmentRequest,
@@ -55,6 +57,10 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         if args.command == "benchmark-case-hash":
             print(benchmark_case_hash(_benchmark_json(args.case)))
             return 0
+        if args.command == "benchmark-standard-cases":
+            return _write_standard_cases(args)
+        if args.command == "benchmark-import-trace":
+            return _import_trace(args)
         paths = (args.case, args.baseline, args.candidate)
         if args.request is not None:
             if any(path is not None for path in paths):
@@ -69,8 +75,58 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         message = str(exc) if not isinstance(exc, ValidationError) else str(exc.errors(include_url=False, include_context=False, include_input=False))
         print(json.dumps({"code": "MalformedCncBenchmark", "message": message}, ensure_ascii=False), file=sys.stderr)
         return 2
-    print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+    if args.format == "table":
+        print(render_report_table(report), end="")
+    else:
+        print(report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
     return 0 if report.outcome in {"Improved", "WithinTolerance"} else 1
+
+
+def _write_standard_cases(args: argparse.Namespace) -> int:
+    settings = StandardCaseSettings(
+        feed_mm_min=args.feed,
+        sample_period_seconds=args.period,
+        maximum_velocity_mm_s=args.max_velocity,
+        maximum_acceleration_mm_s2=args.max_acceleration,
+        maximum_jerk_mm_s3=args.max_jerk,
+        maximum_path_deviation_mm=args.max_deviation,
+    )
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for case in standard_cases(settings):
+        if args.only and case.case_id.rsplit(".", 1)[-1] not in args.only:
+            continue
+        stem = case.case_id.rsplit(".", 1)[-1]
+        (args.out_dir / f"{stem}.case.json").write_text(case.model_dump_json(indent=2, by_alias=True, exclude_none=True) + "\n", encoding="utf-8")
+        (args.out_dir / f"{stem}.nc").write_text(render_nc_program(case, arc_format=args.arc_format, line_numbers=args.line_numbers), encoding="utf-8")
+        print(f"{stem}: {stem}.case.json {stem}.nc caseContentHash={benchmark_case_hash(case)}")
+    return 0
+
+
+def _import_trace(args: argparse.Namespace) -> int:
+    case = CncBenchmarkCase.model_validate(_benchmark_json(args.case))
+    if args.trace.stat().st_size > MAX_EXPERIMENT_BYTES * 4:
+        raise ValueError(f"{args.trace.name} exceeds the {MAX_EXPERIMENT_BYTES * 4} byte limit")
+    options = TraceImportOptions(
+        columns=TraceColumns(x=args.x, y=args.y, z=args.z, cycle=args.cycle_column, time=args.time_column, time_scale=args.time_scale),
+        position_scale=args.position_scale,
+        offset_mm=tuple(args.offset) if args.offset else (0.0, 0.0, 0.0),
+        align_start_to_case=args.align_start,
+        trim_stationary=not args.no_trim,
+    )
+    export = import_controller_trace(
+        args.trace.read_text(encoding="utf-8-sig"),
+        case,
+        algorithm_id=args.algorithm_id,
+        algorithm_version=args.algorithm_version,
+        options=options,
+    )
+    text = export.model_dump_json(indent=2, by_alias=True, exclude_none=True) + "\n"
+    if args.out is None:
+        print(text, end="")
+    else:
+        args.out.write_text(text, encoding="utf-8")
+        print(f"{args.out}: {len(export.samples)} samples, {export.samples[-1].t:.6g} s", file=sys.stderr)
+    return 0
 
 
 def _validation_path(exc: ValidationError) -> str | None:
@@ -329,6 +385,35 @@ def _parser() -> argparse.ArgumentParser:
     benchmark_command.add_argument("--case", type=Path)
     benchmark_command.add_argument("--baseline", type=Path)
     benchmark_command.add_argument("--candidate", type=Path)
+    benchmark_command.add_argument("--format", choices=("json", "table"), default="json", help="json report (default) or a readable A/B table")
+    standard_command = commands.add_parser("benchmark-standard-cases", help="write the five V1 standard cases and their NC programs")
+    standard_command.add_argument("--out-dir", type=Path, required=True)
+    standard_command.add_argument("--only", nargs="+", choices=STANDARD_CASE_NAMES)
+    standard_command.add_argument("--feed", type=float, default=3000.0, help="programmed feed in mm/min (default: 3000)")
+    standard_command.add_argument("--period", type=float, default=0.001, help="trace sample period in seconds (default: 0.001)")
+    standard_command.add_argument("--arc-format", choices=("IJK", "R"), default="IJK")
+    standard_command.add_argument("--line-numbers", action="store_true")
+    standard_command.add_argument("--max-velocity", type=float, default=500.0, help="axis velocity limit in mm/s")
+    standard_command.add_argument("--max-acceleration", type=float, default=5000.0, help="axis acceleration limit in mm/s^2")
+    standard_command.add_argument("--max-jerk", type=float, default=500000.0, help="axis jerk limit in mm/s^3")
+    standard_command.add_argument("--max-deviation", type=float, default=0.05, help="allowed contour deviation in mm")
+    import_command = commands.add_parser("benchmark-import-trace", help="convert a controller trace CSV into a benchmark export")
+    import_command.add_argument("trace", type=Path)
+    import_command.add_argument("--case", type=Path, required=True)
+    import_command.add_argument("--algorithm-id", required=True)
+    import_command.add_argument("--algorithm-version", required=True)
+    import_command.add_argument("--x", default="X", help="X position column (default: X)")
+    import_command.add_argument("--y", default="Y", help="Y position column (default: Y)")
+    import_command.add_argument("--z", default="Z", help="Z position column (default: Z)")
+    clock = import_command.add_mutually_exclusive_group(required=True)
+    clock.add_argument("--cycle-column", help="interpolation cycle counter column")
+    clock.add_argument("--time-column", help="timestamp column")
+    import_command.add_argument("--time-scale", type=float, default=1.0, help="seconds per time unit, e.g. 0.001 for ms")
+    import_command.add_argument("--position-scale", type=float, default=1.0, help="mm per position unit, e.g. 0.001 for um")
+    import_command.add_argument("--offset", type=float, nargs=3, metavar=("X", "Y", "Z"), help="subtract this offset (mm) to reach the case frame")
+    import_command.add_argument("--align-start", action="store_true", help="shift the trace so its first sample is the case start")
+    import_command.add_argument("--no-trim", action="store_true", help="keep stationary samples before and after motion")
+    import_command.add_argument("--out", type=Path)
     hash_command = commands.add_parser("benchmark-case-hash", help="print the canonical case hash to bind algorithm exports")
     hash_command.add_argument("case", type=Path)
     commands.add_parser("benchmark-example", help="print an explicitly synthetic CNC comparison request")
@@ -340,7 +425,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if args.command in {"benchmark", "benchmark-case-hash", "benchmark-example"}:
+    if args.command in {"benchmark", "benchmark-case-hash", "benchmark-example", "benchmark-standard-cases", "benchmark-import-trace"}:
         return _benchmark_command(args)
     if args.command == "serve":
         import uvicorn

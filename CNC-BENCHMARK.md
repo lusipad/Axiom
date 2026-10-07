@@ -28,6 +28,39 @@ $LASTEXITCODE
 
 退出码：`0` = 本次采样比较改善或在比较容差内；`1` = 超限、退步、存在取舍或证据不足；`2` = 输入无法解析或不兼容。退出码 0 不是设备安全或完整算法正确性证明。
 
+## 用控制器 Trace 做 A/B（V1 标准轨迹）
+
+算法不能离线运行时，用控制器空运行录下的插补指令做对比。
+
+1. 生成 5 条标准轨迹（直线、R20 整圆、90° 拐角、200 段 0.2 mm 小线段、R15 S 曲线）及对应 NC 程序：
+
+   ```powershell
+   axiom benchmark-standard-cases --out-dir v1 --feed 3000 --period 0.001 --max-velocity 500 --max-acceleration 5000 --max-jerk 500000
+   ```
+
+   每条轨迹得到 `<名称>.case.json` 和 `<名称>.nc`。`--feed` 单位 mm/min；`--period` 必须等于 Trace 的记录周期；速度、加速度、Jerk 限制应填机床实际值。圆弧默认 `I/J` 格式，可用 `--arc-format R`；需要程序段号时加 `--line-numbers`。NC 程序坐标保留 4 位小数，案例几何与程序逐位一致。程序为 `G90 G17 G21 G94`，用 `G4 P0.5` 在首尾停顿以便识别运动起止；若控制器的 G4 参数单位不同，请按方言调整，几何不受影响。
+
+2. 在控制器空运行或锁轴模式下执行 NC 程序，按插补周期记录 X/Y/Z 指令位置，导出 CSV。A 版、B 版算法各录一次，其余设置保持一致。CSV 需要表头，逗号、分号或制表符分隔均可。
+
+3. 把 CSV 转成对比输入：
+
+   ```powershell
+   axiom benchmark-import-trace a.csv --case v1\corner90.case.json --algorithm-id planner --algorithm-version release-2.3 --cycle-column Cycle --out a.json
+   axiom benchmark-import-trace b.csv --case v1\corner90.case.json --algorithm-id planner --algorithm-version dev-2.4 --cycle-column Cycle --out b.json
+   ```
+
+   时钟二选一：`--cycle-column`（周期计数，必须逐一递增）或 `--time-column`（配合 `--time-scale`，例如毫秒用 `0.001`）。丢周期或时间步长与案例周期相差超过 1% 时直接拒绝，不做重采样。列名默认 `X/Y/Z`，可用 `--x/--y/--z` 改；`--position-scale` 换算单位（微米用 `0.001`）；`--offset X Y Z` 减去工件偏置，或用 `--align-start` 把首个采样对齐到案例起点（此时起点误差不再有意义）。默认去掉运动前后的静止段，各保留一个静止采样；`--no-trim` 保留全部。
+
+4. 对比并输出可读表格：
+
+   ```powershell
+   axiom benchmark --case v1\corner90.case.json --baseline a.json --candidate b.json --format table
+   ```
+
+   表格列出 A、B、变化和判定；判定为“仅参考”的指标不参与结论。省略 `--format table` 时输出完整 JSON 报告。
+
+Trace 的位置精度会放大到差分指标上：1 ms 周期下 0.1 µm 的量化误差就会产生约 1e5 mm/s³ 量级的离散 Jerk 噪声。导出时请尽量保留 6 位以上小数；比较 Jerk 前先确认 A、B 的导出精度相同。
+
 ## 接入 C++、C# 或其他算法
 
 1. 为真实刀路创建 `case.json`，冻结坐标系、单位、固定周期、轴限制、几何限制和比较容差。
@@ -70,11 +103,13 @@ $LASTEXITCODE
 | 字段 | 含义 |
 |---|---|
 | `referencePath` | 工件坐标系中的 XYZ 参考折线，单位 mm |
+| `referenceArcs` | 可选。把 `referencePath` 中的某段标记为 XY 平面精确圆弧：`segmentIndex`、`centerMm`（XY）、`direction`（`cw`/`ccw`）；整圆需拆成两段 |
+| `programmedFeedMmMin` | 可选。编程进给，用于进给利用率 |
 | `samplePeriodSeconds` | 两个算法共同遵守的固定输出周期 |
 | `axisLimits` | 按 X、Y、Z 顺序声明行程、速度、加速度、Jerk 限制 |
 | `maximumPathDeviationMm` | 采样位置到参考折线的最大允许距离 |
 | `maximumEndpointErrorMm` | 指令首尾点到参考路径首尾点的允许距离 |
-| `comparisonTolerances` | A/B 的运动时间、采样路径偏差、声明计算耗时的实际差异容差 |
+| `comparisonTolerances` | A/B 的运动时间、采样路径偏差、声明计算耗时的实际差异容差；可选的 `pathDeviationRmsMm`、`pathDeviationP99Mm`、`jerkMmS3` 只在声明后才参与比较 |
 
 首版只接受 3 个线性轴，不接受旋转轴、混合单位或未声明的坐标变换。周期范围为 1 微秒到 1 秒；它是案例条件，不是本工作流的优化变量。
 
@@ -85,7 +120,10 @@ $LASTEXITCODE
 | 指标或检查 | 算法 | 边界 |
 |---|---|---|
 | 运动时间 | 最后一个命令时间戳 | 与计算耗时分开 |
-| 采样路径偏差 | 每个输出点到所有参考线段的最小欧氏距离，再取最大值 | 单向、采样点指标；未证明遍历顺序、路径覆盖或采样间无捷径 |
+| 采样路径偏差 | 每个输出点到所有参考线段和圆弧的最小欧氏距离，取最大值、RMS、P95、P99 | 单向、采样点指标；未证明遍历顺序、路径覆盖或采样间无捷径 |
+| 最低拐角速度 | 参考路径切向转角 ≥5° 的顶点处，最近采样的中心差分速度，取最小值 | 无拐角时为空；仅参考，不参与结论 |
+| 进给利用率 | 参考路径长度 ÷（运动时间 × 编程进给） | 需要 `programmedFeedMmMin`；仅参考 |
+| RMS Jerk | 三阶差分向量模的均方根 | 仅参考 |
 | 首尾误差 | 命令首尾与参考首尾分别比较 | 不推断输入之外的启停状态 |
 | 行程 | 每轴采样位置检查 | 未证明采样之间的行程 |
 | 离散速度 | `Δq / T` | 不等于未知插补/重建律的连续速度 |

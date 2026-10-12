@@ -1,5 +1,7 @@
 # Axiom
 
+**离线评估 V1**：`axiom benchmark-validation-suite --out-dir evaluation-v1` 运行 17 项 A/A、参数对比与合成反例；工作台可选择用例、投影、XYZ 时域曲线并跳到最差样本。完整方法、判定标准及限制见 [CNC-EVALUATION-V1.md](CNC-EVALUATION-V1.md)。这验证评估器接入与重放，不是生产算法/加工质量证据。
+
 > 当前开发主线：CNC 算法 A/B 对比与回归验证。下方 v0.22 阶段记录保留为参考能力，R5–R7 的扩展暂停，真实现场结论仍以对应证据为准。
 
 Axiom 帮助 CNC 开发者比较两个实际算法版本：在同一份刀路与约束下，发现指标变化、定位超限并重放结果。
@@ -20,6 +22,20 @@ axiom serve
 ```
 
 样例包含已知超限，`benchmark` 预期退出码为 1。Windows 发布验收继续使用下方冻结环境。
+
+### 没有算法导出或控制器数据时
+
+先用本地 Ruckig 建立评估器接入闭环，无需设备或云端：
+
+```powershell
+python -m pip install -e ".[offline]"
+axiom benchmark-offline-suite --out-dir offline-run-1
+axiom benchmark offline-run-1\short.request.json --format table
+```
+
+三条单轴直线（长位移、短位移、接近速度预算）分别做 A/A 生成与重放，输出案例、导出、输入清单、完整请求、报告和汇总。`sourceKind=offline-sut`，只验证集成和重放，不代表生产算法或实机效果。目录必须新建或为空；再次运行换一个目录。详见 [离线 SUT 工作流](CNC-BENCHMARK.md#没有真实数据时本地离线-sut)。
+
+比较器现在仅对单调直线评估采样遍历；圆弧、闭合路径、转弯保留指标，但未评估遍历时主结论为 `Inconclusive`，不再仅凭更短时间给出强改善结论。
 
 - [CNC 算法接入与使用说明](CNC-BENCHMARK.md)：文件格式、Case hash、CLI、API、指标与结果边界。
 - [近期项目路线](CNC%20算法效果评估与智能优化平台——项目规划蓝图.md)：首先接入真实算法版本、真实刀路和独立回归重放。

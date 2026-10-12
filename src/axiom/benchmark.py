@@ -30,7 +30,7 @@ ARC_RADIUS_RELATIVE_TOLERANCE = 1e-6
 BENCHMARK_SCOPE = "sampled-xyz-command"
 UNCHECKED_PROPERTIES = (
     "continuous-inter-sample-constraints",
-    "path-traversal-order-and-coverage",
+    "general-path-traversal-order-and-coverage",
     "collision-and-kinematics",
     "physical-response-and-machining-quality",
 )
@@ -126,7 +126,7 @@ class CncAlgorithmExport(AxiomModel):
     )
     algorithm_id: str = Field(alias="algorithmId", min_length=1, max_length=200)
     algorithm_version: str = Field(alias="algorithmVersion", min_length=1, max_length=200)
-    source_kind: Literal["algorithm-export", "controller-trace", "synthetic-example"] = Field(alias="sourceKind")
+    source_kind: Literal["algorithm-export", "controller-trace", "synthetic-example", "offline-sut"] = Field(alias="sourceKind")
     case_content_hash: str = Field(alias="caseContentHash", pattern=r"^[0-9a-f]{64}$")
     coordinate_frame: str = Field(alias="coordinateFrame", min_length=1, max_length=200)
     unit: Literal["mm"]
@@ -182,11 +182,12 @@ class BenchmarkMetric(AxiomModel):
 
 class BenchmarkCheck(AxiomModel):
     check_id: str = Field(alias="checkId")
-    status: Literal["WithinLimit", "Violated", "InsufficientSamples"]
+    status: Literal["WithinLimit", "Violated", "InsufficientSamples", "NotAssessed"]
     value: float | None
     limit: float
     unit: str
     location: BenchmarkLocation | None = None
+    reason: str | None = None
 
 
 class BenchmarkRunAnalysis(AxiomModel):
@@ -212,7 +213,7 @@ class BenchmarkDifference(AxiomModel):
 
 class CncBenchmarkReport(AxiomModel):
     schema_id: Literal["axiom.cnc-benchmark-report@1"] = Field(default="axiom.cnc-benchmark-report@1", alias="schemaId")
-    evaluator_version: Literal["cnc-sampled-comparison@1"] = Field(default="cnc-sampled-comparison@1", alias="evaluatorVersion")
+    evaluator_version: Literal["cnc-sampled-comparison@2"] = Field(default="cnc-sampled-comparison@2", alias="evaluatorVersion")
     case_id: str = Field(alias="caseId")
     case_content_hash: str = Field(alias="caseContentHash")
     scope: Literal["sampled-xyz-command"] = BENCHMARK_SCOPE
@@ -317,6 +318,27 @@ def _reference_corners(case: CncBenchmarkCase) -> list[tuple[int, float]]:
     return corners
 
 
+def _straight_path_direction(path: np.ndarray) -> np.ndarray | None:
+    vector = path[-1] - path[0]
+    length = float(np.linalg.norm(vector))
+    epsilon = 64 * np.finfo(float).eps * max(1.0, float(np.max(np.abs(path))))
+    if length <= epsilon:
+        return None
+    direction = vector / length
+    relative = path - path[0]
+    progress = relative @ direction
+    residual = relative - progress[:, None] * direction
+    if np.any(np.linalg.norm(residual, axis=1) > epsilon) or np.any(np.diff(progress) < -epsilon):
+        return None
+    return direction
+
+
+def _command_differences(positions: np.ndarray, period: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    velocity = np.diff(positions, axis=0) / period
+    acceleration = np.diff(velocity, axis=0) / period
+    return velocity, acceleration, np.diff(acceleration, axis=0) / period
+
+
 def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAnalysis:
     positions = np.asarray([sample.position_mm for sample in run.samples], dtype=float)
     times = np.asarray([sample.t for sample in run.samples], dtype=float)
@@ -357,6 +379,21 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
     metrics["endpointErrorMaxMm"] = BenchmarkMetric(value=max(endpoint_errors), unit="mm", location=location(endpoint))
     check("sampled-path-deviation", metrics["sampledPathDeviationMaxMm"], case.maximum_path_deviation_mm)
     check("endpoints", metrics["endpointErrorMaxMm"], case.maximum_endpoint_error_mm)
+    direction = None if case.reference_arcs else _straight_path_direction(path)
+    if direction is None:
+        checks.append(BenchmarkCheck(
+            checkId="sampled-line-traversal", status="NotAssessed", value=None,
+            limit=case.maximum_endpoint_error_mm, unit="mm",
+            reason="Traversal is assessed only for monotone straight reference paths; arcs, closed paths and turns are not assessed",
+        ))
+    else:
+        progress = (positions - path[0]) @ direction
+        backtracking = np.maximum.accumulate(progress) - progress
+        index = int(np.argmax(backtracking))
+        check("sampled-line-traversal", BenchmarkMetric(
+            value=max(float(backtracking[index]), max(endpoint_errors)), unit="mm",
+            location=location(index if backtracking[index] > max(endpoint_errors) else endpoint),
+        ), case.maximum_endpoint_error_mm)
 
     for axis_index, limits in enumerate(case.axis_limits):
         excess = np.maximum(limits.minimum_position_mm - positions[:, axis_index], positions[:, axis_index] - limits.maximum_position_mm)
@@ -365,24 +402,24 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
 
     # All operators use the declared fixed command period, after validating the
     # supplied timestamps. kth differences are located at their right endpoint.
-    differences = positions
+    derivatives = _command_differences(positions, case.sample_period_seconds)
     for order, (name, unit, limit_field) in enumerate((
         ("Velocity", "mm/s", "maximum_velocity_mm_s"),
         ("Acceleration", "mm/s^2", "maximum_acceleration_mm_s2"),
         ("Jerk", "mm/s^3", "maximum_jerk_mm_s3"),
     ), 1):
-        differences = np.diff(differences, axis=0) / case.sample_period_seconds
+        differences = derivatives[order - 1]
         global_metric = BenchmarkMetric(value=None, unit=unit)
         for axis_index, limits in enumerate(case.axis_limits):
             metric = BenchmarkMetric(value=None, unit=unit)
             if len(differences):
                 index = int(np.argmax(np.abs(differences[:, axis_index])))
                 metric = BenchmarkMetric(value=float(abs(differences[index, axis_index])), unit=unit, location=location(index + order, limits.axis))
-                if global_metric.value is None or metric.value > global_metric.value:
+                if metric.value is not None and (global_metric.value is None or metric.value > global_metric.value):
                     global_metric = metric
             check(f"{limits.axis}.discrete-{name.lower()}", metric, getattr(limits, limit_field))
         metrics[f"discrete{name}Max"] = global_metric
-    magnitudes = np.linalg.norm(differences, axis=1)
+    magnitudes = np.linalg.norm(derivatives[2], axis=1)
     metrics["discreteJerkRms"] = BenchmarkMetric(value=float(np.sqrt(np.mean(magnitudes * magnitudes))) if len(magnitudes) else None, unit="mm/s^3")
     metrics["computationSeconds"] = BenchmarkMetric(value=run.computation.elapsed_seconds if run.computation else None, unit="s")
     return BenchmarkRunAnalysis(algorithmId=run.algorithm_id, algorithmVersion=run.algorithm_version, sourceKind=run.source_kind, exportContentHash=_hash(run), sampleCount=len(run.samples), metrics=metrics, checks=tuple(checks))
@@ -424,10 +461,10 @@ def compare_cnc_exports(payload: CncBenchmarkRequest | Mapping[str, Any]) -> Cnc
         reasons.append("Candidate violates one or more sampled-command limits")
     elif any(item.status != "WithinLimit" for item in (*baseline.checks, *candidate.checks)):
         outcome = "Inconclusive"
-        reasons.append("A/B quality comparison requires a valid baseline and enough samples for every requested check")
+        reasons.append("A/B quality comparison requires a valid baseline, assessed traversal and enough samples for every requested check")
     elif request.baseline.source_kind != request.candidate.source_kind:
         outcome = "Inconclusive"
-        reasons.append("Synthetic examples and algorithm exports cannot establish one A/B result")
+        reasons.append("Different sourceKind values cannot establish one A/B result")
     else:
         statuses = {item.status for item in differences}
         outcome = "Tradeoff" if {"Improved", "Regressed"} <= statuses else "Regressed" if "Regressed" in statuses else "Improved" if "Improved" in statuses else "WithinTolerance"
@@ -435,18 +472,51 @@ def compare_cnc_exports(payload: CncBenchmarkRequest | Mapping[str, Any]) -> Cnc
         if len(compared) > 3:
             reasons.append("Case-declared tolerances also compare " + ", ".join(name for name, _ in compared[2:-1]) + "; lower is preferred")
     reasons.append("Discrete V/A/J differences do not certify continuous velocity, acceleration or jerk")
+    reasons.append("Sampled straight-line traversal checks endpoints and maximum backward excursion against maximumEndpointErrorMm; general path coverage and inter-sample traversal are not certified")
+    if direction_reasons := {item.reason for item in (*baseline.checks, *candidate.checks) if item.reason}:
+        reasons.extend(sorted(direction_reasons))
     reasons.append("Computation timing is producer-reported; a single observation does not establish statistical significance")
     if request.baseline.source_kind == "synthetic-example" or request.candidate.source_kind == "synthetic-example":
         reasons.append("Synthetic example data: this report is not evidence about a production algorithm")
+    if "offline-sut" in (request.baseline.source_kind, request.candidate.source_kind):
+        reasons.append("Offline SUT validation: this report tests the evaluator integration, not production algorithms, controller behavior or machining quality")
     report = CncBenchmarkReport(caseId=request.case.case_id, caseContentHash=benchmark_case_hash(request.case), baseline=baseline, candidate=candidate, differences=tuple(differences), outcome=outcome, reasons=tuple(reasons), reportContentHash="")
     content = report.model_dump(mode="json", by_alias=True, exclude_none=True)
     content.pop("reportContentHash")
     return report.model_copy(update={"report_content_hash": _hash(content)})
 
 
+def cnc_diagnostics(payload: CncBenchmarkRequest | Mapping[str, Any]) -> dict[str, Any]:
+    """Bounded plotting data; full-sample metrics remain the decision authority."""
+    request = CncBenchmarkRequest.model_validate(payload.model_dump(mode="json", by_alias=True) if isinstance(payload, CncBenchmarkRequest) else payload)
+    result: dict[str, Any] = {"schemaId": "axiom.cnc-diagnostics@1", "caseContentHash": benchmark_case_hash(request.case),
+                              "policy": "Uniform display subset plus signed extrema and check locations; no evaluator resampling. Differences located at right endpoints. No inter-sample certificate."}
+    path = np.asarray(request.case.reference_path, dtype=float)
+    for role, run in (("baseline", request.baseline), ("candidate", request.candidate)):
+        positions = np.asarray([sample.position_mm for sample in run.samples], dtype=float)
+        errors, segments = _path_deviations(positions, path, request.case.reference_arcs or ())
+        derivatives = _command_differences(positions, request.case.sample_period_seconds)
+        analysis = _analyse(request.case, run)
+        indices = set(np.linspace(0, len(positions) - 1, min(600, len(positions)), dtype=int).tolist())
+        indices.update(item.location.sample_index for item in analysis.checks if item.location)
+        for order, values in enumerate((positions, *derivatives)):
+            if len(values):
+                for axis in range(3):
+                    indices.update((int(np.argmin(values[:, axis])) + order, int(np.argmax(values[:, axis])) + order))
+        points = []
+        for index in sorted(indices):
+            points.append({"sampleIndex": index, "t": run.samples[index].t, "positionMm": positions[index].tolist(),
+                           "pathDeviationMm": float(errors[index]), "referenceSegmentIndex": int(segments[index]),
+                           **{name: values[index - order].tolist() if index >= order else None
+                              for order, (name, values) in enumerate(zip(("velocityMmS", "accelerationMmS2", "jerkMmS3"), derivatives, strict=True), 1)}})
+        result[role] = {"exportContentHash": analysis.export_content_hash, "sampleCount": len(positions), "displayCount": len(points), "points": points}
+    return result
+
+
 def cnc_benchmark_example() -> CncBenchmarkRequest:
     """A small declared synthetic regression; never relabel as real evidence."""
-    case = CncBenchmarkCase(caseId="example.line-regression", coordinateFrame="workpiece", unit="mm", samplePeriodSeconds=0.01, referencePath=((0, 0, 0), (1, 0, 0)), axisLimits=tuple(BenchmarkAxisLimits(axis=axis, minimumPositionMm=-10, maximumPositionMm=10, maximumVelocityMmS=100, maximumAccelerationMmS2=10_000, maximumJerkMmS3=1_000_000) for axis in AXES), maximumPathDeviationMm=0.03, maximumEndpointErrorMm=0.001)
+    limits = [BenchmarkAxisLimits(axis=axis, minimumPositionMm=-10, maximumPositionMm=10, maximumVelocityMmS=100, maximumAccelerationMmS2=10_000, maximumJerkMmS3=1_000_000) for axis in AXES]
+    case = CncBenchmarkCase(caseId="example.line-regression", coordinateFrame="workpiece", unit="mm", samplePeriodSeconds=0.01, referencePath=((0, 0, 0), (1, 0, 0)), axisLimits=(limits[0], limits[1], limits[2]), maximumPathDeviationMm=0.03, maximumEndpointErrorMm=0.001)
     runs = []
     for role in ("baseline", "candidate"):
         runs.append(CncAlgorithmExport(algorithmId="example.planner", algorithmVersion=role, sourceKind="synthetic-example", caseContentHash=benchmark_case_hash(case), coordinateFrame=case.coordinate_frame, unit="mm", samplePeriodSeconds=case.sample_period_seconds, samples=tuple(BenchmarkSample(sampleIndex=index, t=index * 0.01, positionMm=(index / 10, 0.08 if role == "candidate" and index == 5 else 0, 0)) for index in range(11))))

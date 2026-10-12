@@ -27,6 +27,24 @@
 .cnc-preview .reference { stroke: #82939b; }
 .cnc-preview .baseline { stroke: #66a9d8; background: #66a9d8; }
 .cnc-preview .candidate { stroke: #e78359; background: #e78359; }
+.cnc-preview .baseline { stroke-dasharray: 6 4; }
+.cnc-preview text { fill: var(--muted); font: 11px var(--mono); }
+.cnc-limit-line { stroke: var(--muted); stroke-dasharray: 2 5; }
+.cnc-cursor-line { stroke: var(--text); stroke-dasharray: 3 4; }
+.cnc-selected-point { fill: #e78359; stroke: var(--text); }
+.cnc-method { padding: 18px 22px; margin-top: 24px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; line-height: 1.8; }
+.cnc-method h2 { font-size: 18px; margin: 0; }
+.cnc-experiment-note { border-left: 2px solid var(--green); padding-left: 16px; margin-top: 16px; }
+.cnc-chart-controls { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 16px 0; font-size: 12px; }
+.cnc-benchmark select { padding: 8px; color: var(--text); background: var(--panel); border: 1px solid var(--line); max-width: 100%; }
+.cnc-chart-controls label { min-width: 0; }
+.cnc-chart-controls span { color: var(--muted); }
+.cnc-scrubber { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.cnc-scrubber input { width: 100%; accent-color: #e78359; }
+.cnc-diagnostics { margin: 24px 0; font-size: 12px; }
+.cnc-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cnc-chart-grid .cnc-preview { margin: 0; padding: 14px; }
+@media (max-width: 760px) { .cnc-chart-grid { grid-template-columns: 1fr; } }
 .cnc-grid { fill: none; stroke: var(--line-soft); stroke-dasharray: 4 5; }
 .cnc-preview p { color: var(--faint); font-size: 11px; line-height: 1.6; }
 .cnc-results { border-top: 1px solid var(--line); padding-top: 24px; }

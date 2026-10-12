@@ -18,6 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+offline = [
+  "ruckig==0.12.2",
+]
 test = [
   "hypothesis>=6.120",
   "httpx>=0.28,<0.29",

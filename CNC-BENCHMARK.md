@@ -61,6 +61,34 @@ $LASTEXITCODE
 
 Trace 的位置精度会放大到差分指标上：1 ms 周期下 0.1 µm 的量化误差就会产生约 1e5 mm/s³ 量级的离散 Jerk 噪声。导出时请尽量保留 6 位以上小数；比较 Jerk 前先确认 A、B 的导出精度相同。
 
+## 没有真实数据时：本地离线 SUT
+
+这是评估器开发验证入口，不是生产算法验证。可选依赖固定为 Ruckig Community 0.12.2（提供 Python 3.12 Windows/Linux wheel），不影响只消费 JSON 的默认安装。
+
+```powershell
+python -m pip install -e ".[offline]"
+axiom benchmark-offline-suite --out-dir offline-run-1
+axiom benchmark offline-run-1\long.request.json --format table
+```
+
+一条命令执行三个案例：100 mm 长位移、0.001 mm 短位移、1 mm 接近速度预算。固定周期 1 ms、静止起终状态，每个案例独立调用本地 Ruckig 两次做 A/A，再通过序列化请求重放比较器。成功要求两次导出/清单相同、报告重放相同、主结论为 `WithinTolerance`；不制造版本改善，也不把缺失计时填为零。测试另用独立分段三次多项式和解析时间下界校验简单轨迹，并注入偏移、未完成、逆向、超速、漏点、乱序、时钟和 Case hash 错误。
+
+输出 `<名称>.case.json`、`baseline.json`、`candidate.json`、`request.json`、`report.json`、`manifest.json`（各自带名称前缀）及 `summary.json`。目录必须新建或为空，禁止覆盖已有证据。可上传案例与两个导出到现有页面，或用保存的 request 独立重放。汇总退出码 `0` 表示 A/A 集成检查通过，`1` 表示未通过，`2` 表示输入/依赖/输出错误。
+
+适配器也接受自建案例：
+
+```powershell
+axiom benchmark-ruckig --case offline-run-1\short.case.json --out short.json
+```
+
+只接受两个参考点、恰好一个运动轴、无圆弧；起止速度/加速度固定为零，其余轴保持原坐标。端点须满足行程限制。**不设置 intermediate waypoints**：社区版该功能会使用云端，不属于本工作流。Ruckig 不是完整 CNC/G-code 规划器，不承诺多轴轮廓或加工效果。
+
+Ruckig 使用 `DurationDiscretization.Discrete`，总时长为采样周期整数倍，从 t=0 到终点均匀采样；不补点、不重采样、不吸附端点。总样本需 4..100000，否则拒绝。
+
+默认生成器 V/A/J 约束是案例预算的 **99%**，通过 `--limit-scale` 可指定 `(0, 1]`。这保留了差分浮点误差余量，**不修改评估器的限值或容差**；精确限值实验可用 `--limit-scale 1`，binary64 差分仍可能产生微小超限，应查看原始值，不能解释为实机超限。生成约束、比例、零起终状态、固定轴、周期、离散时长策略和版本均记录在清单中。
+
+清单保留规范化生成输入、输入 SHA-256、Case hash、导出 SHA-256、轨迹时长、采样策略和 Python/平台信息。导出使用 `sourceKind=offline-sut`，报告及页面明确说明证据用途；该标签和 hash 都不是独立真实性证明。确定性验收针对同版本、同环境；不承诺跨平台 binary64 文件逐字节相同。
+
 ## 接入 C++、C# 或其他算法
 
 1. 为真实刀路创建 `case.json`，冻结坐标系、单位、固定周期、轴限制、几何限制和比较容差。
@@ -125,6 +153,7 @@ Trace 的位置精度会放大到差分指标上：1 ms 周期下 0.1 µm 的量
 | 进给利用率 | 参考路径长度 ÷（运动时间 × 编程进给） | 需要 `programmedFeedMmMin`；仅参考 |
 | RMS Jerk | 三阶差分向量模的均方根 | 仅参考 |
 | 首尾误差 | 命令首尾与参考首尾分别比较 | 不推断输入之外的启停状态 |
+| `sampled-line-traversal` | 单调共线参考路径上，投影进度相对历史最高点的最大后退距离，与首尾误差取最大值，限制为 `maximumEndpointErrorMm` | 重复顶点可接受；圆弧、闭合路径、转弯和参考逆行返回 `NotAssessed`；不证明采样间连续覆盖 |
 | 行程 | 每轴采样位置检查 | 未证明采样之间的行程 |
 | 离散速度 | `Δq / T` | 不等于未知插补/重建律的连续速度 |
 | 离散加速度 | `Δ²q / T²` | 至少三个样本 |
@@ -138,11 +167,13 @@ Trace 的位置精度会放大到差分指标上：1 ms 周期下 0.1 µm 的量
 ## 结果如何解释
 
 - `CandidateViolatesLimits`：候选触犯至少一项本次采样限制。
-- `Inconclusive`：基线不满足检查、样本不足，或混用了合成示例与算法导出。
+- `Inconclusive`：基线不满足检查、样本不足、路径遍历未评估，或混用了不同 `sourceKind`。
 - `Regressed`：至少一个可比较目标退步，且没有改善目标。
 - `Tradeoff`：既有改善也有退步，需要工程判断。
-- `Improved`：至少一个可比较目标改善，没有目标退步，且 A/B 的采样限制均满足。
+- `Improved`：至少一个可比较目标改善，没有目标退步，且 A/B 的采样限制和直线遍历检查均满足。
 - `WithinTolerance`：可比较目标均在预先指定的差异容差内。
+
+本次 evaluator 升级为 `cnc-sampled-comparison@2`，案例格式和已有 Case hash 不变；新增遍历检查、离线 SUT 标签和说明会改变报告 hash。圆弧/拐角等仍可查看全部指标差异，但遍历未评估时不能再把主结论用于版本接受；候选已知采样超限仍优先返回 `CandidateViolatesLimits`。
 
 未提供或环境不同的计算耗时为 `NotComparable`，不参与总体优劣；其他可比较指标仍可产生有限范围的结果。离散 V/A/J 用作限制检查，不把“更低速度”单独解释成算法更好。
 

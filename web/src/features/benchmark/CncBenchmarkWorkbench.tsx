@@ -11,6 +11,18 @@ interface Analysis { algorithmId: string; algorithmVersion: string; sourceKind: 
 interface Difference { metricId: string; baseline?: number | null; candidate?: number | null; delta?: number | null; unit: string; tolerance: number; status: string; reason?: string }
 interface Report { caseId: string; caseContentHash: string; scope: string; outcome: string; baseline: Analysis; candidate: Analysis; differences: Difference[]; reasons: string[]; reportContentHash: string; uncheckedProperties: string[] }
 
+interface SensitivityItem { parameterId: string; displayName: string; group: string; status: string; contributionRatio: number; direction: string }
+interface MetricHead { metricId: string; unit: string; modelingMode: string; r2Score: number; cvRmse: number; conformalRadius: number; sensitivities: SensitivityItem[] }
+interface ParameterDelta { parameterId: string; displayName: string; group: string; unit: string; baselineValue: number; recommendedValue: number; relativeChangePct: number }
+interface PresetCandidate { candidateId: string; presetRole: string; presetTitle: string; changedParameterCount: number; changedParameters: ParameterDelta[]; tradeoffExplanation: string }
+interface ActiveDoeItem { suggestionId: string; targetSource: string; changedParameterIds: string[]; acquisitionScore: number; rationale: string }
+interface ClosedLoopDemo {
+  case: { caseId: string };
+  sampleQualityReport: { outcome: string; scope: string; analysis: Analysis; servoMetrics?: Record<string, Metric>; geometrySlices: Array<{ sliceId: string; primitiveKind: string; startSampleIndex: number; endSampleIndex: number; metrics: Record<string, number | null> }> };
+  surrogate: { offlineRunCount: number; controllerRunCount: number; totalSliceSampleCount: number; globalActiveParameterIds: string[]; metricHeads: Record<string, MetricHead> };
+  recommendationReport: { maxChangedParameters: number; evaluatedCandidateCount: number; feasibleCandidateCount: number; paretoCandidateCount: number; presets: PresetCandidate[]; activeDoeSuggestions: ActiveDoeItem[] };
+}
+
 const labels: Record<Role, string> = { case: "刀路与约束", baseline: "基线 A", candidate: "候选 B" };
 const metricLabels: Record<string, string> = { durationSeconds: "运动时间", sampledPathDeviationMaxMm: "采样路径偏差", computationSeconds: "算法计算耗时" };
 const statusLabels: Record<string, string> = { Improved: "改善", Regressed: "退步", Tradeoff: "存在取舍", WithinTolerance: "容差内无变化", CandidateViolatesLimits: "候选超限", Inconclusive: "证据不足", NotComparable: "不可比较", WithinLimit: "满足采样限制", Violated: "超限", InsufficientSamples: "样本不足" };
@@ -84,6 +96,7 @@ export function CncBenchmarkWorkbench() {
   const [inputs, setInputs] = useState<Inputs>({ case: null, baseline: null, candidate: null });
   const [filenames, setFilenames] = useState<Partial<Record<Role, string>>>({});
   const [report, setReport] = useState<Report | null>(null);
+  const [closedLoop, setClosedLoop] = useState<ClosedLoopDemo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const revision = useRef(0);
@@ -129,11 +142,27 @@ export function CncBenchmarkWorkbench() {
     finally { if (current === revision.current) setBusy(false); }
   }
 
+  async function runClosedLoopDemo() {
+    const current = ++revision.current;
+    setBusy(true); setError(null);
+    try {
+      const demo = await requestJson<ClosedLoopDemo>("param-demo");
+      if (current === revision.current) setClosedLoop(demo);
+    } catch (reason) {
+      if (current === revision.current) setError(reason instanceof Error ? reason.message : "参数学习与推荐闭环运行失败");
+    } finally {
+      if (current === revision.current) setBusy(false);
+    }
+  }
+
   return <main className="cnc-benchmark">
     <div className="cnc-content">
       <div className="cnc-heading">
         <div><span className="eyebrow">CNC ALGORITHM BENCHMARK</span><h1>比较两版 CNC 算法</h1><p>导入同一案例的 XYZ 指令轨迹，检查采样误差与约束，定位版本差异。</p></div>
-        <button className="button button-secondary" type="button" onClick={loadExample} disabled={busy}>载入回归示例</button>
+        <div>
+          <button className="button button-secondary" type="button" onClick={loadExample} disabled={busy}>载入回归示例</button>
+          <button className="button button-secondary" type="button" onClick={runClosedLoopDemo} disabled={busy} style={{ marginLeft: "0.5rem" }}>运行 30+ 参数评估·学习·推荐闭环</button>
+        </div>
       </div>
       <div className="cnc-inputs">
         {(["case", "baseline", "candidate"] as Role[]).map((role, index) => <section className="cnc-input-card" key={role}>
@@ -155,6 +184,62 @@ export function CncBenchmarkWorkbench() {
         <div className="cnc-table-scroll"><table><thead><tr><th>检查项</th><th>基线 A</th><th>候选 B</th><th>限制</th><th>候选最差位置</th></tr></thead><tbody>{report.candidate.checks.map((check, index) => <tr key={check.checkId}><th>{check.checkId}<small>{check.unit}</small></th><td className={report.baseline.checks[index]?.status}>{number(report.baseline.checks[index]?.value)}</td><td className={check.status}>{number(check.value)}<small>{statusLabels[check.status]}</small></td><td>{number(check.limit)}</td><td>{locate(check.location)}</td></tr>)}</tbody></table></div>
         <details className="cnc-report-details"><summary>结果身份与计算说明</summary><p>案例：{report.caseId}</p><p>报告：<code>{report.reportContentHash}</code></p><ul>{report.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul></details>
       </section> : <section className="cnc-empty"><h2>从一次可复现的版本比较开始</h2><p>上传三份文件，或载入带有已知偏差的示例。报告会保留指标差异以及超限的样本、时间和轴。</p></section>}
+
+      {closedLoop && <section className="cnc-results" aria-label="30+ 参数评估与推荐闭环报告" style={{ marginTop: "1.5rem" }}>
+        <div className="cnc-result-heading">
+          <div>
+            <span className="eyebrow">32-PARAMETER MULTI-FIDELITY CLOSED LOOP</span>
+            <h2>高维参数质量评估、敏感度归因与稀疏微调推荐</h2>
+            <p>案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 控制器实采 {closedLoop.surrogate.controllerRunCount} 组（提取 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）</p>
+          </div>
+          <button className="button button-secondary" type="button" onClick={() => download(closedLoop, "cnc-param-closed-loop.json")}>下载闭环数据包</button>
+        </div>
+
+        <h3>1. 参数影响识别（Stage 1 稀疏初筛 + Stage 2 多保真 ARD-GP）</h3>
+        <div className="cnc-table-scroll">
+          <table>
+            <thead><tr><th>质量指标</th><th>建模模式</th><th>R² / CV-RMSE</th><th>Top-3 主导参数及贡献占比</th></tr></thead>
+            <tbody>
+              {Object.values(closedLoop.surrogate.metricHeads).map(head => (
+                <tr key={head.metricId}>
+                  <th>{head.metricId}<small>{head.unit}</small></th>
+                  <td>{head.modelingMode}</td>
+                  <td>R²={number(head.r2Score)} · ±{number(head.conformalRadius)}</td>
+                  <td>
+                    {head.sensitivities.filter(s => s.status === "Active").slice(0, 3).map(s => `${s.displayName} (${(s.contributionRatio * 100).toFixed(1)}%, ${s.direction})`).join("；")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h3>2. 受约束三档 Pareto 稀疏推荐（最多微调 {closedLoop.recommendationReport.maxChangedParameters} 个核心参数）</h3>
+        <div className="cnc-table-scroll">
+          <table>
+            <thead><tr><th>推荐档位</th><th>预期效果与权衡说明</th><th>建议调整的参数项</th></tr></thead>
+            <tbody>
+              {closedLoop.recommendationReport.presets.map(preset => (
+                <tr key={preset.candidateId}>
+                  <th>{preset.presetTitle}<small>{preset.presetRole}</small></th>
+                  <td>{preset.tradeoffExplanation}</td>
+                  <td>
+                    {preset.changedParameters.map(p => `${p.parameterId}: ${p.baselineValue} → ${p.recommendedValue} ${p.unit} (${p.relativeChangePct >= 0 ? "+" : ""}${p.relativeChangePct}%)`).join(" | ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h3>3. 主动学习下一批补采建议（Active DoE）</h3>
+        <ul>
+          {closedLoop.recommendationReport.activeDoeSuggestions.map(sug => (
+            <li key={sug.suggestionId}><strong>[{sug.suggestionId} · {sug.targetSource}]</strong> {sug.rationale}</li>
+          ))}
+        </ul>
+      </section>}
+
       <aside className="cnc-scope"><strong>本次检查覆盖什么？</strong><p>采样点到参考折线的单向距离、首尾位置、轴行程和离散 V/A/J 差分，以及同条件下声明的计算耗时。尚未验证采样间连续运动、整条路径的遍历顺序与覆盖、碰撞、实机跟随或加工质量。采样结果中的“改善”只针对本页列出的指标。</p><p>算法导出格式、Case hash 生成方法与 CLI 用法见仓库的 CNC-BENCHMARK.md。</p></aside>
     </div>
   </main>;

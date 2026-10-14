@@ -1,7 +1,9 @@
 """Import controller trace recordings (CSV) as CNC benchmark exports.
 
 A trace is accepted only on the case's fixed sample period: dropped cycles or
-irregular timestamps are rejected instead of being resampled.
+irregular timestamps are rejected instead of being resampled. Optional encoder
+feedback columns (actual X/Y/Z) and algorithm/controller parameter bindings are
+preserved alongside commanded positions.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import csv
 import io
 import math
 from dataclasses import dataclass
+from typing import Mapping
 
 from .benchmark import BenchmarkSample, CncAlgorithmExport, CncBenchmarkCase, benchmark_case_hash
 
@@ -21,6 +24,9 @@ class TraceColumns:
     x: str = "X"
     y: str = "Y"
     z: str = "Z"
+    actual_x: str | None = None
+    actual_y: str | None = None
+    actual_z: str | None = None
     cycle: str | None = None
     time: str | None = None
     time_scale: float = 1.0
@@ -35,6 +41,8 @@ class TraceImportOptions:
     trim_stationary: bool = True
     stationary_tolerance_mm: float = 1e-6
     period_relative_tolerance: float = 0.01
+    parameter_registry_id: str | None = None
+    parameters: Mapping[str, float] | None = None
 
 
 class TraceImportError(ValueError):
@@ -51,10 +59,16 @@ def _number(row_number: int, column: str, text: str) -> float:
     return value
 
 
-def _read_rows(text: str, options: TraceImportOptions) -> tuple[list[tuple[float, float, float]], list[float] | None]:
+def _read_rows(
+    text: str, options: TraceImportOptions
+) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]] | None, list[float]]:
     columns = options.columns
     if (columns.cycle is None) == (columns.time is None):
         raise TraceImportError("declare exactly one clock column: a cycle counter or a time column")
+    actual_cols = (columns.actual_x, columns.actual_y, columns.actual_z)
+    has_actual = any(col is not None for col in actual_cols)
+    if has_actual and not all(col is not None for col in actual_cols):
+        raise TraceImportError("declare all three actual feedback columns (actual_x, actual_y, actual_z) or none")
     sample = text[:4096]
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
@@ -62,20 +76,30 @@ def _read_rows(text: str, options: TraceImportOptions) -> tuple[list[tuple[float
         dialect = csv.excel
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
     clock_column = columns.cycle or columns.time
-    required = (columns.x, columns.y, columns.z, clock_column)
+    required = [columns.x, columns.y, columns.z, clock_column]
+    if has_actual:
+        required.extend([col for col in actual_cols if col is not None])
     missing = [name for name in required if name not in (reader.fieldnames or [])]
     if missing:
         raise TraceImportError(f"missing trace columns {missing}; available: {reader.fieldnames}")
     positions: list[tuple[float, float, float]] = []
+    actual_positions: list[tuple[float, float, float]] | None = [] if has_actual else None
     clock: list[float] = []
     for row_number, row in enumerate(reader, start=2):
         if len(positions) >= MAX_TRACE_SAMPLES * 4:
             raise TraceImportError(f"trace exceeds {MAX_TRACE_SAMPLES * 4} rows; export a shorter window")
         positions.append(tuple(_number(row_number, name, row[name]) * options.position_scale for name in (columns.x, columns.y, columns.z)))  # type: ignore[misc]
-        clock.append(_number(row_number, clock_column, row[clock_column]))
+        if actual_positions is not None:
+            actual_positions.append(
+                tuple(
+                    _number(row_number, name, row[name]) * options.position_scale  # type: ignore[arg-type]
+                    for name in actual_cols
+                )
+            )  # type: ignore[arg-type]
+        clock.append(_number(row_number, clock_column, row[clock_column]))  # type: ignore[arg-type]
     if len(positions) < 2:
         raise TraceImportError("trace must contain at least two samples")
-    return positions, clock
+    return positions, actual_positions, clock
 
 
 def _validate_clock(clock: list[float], period: float, options: TraceImportOptions) -> None:
@@ -115,10 +139,11 @@ def import_controller_trace(
     algorithm_version: str,
     options: TraceImportOptions = TraceImportOptions(),
 ) -> CncAlgorithmExport:
-    positions, clock = _read_rows(text, options)
+    positions, actual_positions, clock = _read_rows(text, options)
     _validate_clock(clock, case.sample_period_seconds, options)
     first, last = _trim(positions, options.stationary_tolerance_mm) if options.trim_stationary else (0, len(positions) - 1)
     window = positions[first:last + 1]
+    actual_window = actual_positions[first:last + 1] if actual_positions is not None else None
     if len(window) > MAX_TRACE_SAMPLES:
         raise TraceImportError(f"trace window has {len(window)} samples; the comparison limit is {MAX_TRACE_SAMPLES}")
     offset = options.offset_mm
@@ -129,6 +154,11 @@ def import_controller_trace(
             sampleIndex=index,
             t=index * case.sample_period_seconds,
             positionMm=tuple(point[axis] - offset[axis] for axis in range(3)),
+            actualPositionMm=(
+                tuple(actual_window[index][axis] - offset[axis] for axis in range(3))
+                if actual_window is not None
+                else None
+            ),
         )
         for index, point in enumerate(window)
     )
@@ -140,5 +170,7 @@ def import_controller_trace(
         coordinateFrame=case.coordinate_frame,
         unit="mm",
         samplePeriodSeconds=case.sample_period_seconds,
+        parameterRegistryId=options.parameter_registry_id,
+        parameters=dict(options.parameters) if options.parameters is not None else None,
         samples=samples,
     )

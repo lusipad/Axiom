@@ -9,7 +9,35 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
-from .benchmark import CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
+from .benchmark import (
+    CncBenchmarkCase,
+    CncBenchmarkReport,
+    CncBenchmarkRequest,
+    CncQualityReport,
+    CncSingleEvaluationRequest,
+    benchmark_case_hash,
+    cnc_benchmark_example,
+    compare_cnc_exports,
+    evaluate_cnc_export,
+)
+from .parameter_learner import (
+    LearnedParameterSurrogate,
+    ParameterLearningRequest,
+    learn_parameter_surrogate,
+)
+from .parameter_recommender import (
+    CncParameterClosedLoopDemo,
+    ParameterRecommendationReport,
+    ParameterRecommendationRequest,
+    build_cnc_parameter_closed_loop_demo,
+    recommend_parameters,
+)
+from .parameter_space import (
+    CncParameterRegistry,
+    ParameterDoePlan,
+    default_cnc_parameter_registry,
+    generate_parameter_doe,
+)
 from .control import (
     BECKHOFF_WITNESS_PLC_TEMPLATE_FILE,
     BeckhoffWitnessDeploymentReport,
@@ -875,6 +903,32 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     @app.post("/api/v1/benchmarks/cnc/compare", response_model=CncBenchmarkReport, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_compare(request: CncBenchmarkRequest) -> CncBenchmarkReport:
         return compare_cnc_exports(request)
+
+    @app.post("/api/v1/benchmarks/cnc/evaluate", response_model=CncQualityReport, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_evaluate_single(request: CncSingleEvaluationRequest) -> CncQualityReport:
+        return evaluate_cnc_export(request)
+
+    @app.get("/api/v1/benchmarks/cnc/parameter-registry", response_model=CncParameterRegistry, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_registry() -> CncParameterRegistry:
+        return default_cnc_parameter_registry()
+
+    @app.get("/api/v1/benchmarks/cnc/param-doe", response_model=ParameterDoePlan, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_doe(offlineCount: int = 36, controllerCount: int = 12, seed: int = 42) -> ParameterDoePlan:
+        return generate_parameter_doe(offline_count=offlineCount, controller_count=controllerCount, seed=seed)
+
+    @app.post("/api/v1/benchmarks/cnc/param-learn", response_model=LearnedParameterSurrogate, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_learn(request: ParameterLearningRequest) -> LearnedParameterSurrogate:
+        return learn_parameter_surrogate(request)
+
+    @app.post("/api/v1/benchmarks/cnc/param-recommend", response_model=ParameterRecommendationReport, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_recommend(payload: dict[str, Any]) -> ParameterRecommendationReport:
+        surrogate = LearnedParameterSurrogate.model_validate(payload["surrogate"])
+        req = ParameterRecommendationRequest.model_validate(payload.get("request") or {})
+        return recommend_parameters(surrogate, req)
+
+    @app.get("/api/v1/benchmarks/cnc/param-demo", response_model=CncParameterClosedLoopDemo, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_demo(offlineCount: int = 24, controllerCount: int = 10, seed: int = 42) -> CncParameterClosedLoopDemo:
+        return build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed)
 
     @app.post(
         "/api/v1/experiments/run",

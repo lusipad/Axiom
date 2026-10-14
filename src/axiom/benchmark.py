@@ -1,7 +1,8 @@
-"""File-based CNC A/B comparison, independent of the built-in F4 solvers.
+"""File-based CNC single-run quality evaluation and A/B comparison, independent of the built-in F4 solvers.
 
-This evaluates sampled XYZ commands. Finite differences are diagnostics of the
-command stream, not certificates for a controller's inter-sample motion law.
+This evaluates sampled XYZ commands and optional controller actual feedback traces.
+Finite differences are diagnostics of the sampled stream, not certificates for a
+controller's inter-sample motion law.
 """
 
 from __future__ import annotations
@@ -27,12 +28,20 @@ AXES = ("X", "Y", "Z")
 MAX_DISTANCE_PAIRS = 20_000_000
 CORNER_ANGLE_DEGREES = 5.0
 ARC_RADIUS_RELATIVE_TOLERANCE = 1e-6
+MICRO_SEGMENT_THRESHOLD_MM = 0.5
 BENCHMARK_SCOPE = "sampled-xyz-command"
+DUAL_TRACE_SCOPE = "sampled-xyz-command-and-servo-feedback"
 UNCHECKED_PROPERTIES = (
     "continuous-inter-sample-constraints",
     "path-traversal-order-and-coverage",
     "collision-and-kinematics",
     "physical-response-and-machining-quality",
+)
+DUAL_TRACE_UNCHECKED_PROPERTIES = (
+    "continuous-inter-sample-constraints",
+    "path-traversal-order-and-coverage",
+    "collision-and-kinematics",
+    "cutting-force-and-surface-metrology",
 )
 
 
@@ -112,6 +121,7 @@ class BenchmarkSample(AxiomModel):
     sample_index: Annotated[StrictInt, Field(ge=0)] = Field(alias="sampleIndex")
     t: Annotated[Number, Field(ge=0, le=100_000)]
     position_mm: Point = Field(alias="positionMm")
+    actual_position_mm: Point | None = Field(default=None, alias="actualPositionMm")
 
 
 class BenchmarkTiming(AxiomModel):
@@ -131,11 +141,23 @@ class CncAlgorithmExport(AxiomModel):
     coordinate_frame: str = Field(alias="coordinateFrame", min_length=1, max_length=200)
     unit: Literal["mm"]
     sample_period_seconds: Period = Field(alias="samplePeriodSeconds")
+    parameter_registry_id: str | None = Field(default=None, alias="parameterRegistryId", min_length=1, max_length=200)
+    parameters: dict[str, Number] | None = None
     samples: tuple[BenchmarkSample, ...] = Field(min_length=2, max_length=100_000)
     computation: BenchmarkTiming | None = None
 
     @model_validator(mode="after")
     def uniform_samples(self) -> CncAlgorithmExport:
+        has_actual = [sample.actual_position_mm is not None for sample in self.samples]
+        if any(has_actual) and not all(has_actual):
+            raise ValueError("actualPositionMm must be provided for all samples when present")
+        if self.parameters is not None:
+            for key, val in self.parameters.items():
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError("parameter keys must be non-empty strings")
+                _require_json_number(val)
+                if not math.isfinite(float(val)):
+                    raise ValueError(f"parameter {key!r} must be finite")
         for index, sample in enumerate(self.samples):
             if sample.sample_index != index:
                 raise ValueError("sampleIndex must start at zero and be contiguous")
@@ -164,6 +186,25 @@ class CncBenchmarkRequest(AxiomModel):
         pair_count = (len(self.baseline.samples) + len(self.candidate.samples)) * (len(self.case.reference_path) - 1)
         if pair_count > MAX_DISTANCE_PAIRS:
             raise ValueError(f"comparison exceeds the {MAX_DISTANCE_PAIRS} point/segment pair budget; split the case")
+        return self
+
+
+class CncSingleEvaluationRequest(AxiomModel):
+    case: CncBenchmarkCase
+    export: CncAlgorithmExport
+
+    @model_validator(mode="after")
+    def matching_conditions(self) -> CncSingleEvaluationRequest:
+        expected_hash = benchmark_case_hash(self.case)
+        if self.export.case_content_hash != expected_hash:
+            raise ValueError("export.caseContentHash does not identify the supplied case")
+        if self.export.coordinate_frame != self.case.coordinate_frame:
+            raise ValueError("export.coordinateFrame differs from the case")
+        if self.export.sample_period_seconds != self.case.sample_period_seconds:
+            raise ValueError("export.samplePeriodSeconds differs from the case")
+        pair_count = len(self.export.samples) * (len(self.case.reference_path) - 1)
+        if pair_count > MAX_DISTANCE_PAIRS:
+            raise ValueError(f"evaluation exceeds the {MAX_DISTANCE_PAIRS} point/segment pair budget; split the case")
         return self
 
 
@@ -197,6 +238,41 @@ class BenchmarkRunAnalysis(AxiomModel):
     sample_count: int = Field(alias="sampleCount")
     metrics: dict[str, BenchmarkMetric]
     checks: tuple[BenchmarkCheck, ...]
+
+
+class SegmentQualitySlice(AxiomModel):
+    slice_id: str = Field(alias="sliceId")
+    primitive_kind: Literal["line", "arc", "corner", "micro-segment-cluster"] = Field(alias="primitiveKind")
+    reference_segment_indices: tuple[int, ...] = Field(alias="referenceSegmentIndices")
+    start_sample_index: int = Field(alias="startSampleIndex")
+    end_sample_index: int = Field(alias="endSampleIndex")
+    sample_count: int = Field(alias="sampleCount")
+    duration_seconds: float = Field(alias="durationSeconds")
+    geometry_features: dict[str, float] = Field(alias="geometryFeatures")
+    metrics: dict[str, float | None]
+
+
+class CncQualityReport(AxiomModel):
+    schema_id: Literal["axiom.cnc-quality-report@1"] = Field(
+        default="axiom.cnc-quality-report@1", alias="schemaId"
+    )
+    evaluator_version: Literal["cnc-single-quality@1"] = Field(
+        default="cnc-single-quality@1", alias="evaluatorVersion"
+    )
+    case_id: str = Field(alias="caseId")
+    case_content_hash: str = Field(alias="caseContentHash")
+    scope: Literal["sampled-xyz-command", "sampled-xyz-command-and-servo-feedback"] = BENCHMARK_SCOPE
+    unchecked_properties: tuple[str, ...] = Field(default=UNCHECKED_PROPERTIES, alias="uncheckedProperties")
+    parameter_registry_id: str | None = Field(default=None, alias="parameterRegistryId")
+    parameters: dict[str, float] | None = None
+    analysis: BenchmarkRunAnalysis
+    servo_metrics: dict[str, BenchmarkMetric] | None = Field(default=None, alias="servoMetrics")
+    kinematic_summary: dict[str, float] = Field(alias="kinematicSummary")
+    geometry_slices: tuple[SegmentQualitySlice, ...] = Field(alias="geometrySlices")
+    hard_gates_passed: bool = Field(alias="hardGatesPassed")
+    outcome: Literal["Passed", "ViolatesLimits", "InsufficientSamples"]
+    reasons: tuple[str, ...]
+    report_content_hash: str = Field(alias="reportContentHash")
 
 
 class BenchmarkDifference(AxiomModel):
@@ -388,6 +464,363 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
     return BenchmarkRunAnalysis(algorithmId=run.algorithm_id, algorithmVersion=run.algorithm_version, sourceKind=run.source_kind, exportContentHash=_hash(run), sampleCount=len(run.samples), metrics=metrics, checks=tuple(checks))
 
 
+def _compute_servo_metrics(
+    case: CncBenchmarkCase,
+    run: CncAlgorithmExport,
+    cmd_positions: np.ndarray,
+    times: np.ndarray,
+) -> dict[str, BenchmarkMetric] | None:
+    if run.samples[0].actual_position_mm is None:
+        return None
+    act_positions = np.asarray([sample.actual_position_mm for sample in run.samples], dtype=float)
+    path = np.asarray(case.reference_path, dtype=float)
+    arcs = case.reference_arcs or ()
+
+    following_vectors = act_positions - cmd_positions
+    following_norms = np.linalg.norm(following_vectors, axis=1)
+    fe_max_idx = int(np.argmax(following_norms))
+
+    act_errors, act_segments = _path_deviations(act_positions, path, arcs)
+    act_max_idx = int(np.argmax(act_errors))
+
+    # Quadrant glitch detection on arcs or direction reversals (velocity sign change)
+    cmd_vel = np.diff(cmd_positions, axis=0) / case.sample_period_seconds
+    glitch_max = 0.0
+    glitch_idx = 0
+    if len(cmd_vel) >= 2:
+        sign_flip = np.any(cmd_vel[:-1, :2] * cmd_vel[1:, :2] <= 0.0, axis=1)
+        reversal_indices = np.where(sign_flip)[0] + 1
+        if len(reversal_indices):
+            window_mask = np.zeros(len(act_positions), dtype=bool)
+            for r_idx in reversal_indices:
+                lo = max(0, int(r_idx) - 5)
+                hi = min(len(act_positions), int(r_idx) + 6)
+                window_mask[lo:hi] = True
+            window_indices = np.where(window_mask)[0]
+            if len(window_indices):
+                local_errors = act_errors[window_indices]
+                best = int(np.argmax(local_errors))
+                glitch_max = float(local_errors[best])
+                glitch_idx = int(window_indices[best])
+
+    return {
+        "followingErrorMaxMm": BenchmarkMetric(
+            value=float(following_norms[fe_max_idx]),
+            unit="mm",
+            location=BenchmarkLocation(
+                sampleIndex=fe_max_idx,
+                t=float(times[fe_max_idx]),
+                referenceSegmentIndex=int(act_segments[fe_max_idx]),
+            ),
+        ),
+        "followingErrorRmsMm": BenchmarkMetric(
+            value=float(np.sqrt(np.mean(following_norms * following_norms))),
+            unit="mm",
+        ),
+        "actualPathDeviationMaxMm": BenchmarkMetric(
+            value=float(act_errors[act_max_idx]),
+            unit="mm",
+            location=BenchmarkLocation(
+                sampleIndex=act_max_idx,
+                t=float(times[act_max_idx]),
+                referenceSegmentIndex=int(act_segments[act_max_idx]),
+            ),
+        ),
+        "actualPathDeviationRmsMm": BenchmarkMetric(
+            value=float(np.sqrt(np.mean(act_errors * act_errors))),
+            unit="mm",
+        ),
+        "actualPathDeviationP99Mm": BenchmarkMetric(
+            value=float(np.quantile(act_errors, 0.99)),
+            unit="mm",
+        ),
+        "quadrantGlitchMaxMm": BenchmarkMetric(
+            value=glitch_max,
+            unit="mm",
+            location=BenchmarkLocation(
+                sampleIndex=glitch_idx,
+                t=float(times[glitch_idx]),
+                referenceSegmentIndex=int(act_segments[glitch_idx]),
+            ),
+        ),
+    }
+
+
+def _build_geometry_slices(
+    case: CncBenchmarkCase,
+    run: CncAlgorithmExport,
+    cmd_positions: np.ndarray,
+    cmd_errors: np.ndarray,
+    nearest_segments: np.ndarray,
+) -> tuple[SegmentQualitySlice, ...]:
+    path = np.asarray(case.reference_path, dtype=float)
+    arcs_by_seg = {arc.segment_index: arc for arc in case.reference_arcs or ()}
+    ends = _segment_ends(path, arcs_by_seg)
+    period = case.sample_period_seconds
+    cmd_vel = np.diff(cmd_positions, axis=0) / period if len(cmd_positions) >= 2 else np.zeros((0, 3))
+    cmd_speeds = np.linalg.norm(cmd_vel, axis=1) if len(cmd_vel) else np.zeros(0)
+    cmd_jerk = np.diff(cmd_positions, n=3, axis=0) / (period ** 3) if len(cmd_positions) >= 4 else np.zeros((0, 3))
+    cmd_jerk_mag = np.linalg.norm(cmd_jerk, axis=1) if len(cmd_jerk) else np.zeros(0)
+
+    has_actual = run.samples[0].actual_position_mm is not None
+    act_positions = (
+        np.asarray([sample.actual_position_mm for sample in run.samples], dtype=float)
+        if has_actual
+        else None
+    )
+    act_errors = (
+        _path_deviations(act_positions, path, case.reference_arcs or ())[0]
+        if act_positions is not None
+        else None
+    )
+    following_norms = (
+        np.linalg.norm(act_positions - cmd_positions, axis=1)
+        if act_positions is not None
+        else None
+    )
+
+    slices: list[SegmentQualitySlice] = []
+
+    def _window_metrics(indices: np.ndarray, arc: BenchmarkArc | None = None) -> dict[str, float | None]:
+        lo, hi = int(indices[0]), int(indices[-1])
+        win_errors = cmd_errors[lo : hi + 1]
+        vel_hi = min(hi, len(cmd_speeds) - 1)
+        win_speeds = cmd_speeds[lo : vel_hi + 1] if vel_hi >= lo and len(cmd_speeds) else np.zeros(0)
+        jerk_lo = max(0, lo - 1)
+        jerk_hi = min(hi - 3, len(cmd_jerk_mag) - 1)
+        win_jerk = cmd_jerk_mag[jerk_lo : jerk_hi + 1] if jerk_hi >= jerk_lo and len(cmd_jerk_mag) else np.zeros(0)
+
+        m: dict[str, float | None] = {
+            "pathDeviationMaxMm": float(np.max(win_errors)) if len(win_errors) else 0.0,
+            "pathDeviationRmsMm": float(np.sqrt(np.mean(win_errors * win_errors))) if len(win_errors) else 0.0,
+            "meanSpeedMmS": float(np.mean(win_speeds)) if len(win_speeds) else None,
+            "minSpeedMmS": float(np.min(win_speeds)) if len(win_speeds) else None,
+            "discreteJerkRms": float(np.sqrt(np.mean(win_jerk * win_jerk))) if len(win_jerk) else None,
+            "discreteJerkMax": float(np.max(win_jerk)) if len(win_jerk) else None,
+        }
+        if arc is not None:
+            center, radius, _, _ = _arc_geometry(path, arc)
+            radial = np.hypot(cmd_positions[lo : hi + 1, 0] - center[0], cmd_positions[lo : hi + 1, 1] - center[1])
+            m["arcRadialShrinkMm"] = float(np.max(np.maximum(0.0, radius - radial)))
+        if following_norms is not None and act_errors is not None:
+            win_fe = following_norms[lo : hi + 1]
+            win_act = act_errors[lo : hi + 1]
+            m["followingErrorMaxMm"] = float(np.max(win_fe))
+            m["actualPathDeviationMaxMm"] = float(np.max(win_act))
+        return m
+
+    # 1. Identify micro-segment clusters vs individual lines and arcs
+    micro_run: list[tuple[int, float]] = []
+
+    def _flush_micro_cluster(cluster: list[tuple[int, float]]) -> None:
+        if len(cluster) < 3:
+            for seg_idx, seg_len in cluster:
+                mask = np.where(nearest_segments == seg_idx)[0]
+                if len(mask) == 0:
+                    continue
+                slices.append(
+                    SegmentQualitySlice(
+                        sliceId=f"line.seg-{seg_idx}",
+                        primitiveKind="line",
+                        referenceSegmentIndices=(seg_idx,),
+                        startSampleIndex=int(mask[0]),
+                        endSampleIndex=int(mask[-1]),
+                        sampleCount=int(mask[-1] - mask[0] + 1),
+                        durationSeconds=float((mask[-1] - mask[0]) * period),
+                        geometryFeatures={"lengthMm": seg_len, "curvatureInvMm": 0.0},
+                        metrics=_window_metrics(mask),
+                    )
+                )
+            return
+        seg_ids = tuple(item[0] for item in cluster)
+        lengths = [item[1] for item in cluster]
+        mask = np.where(np.isin(nearest_segments, seg_ids))[0]
+        if len(mask) == 0:
+            return
+        slices.append(
+            SegmentQualitySlice(
+                sliceId=f"micro-cluster.seg-{seg_ids[0]}-to-{seg_ids[-1]}",
+                primitiveKind="micro-segment-cluster",
+                referenceSegmentIndices=seg_ids,
+                startSampleIndex=int(mask[0]),
+                endSampleIndex=int(mask[-1]),
+                sampleCount=int(mask[-1] - mask[0] + 1),
+                durationSeconds=float((mask[-1] - mask[0]) * period),
+                geometryFeatures={
+                    "segmentCount": float(len(seg_ids)),
+                    "totalLengthMm": float(sum(lengths)),
+                    "meanChordMm": float(np.mean(lengths)),
+                },
+                metrics=_window_metrics(mask),
+            )
+        )
+
+    for seg_idx, seg_len, _, _ in ends:
+        arc = arcs_by_seg.get(seg_idx)
+        if arc is None and seg_len <= MICRO_SEGMENT_THRESHOLD_MM:
+            micro_run.append((seg_idx, seg_len))
+            continue
+        if micro_run:
+            _flush_micro_cluster(micro_run)
+            micro_run = []
+        mask = np.where(nearest_segments == seg_idx)[0]
+        if len(mask) == 0:
+            continue
+        if arc is not None:
+            _, radius, _, sweep = _arc_geometry(path, arc)
+            slices.append(
+                SegmentQualitySlice(
+                    sliceId=f"arc.seg-{seg_idx}",
+                    primitiveKind="arc",
+                    referenceSegmentIndices=(seg_idx,),
+                    startSampleIndex=int(mask[0]),
+                    endSampleIndex=int(mask[-1]),
+                    sampleCount=int(mask[-1] - mask[0] + 1),
+                    durationSeconds=float((mask[-1] - mask[0]) * period),
+                    geometryFeatures={
+                        "lengthMm": seg_len,
+                        "radiusMm": radius,
+                        "curvatureInvMm": 1.0 / max(radius, 1e-9),
+                        "sweepDeg": math.degrees(abs(sweep)),
+                    },
+                    metrics=_window_metrics(mask, arc=arc),
+                )
+            )
+        else:
+            slices.append(
+                SegmentQualitySlice(
+                    sliceId=f"line.seg-{seg_idx}",
+                    primitiveKind="line",
+                    referenceSegmentIndices=(seg_idx,),
+                    startSampleIndex=int(mask[0]),
+                    endSampleIndex=int(mask[-1]),
+                    sampleCount=int(mask[-1] - mask[0] + 1),
+                    durationSeconds=float((mask[-1] - mask[0]) * period),
+                    geometryFeatures={"lengthMm": seg_len, "curvatureInvMm": 0.0},
+                    metrics=_window_metrics(mask),
+                )
+            )
+    if micro_run:
+        _flush_micro_cluster(micro_run)
+
+    # 2. Corner transition slices around vertices with turn angle >= CORNER_ANGLE_DEGREES
+    for vertex_idx, turn_angle_deg in _reference_corners(case):
+        nearest = int(np.argmin(np.sum((cmd_positions - path[vertex_idx]) ** 2, axis=1)))
+        half_win = max(2, min(15, len(cmd_positions) // 10))
+        lo = max(0, nearest - half_win)
+        hi = min(len(cmd_positions) - 1, nearest + half_win)
+        win_indices = np.arange(lo, hi + 1, dtype=np.int64)
+        slices.append(
+            SegmentQualitySlice(
+                sliceId=f"corner.vertex-{vertex_idx}",
+                primitiveKind="corner",
+                referenceSegmentIndices=(max(0, vertex_idx - 1), min(len(path) - 2, vertex_idx)),
+                startSampleIndex=lo,
+                endSampleIndex=hi,
+                sampleCount=int(hi - lo + 1),
+                durationSeconds=float((hi - lo) * period),
+                geometryFeatures={
+                    "turnAngleDeg": float(turn_angle_deg),
+                    "vertexIndex": float(vertex_idx),
+                },
+                metrics=_window_metrics(win_indices),
+            )
+        )
+
+    return tuple(slices)
+
+
+def evaluate_cnc_export(
+    case_or_request: CncBenchmarkCase | CncSingleEvaluationRequest | Mapping[str, Any],
+    export: CncAlgorithmExport | Mapping[str, Any] | None = None,
+) -> CncQualityReport:
+    """Evaluate a single CNC algorithm export or controller trace against a frozen case."""
+    if export is None:
+        req = (
+            case_or_request
+            if isinstance(case_or_request, CncSingleEvaluationRequest)
+            else CncSingleEvaluationRequest.model_validate(case_or_request)
+        )
+    else:
+        resolved_case = (
+            case_or_request
+            if isinstance(case_or_request, CncBenchmarkCase)
+            else CncBenchmarkCase.model_validate(case_or_request)
+        )
+        resolved_export = (
+            export
+            if isinstance(export, CncAlgorithmExport)
+            else CncAlgorithmExport.model_validate(export)
+        )
+        req = CncSingleEvaluationRequest(case=resolved_case, export=resolved_export)
+
+    analysis = _analyse(req.case, req.export)
+    cmd_positions = np.asarray([sample.position_mm for sample in req.export.samples], dtype=float)
+    times = np.asarray([sample.t for sample in req.export.samples], dtype=float)
+    path = np.asarray(req.case.reference_path, dtype=float)
+    cmd_errors, nearest_segments = _path_deviations(cmd_positions, path, req.case.reference_arcs or ())
+
+    servo_metrics = _compute_servo_metrics(req.case, req.export, cmd_positions, times)
+    geometry_slices = _build_geometry_slices(req.case, req.export, cmd_positions, cmd_errors, nearest_segments)
+
+    has_violated = any(item.status == "Violated" for item in analysis.checks)
+    has_insufficient = any(item.status == "InsufficientSamples" for item in analysis.checks)
+    hard_gates_passed = not has_violated and not has_insufficient
+    outcome: Literal["Passed", "ViolatesLimits", "InsufficientSamples"] = (
+        "ViolatesLimits" if has_violated else "InsufficientSamples" if has_insufficient else "Passed"
+    )
+
+    reasons: list[str] = []
+    if has_violated:
+        violated_ids = ", ".join(item.check_id for item in analysis.checks if item.status == "Violated")
+        reasons.append(f"Export violates sampled-command hard limits: {violated_ids}")
+    elif has_insufficient:
+        reasons.append("Export has too few samples to complete all finite-difference checks")
+    else:
+        reasons.append("All sampled-command position, endpoint, path deviation, and discrete V/A/J checks passed")
+
+    if servo_metrics is not None:
+        scope: Literal["sampled-xyz-command", "sampled-xyz-command-and-servo-feedback"] = DUAL_TRACE_SCOPE
+        unchecked = DUAL_TRACE_UNCHECKED_PROPERTIES
+        reasons.append("Actual feedback positions evaluated for servo following error and actual contour deviation")
+    else:
+        scope = BENCHMARK_SCOPE
+        unchecked = UNCHECKED_PROPERTIES
+        reasons.append("Command-only export: servo following error and actual machining response are not observed")
+
+    kinematic_summary = {
+        "durationSeconds": float(analysis.metrics["durationSeconds"].value or 0.0),
+        "sampledPathDeviationMaxMm": float(analysis.metrics["sampledPathDeviationMaxMm"].value or 0.0),
+        "sampledPathDeviationRmsMm": float(analysis.metrics["sampledPathDeviationRmsMm"].value or 0.0),
+        "velocityMaxMmS": float(analysis.metrics["discreteVelocityMax"].value or 0.0),
+        "accelerationMaxMmS2": float(analysis.metrics["discreteAccelerationMax"].value or 0.0),
+        "jerkRmsMmS3": float(analysis.metrics["discreteJerkRms"].value or 0.0),
+        "jerkMaxMmS3": float(analysis.metrics["discreteJerkMax"].value or 0.0),
+        "cornerSpeedMinMmS": float(analysis.metrics["cornerSpeedMinMmS"].value or 0.0),
+        "feedUtilization": float(analysis.metrics["feedUtilization"].value or 0.0),
+    }
+
+    report = CncQualityReport(
+        caseId=req.case.case_id,
+        caseContentHash=benchmark_case_hash(req.case),
+        scope=scope,
+        uncheckedProperties=unchecked,
+        parameterRegistryId=req.export.parameter_registry_id,
+        parameters=dict(req.export.parameters) if req.export.parameters is not None else None,
+        analysis=analysis,
+        servoMetrics=servo_metrics,
+        kinematicSummary=kinematic_summary,
+        geometrySlices=geometry_slices,
+        hardGatesPassed=hard_gates_passed,
+        outcome=outcome,
+        reasons=tuple(reasons),
+        reportContentHash="",
+    )
+    content = report.model_dump(mode="json", by_alias=True, exclude_none=True)
+    content.pop("reportContentHash")
+    return report.model_copy(update={"report_content_hash": _hash(content)})
+
+
 def compare_cnc_exports(payload: CncBenchmarkRequest | Mapping[str, Any]) -> CncBenchmarkReport:
     # Revalidate model instances too: callers may use model_copy/model_construct.
     request = CncBenchmarkRequest.model_validate(payload.model_dump(mode="json", by_alias=True) if isinstance(payload, CncBenchmarkRequest) else payload)
@@ -468,6 +901,14 @@ _METRIC_LABELS = {
     "feedUtilization": "进给利用率",
     "computationSeconds": "计算耗时",
 }
+_SERVO_METRIC_LABELS = {
+    "followingErrorMaxMm": "最大跟随误差",
+    "followingErrorRmsMm": "RMS 跟随误差",
+    "actualPathDeviationMaxMm": "实测最大轮廓误差",
+    "actualPathDeviationRmsMm": "实测 RMS 轮廓误差",
+    "actualPathDeviationP99Mm": "实测 P99 轮廓误差",
+    "quadrantGlitchMaxMm": "过象限突跳峰值",
+}
 _STATUS_LABELS = {"Improved": "改善", "Regressed": "退化", "WithinTolerance": "容差内", "NotComparable": "不可比"}
 _OUTCOME_LABELS = {
     "Improved": "改善",
@@ -489,6 +930,43 @@ def _pad(text: str, width: int, *, right: bool = False) -> str:
     shown = sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in text)
     fill = " " * max(width - shown, 1 if right else 0)
     return fill + text if right else text + fill
+
+
+def render_quality_report_table(report: CncQualityReport) -> str:
+    """Plain-text single-run quality table including servo and geometric slice diagnostics."""
+    lines = [
+        f"案例 {report.case_id}（单次质量诊断）",
+        f"算法 = {report.analysis.algorithm_id} {report.analysis.algorithm_version}（{report.analysis.sample_count} 个采样，来源 {report.analysis.source_kind}）",
+        f"硬约束门禁 = {'通过 (Passed)' if report.hard_gates_passed else '超限 (ViolatesLimits)'}",
+        "",
+        _pad("规划层指标", 18) + _pad("数值", 14, right=True) + _pad("单位", 10, right=True) + "  定位",
+    ]
+    for metric_id, label in _METRIC_LABELS.items():
+        metric = report.analysis.metrics.get(metric_id)
+        if metric is None or metric.value is None:
+            continue
+        loc_str = f"第 {metric.location.sample_index} 采样 (t={metric.location.t:.4g}s)" if metric.location else "-"
+        lines.append(_pad(label, 18) + _pad(_cell(metric.value), 14, right=True) + _pad(metric.unit, 10, right=True) + f"  {loc_str}")
+
+    if report.servo_metrics:
+        lines += ["", _pad("伺服物理层指标", 18) + _pad("数值", 14, right=True) + _pad("单位", 10, right=True) + "  定位"]
+        for metric_id, label in _SERVO_METRIC_LABELS.items():
+            metric = report.servo_metrics.get(metric_id)
+            if metric is None or metric.value is None:
+                continue
+            loc_str = f"第 {metric.location.sample_index} 采样 (t={metric.location.t:.4g}s)" if metric.location else "-"
+            lines.append(_pad(label, 18) + _pad(_cell(metric.value), 14, right=True) + _pad(metric.unit, 10, right=True) + f"  {loc_str}")
+
+    if report.geometry_slices:
+        lines += ["", f"几何基元切片（共 {len(report.geometry_slices)} 段）："]
+        for slc in report.geometry_slices[:8]:
+            dev_max = _cell(slc.metrics.get("pathDeviationMaxMm"))
+            spd_min = _cell(slc.metrics.get("minSpeedMmS"))
+            lines.append(
+                f"  - [{slc.primitive_kind}] {slc.slice_id}: 样本 {slc.start_sample_index}..{slc.end_sample_index}, "
+                f"最大偏差={dev_max} mm, 最低速度={spd_min} mm/s"
+            )
+    return "\n".join(lines) + "\n"
 
 
 def render_report_table(report: CncBenchmarkReport) -> str:

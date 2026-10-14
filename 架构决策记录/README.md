@@ -39,6 +39,8 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0024](ADR-0024-现场证据采用应用层双运行编排.md) | 现场验收在应用层编排两个 R7-E 与既有 R4.1，不新增重复的 R7-F DomainPack 或安全 Claim | Accepted |
 | [ADR-0025](ADR-0025-Beckhoff见证采用控制器锁存与离线部署预检.md) | Beckhoff 见证使用控制器锁存、索引最后发布和显式 NodeId 离线预检，不引入自动 PLC 部署 | Accepted |
 | [ADR-0026](ADR-0026-R7E现场证据到R5B真实holdout投影.md) | R7-E / R4.1 现场证据经确定性应用层 Adapter 进入 R5-B，保留原始哈希与安全边界 | Accepted |
+| [ADR-0028](ADR-0028-先交付CNC算法对比与回归工作流.md) | 先交付外部 CNC 算法 A/B 对比与回归工作流，保留既有数学与现场合同资产 | Proposed |
+| [ADR-0029](ADR-0029-高维CNC参数质量评估与稀疏推荐闭环.md) | 建立 30+ 维 CNC 参数双层质量评估、两阶段稀疏学习、离线/实机残差融合与 Top-K 稀疏推荐闭环 | Proposed |
 
 ## 生命周期规则
 

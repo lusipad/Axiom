@@ -2,6 +2,10 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CncBenchmarkWorkbench } from "./features/benchmark/CncBenchmarkWorkbench";
 import { XYChart } from "./charts";
 import type { ChartSeries } from "./charts";
+import { LabIntro } from "./guide/LabIntro";
+import { PipelineMap } from "./guide/PipelineMap";
+import { WelcomeOverlay } from "./guide/WelcomeOverlay";
+import "./guide/styles.css";
 
 import {
   executeExperiment,
@@ -257,6 +261,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [pointBusy, setPointBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPipeline, setShowPipeline] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
 
   const hydratePointSpec = (next: ExperimentSpec) => {
@@ -426,6 +431,7 @@ export function App() {
       <nav className="primary-navigation" aria-label="主要工作流">
         <button type="button" className={`button ${activeLab === "benchmark" ? "active" : ""}`} onClick={() => setActiveLab("benchmark")}>算法 A/B 对比</button>
         <button type="button" className="button" aria-expanded={showLegacy} onClick={() => setShowLegacy(value => !value)}>参考与实验功能</button>
+        <button type="button" className="button" onClick={() => setShowPipeline(true)}>实验路径</button>
         <span className="legacy-navigation-note">先比较实际算法，再按需要查看数学与设备证据</span>
       </nav>
       {showLegacy && <div className="lab-switcher" aria-label="领域实验室">
@@ -453,6 +459,9 @@ export function App() {
         ))}
       </div>}
 
+      {activeLab !== "benchmark" && (
+        <LabIntro lab={activeLab} onOpenPipeline={() => setShowPipeline(true)} />
+      )}
       {activeLab === "benchmark" ? <CncBenchmarkWorkbench /> : activeLab === "point" ? (
         <main className="workspace">
           <aside className="config-panel">
@@ -659,6 +668,18 @@ export function App() {
           <span>runner: <code>{pointRunnerLabel || "pending"}</code></span>
           <span className="statusbar-right">{report?.armResults.length ?? 0}/2 arms · local static registry</span>
         </footer>
+      )}
+      <WelcomeOverlay />
+      {showPipeline && (
+        <PipelineMap
+          active={activeLab}
+          onSelect={(lab) => {
+            setActiveLab(lab);
+            setShowLegacy(true);
+            setShowPipeline(false);
+          }}
+          onClose={() => setShowPipeline(false)}
+        />
       )}
     </div>
   );

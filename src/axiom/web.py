@@ -628,7 +628,6 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         response_model=R6ExamplePayload,
         response_model_by_alias=True,
         response_model_exclude_none=True,
-        response_model_exclude_unset=True,
     )
     def optimization_r6_example(
         scenarioId: str = "canonical-head-table-offline-pareto",
@@ -644,7 +643,6 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         response_model=R6ExamplePayload,
         response_model_by_alias=True,
         response_model_exclude_none=True,
-        response_model_exclude_unset=True,
     )
     def optimization_r6_search(search_request: OptimizationSearchRequest) -> R6ExamplePayload:
         optimization_api = _load_optimization_r6_api()

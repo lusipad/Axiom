@@ -1,1 +1,1 @@
-{"goal": {}}
+{"schemaId": "optimization.search-request@1", "scenarioId": "canonical-head-table-offline-pareto", "goal": {"goalId": "optimization.r6.balanced-goal@1", "objectiveIds": ["cycleTimeSeconds", "linearFollowingErrorMaxMm", "commandSampleCount"]}, "grid": {"feedOverrides": [0.7, 0.85, 1.0], "samplePeriods": [0.04, 0.08]}}

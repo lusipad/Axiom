@@ -1,5 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CncBenchmarkWorkbench } from "./features/benchmark/CncBenchmarkWorkbench";
+import { XYChart } from "./charts";
+import type { ChartSeries } from "./charts";
 
 import {
   executeExperiment,
@@ -31,6 +33,93 @@ import type {
 
 type Lab = "benchmark" | "point" | "five-axis-f1" | "five-axis-f2" | "five-axis-f3" | "five-axis-f4" | "machine-r3" | "physical-r4" | "intelligence-r5" | "intelligence-r5b" | "optimization-r6" | "control-r7" | "control-r7b" | "control-r7c" | "control-r7d" | "field-evidence";
 type PointView = "geometry" | "metrics";
+
+interface LabMeta {
+  title: string;
+  manifest: string;
+  boundary: string;
+}
+
+const LAB_META: Record<Lab, LabMeta> = {
+  benchmark: { title: "CNC 算法对比", manifest: "XYZ · 采样命令评估", boundary: "同一案例 · 两个算法版本" },
+  point: { title: "Experiment Workbench", manifest: "", boundary: "" },
+  "five-axis-f1": { title: "Five-Axis Geometry Reference Workbench", manifest: "five-axis.f1-math-stage-manifest@1", boundary: "MATH ONLY · NOT DEVICE SAFE" },
+  "five-axis-f2": { title: "Five-Axis Kinematics Reference Workbench", manifest: "five-axis.f2-math-stage-manifest@1", boundary: "MATH ONLY · NOT DEVICE SAFE" },
+  "five-axis-f3": { title: "Five-Axis Time & Sampling Lab", manifest: "five-axis.f3-math-stage-manifest@1", boundary: "MATH ONLY · NOT DEVICE SAFE" },
+  "five-axis-f4": { title: "Five-Axis Gate Acceptance Lab", manifest: "five-axis.f4-math-stage-manifest@1", boundary: "MATH ONLY · NOT DEVICE SAFE" },
+  "machine-r3": { title: "Machine Read-only Lab", manifest: "machine.r3-manifest@1", boundary: "READ ONLY · NOT DEVICE SAFE" },
+  "physical-r4": { title: "Physical R4 Validation Workbench", manifest: "physical.r4-manifest@1", boundary: "MODEL VALIDATION · NOT DEVICE SAFE" },
+  "intelligence-r5": { title: "Intelligence R5 Evidence Lab", manifest: "intelligence.r5-manifest@1", boundary: "SYNTHETIC LEARNING · REAL GENERALIZATION OPEN · NOT DEVICE SAFE" },
+  "intelligence-r5b": { title: "Intelligence R5-B Reality Gate", manifest: "intelligence.r5b-manifest@1", boundary: "REAL HOLDOUT VALIDATION · REAL GENERALIZATION OPEN · NOT DEVICE SAFE" },
+  "optimization-r6": { title: "Optimization R6 Recommendation Lab", manifest: "optimization.r6-manifest@1", boundary: "OFFLINE RECOMMENDATION · NO DEVICE WRITE · REALITY OPEN" },
+  "control-r7": { title: "Controlled Runtime R7-A", manifest: "control.r7-manifest@1", boundary: "SHADOW ONLY · NO DEVICE AUTHORITY · DEPLOYMENT OPEN" },
+  "control-r7b": { title: "Deployment Shadow Readiness R7-B", manifest: "control.r7b-manifest@1", boundary: "READINESS ONLY · VENDOR UNSELECTED · NO DEVICE WRITE · REALITY OPEN" },
+  "control-r7c": { title: "Windows OPC UA Transport R7-C", manifest: "control.r7c-manifest@1", boundary: "VIRTUAL OPC UA ONLY · ZERO WRITE · VENDOR OPEN · REALITY OPEN" },
+  "control-r7d": { title: "Beckhoff TwinCAT Vendor Gate R7-D", manifest: "control.r7d-manifest@1", boundary: "BECKHOFF PROFILE · READ ONLY · VENDOR GATE · REALITY OPEN" },
+  "field-evidence": { title: "Beckhoff Field Evidence R7-E / R4.1", manifest: "control.r7e-manifest@1 + physical.r4.1-manifest@1", boundary: "FIELD EVIDENCE · ZERO WRITE · REALITY OPEN · NOT DEVICE SAFE" },
+};
+
+interface LabEntry {
+  id: Lab;
+  index: string;
+  name: string;
+  tag?: string;
+  desc: string;
+}
+
+const LAB_GROUPS: Array<{ id: string; label: string; labs: LabEntry[] }> = [
+  {
+    id: "foundation",
+    label: "基础",
+    labs: [{ id: "point", index: "01", name: "Point Lab", tag: "点序列实验", desc: "同一输入跑两版算法，严格比较指标与证据" }],
+  },
+  {
+    id: "five-axis",
+    label: "五轴",
+    labs: [
+      { id: "five-axis-f1", index: "02", name: "Five-Axis", tag: "F1 几何", desc: "路径分段与碰撞包围盒的数学校验" },
+      { id: "five-axis-f2", index: "03", name: "Five-Axis", tag: "F2 运动学", desc: "关节坐标随路径进度 σ 的连续曲线" },
+      { id: "five-axis-f3", index: "04", name: "Five-Axis", tag: "F3 时间", desc: "σ(t) 时间分段与采样重建记录" },
+      { id: "five-axis-f4", index: "05", name: "Five-Axis", tag: "F4 验收", desc: "门槛指标的通过判定与封存证据" },
+    ],
+  },
+  {
+    id: "physical",
+    label: "机床与物理",
+    labs: [
+      { id: "machine-r3", index: "06", name: "Machine", tag: "R3 画像", desc: "机床结构与轴参数，只读" },
+      { id: "physical-r4", index: "07", name: "Physical", tag: "R4 验证", desc: "指令 / 仿真 / 实测信号对比" },
+    ],
+  },
+  {
+    id: "intelligence",
+    label: "智能",
+    labs: [
+      { id: "intelligence-r5", index: "08", name: "Intelligence", tag: "R5-A 合成", desc: "合成数据学习的证据评估" },
+      { id: "intelligence-r5b", index: "09", name: "Intelligence", tag: "R5-B 真实门", desc: "真实留出集上的泛化判定" },
+    ],
+  },
+  {
+    id: "optimization",
+    label: "优化",
+    labs: [{ id: "optimization-r6", index: "10", name: "Optimization", tag: "R6 推荐", desc: "离线参数推荐，不写设备" }],
+  },
+  {
+    id: "control",
+    label: "控制",
+    labs: [
+      { id: "control-r7", index: "11", name: "Controlled", tag: "R7-A 运行", desc: "影子模式受控运行，无设备权限" },
+      { id: "control-r7b", index: "12", name: "Deployment", tag: "R7-B 就绪", desc: "部署影子就绪评估，未定厂商" },
+      { id: "control-r7c", index: "13", name: "OPC UA", tag: "R7-C 传输", desc: "Windows OPC UA 虚拟传输验证" },
+      { id: "control-r7d", index: "14", name: "Beckhoff", tag: "R7-D 厂商门", desc: "TwinCAT 厂商准入评估，只读" },
+    ],
+  },
+  {
+    id: "field",
+    label: "现场",
+    labs: [{ id: "field-evidence", index: "15", name: "Field Evidence", tag: "R7-E 现场", desc: "Beckhoff 现场证据评估，只读采集" }],
+  },
+];
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -108,14 +197,6 @@ function parsePoints(value: string): Point[] {
   return points as Point[];
 }
 
-interface ProjectedPath {
-  key: string;
-  label: string;
-  tone: "reference" | "baseline" | "candidate";
-  d: string;
-  dots: Array<[number, number]>;
-}
-
 function isOrderedPointArtifact(value: unknown): value is { points: Point[] } {
   return Boolean(
     value &&
@@ -126,9 +207,9 @@ function isOrderedPointArtifact(value: unknown): value is { points: Point[] } {
   );
 }
 
-function projectPaths(spec: ExperimentSpec, report: ExperimentReport | null): ProjectedPath[] {
+function buildChartSeries(spec: ExperimentSpec, report: ExperimentReport | null): ChartSeries[] {
   const sources = [
-    { key: "reference", label: "共享输入", tone: "reference" as const, points: spec.sharedInput.points },
+    { key: "reference", label: "共享输入", tone: "reference" as const, dashed: true, points: spec.sharedInput.points },
     ...(report?.armResults ?? []).flatMap((arm, index) => {
       const artifact = arm.runBundle?.observation?.artifact;
       return isOrderedPointArtifact(artifact)
@@ -136,36 +217,19 @@ function projectPaths(spec: ExperimentSpec, report: ExperimentReport | null): Pr
             key: arm.armId,
             label: arm.armId,
             tone: index === 0 ? "baseline" as const : "candidate" as const,
+            dashed: false,
             points: artifact.points,
           }]
         : [];
     }),
   ];
-  const all = sources.flatMap((source) => source.points);
-  if (all.length === 0) return [];
-  const xValues = all.map((point) => point[0] ?? 0);
-  const yValues = all.map((point) => point[1] ?? 0);
-  const minX = Math.min(...xValues);
-  const maxX = Math.max(...xValues);
-  const minY = Math.min(...yValues);
-  const maxY = Math.max(...yValues);
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  const project = (point: Point): [number, number] => [
-    54 + (((point[0] ?? 0) - minX) / spanX) * 532,
-    306 - (((point[1] ?? 0) - minY) / spanY) * 240,
-  ];
-
-  return sources.map((source) => {
-    const dots = source.points.map(project);
-    return {
-      key: source.key,
-      label: source.label,
-      tone: source.tone,
-      d: dots.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`).join(" "),
-      dots,
-    };
-  });
+  return sources.map((source) => ({
+    id: source.key,
+    label: source.label,
+    tone: source.tone,
+    dashed: source.dashed,
+    points: source.points.map((point) => [point[0] ?? 0, point[1] ?? 0] as [number, number]),
+  }));
 }
 
 function armMetric(arm: ExperimentArmResult | undefined, metricId: string): string {
@@ -229,7 +293,7 @@ export function App() {
     };
   }, [needsLegacy]);
 
-  const pointPaths = useMemo(() => (spec ? projectPaths(spec, report) : []), [spec, report]);
+  const pointSeries = useMemo(() => (spec ? buildChartSeries(spec, report) : []), [spec, report]);
   const baseline = report?.armResults[0];
   const candidate = report?.armResults[1];
   const compatible = report?.comparison?.compatibility.compatible;
@@ -238,66 +302,10 @@ export function App() {
   const pointRunnerLabel = [...new Set(spec?.arms.map((arm) => arm.runnerId ?? "unknown-runner") ?? [])].join(", ");
   const pointBusyState = loading || pointBusy;
   const visibleError = activeLab === "benchmark" ? null : error;
-  const workbenchTitle = activeLab === "benchmark" ? "CNC 算法对比"
-    : activeLab === "point"
-    ? "Experiment Workbench"
-    : activeLab === "five-axis-f1"
-      ? "Five-Axis Geometry Reference Workbench"
-      : activeLab === "five-axis-f2"
-        ? "Five-Axis Kinematics Reference Workbench"
-        : activeLab === "five-axis-f3"
-          ? "Five-Axis Time & Sampling Lab"
-          : activeLab === "five-axis-f4"
-            ? "Five-Axis Gate Acceptance Lab"
-            : activeLab === "intelligence-r5"
-              ? "Intelligence R5 Evidence Lab"
-            : activeLab === "intelligence-r5b"
-              ? "Intelligence R5-B Reality Gate"
-            : activeLab === "physical-r4"
-              ? "Physical R4 Validation Workbench"
-            : activeLab === "optimization-r6"
-              ? "Optimization R6 Recommendation Lab"
-            : activeLab === "control-r7"
-              ? "Controlled Runtime R7-A"
-            : activeLab === "control-r7b"
-              ? "Deployment Shadow Readiness R7-B"
-            : activeLab === "control-r7c"
-              ? "Windows OPC UA Transport R7-C"
-            : activeLab === "control-r7d"
-              ? "Beckhoff TwinCAT Vendor Gate R7-D"
-            : activeLab === "field-evidence"
-              ? "Beckhoff Field Evidence R7-E / R4.1"
-            : "Machine Read-only Lab";
-  const activeManifestId = activeLab === "benchmark" ? "XYZ · 采样命令评估"
-    : activeLab === "point"
-    ? spec?.experimentId ?? "loading"
-    : activeLab === "five-axis-f1"
-      ? "five-axis.f1-math-stage-manifest@1"
-      : activeLab === "five-axis-f2"
-        ? "five-axis.f2-math-stage-manifest@1"
-        : activeLab === "five-axis-f3"
-          ? "five-axis.f3-math-stage-manifest@1"
-          : activeLab === "five-axis-f4"
-            ? "five-axis.f4-math-stage-manifest@1"
-            : activeLab === "intelligence-r5"
-              ? "intelligence.r5-manifest@1"
-            : activeLab === "intelligence-r5b"
-              ? "intelligence.r5b-manifest@1"
-            : activeLab === "physical-r4"
-              ? "physical.r4-manifest@1"
-            : activeLab === "optimization-r6"
-              ? "optimization.r6-manifest@1"
-            : activeLab === "control-r7"
-              ? "control.r7-manifest@1"
-            : activeLab === "control-r7b"
-              ? "control.r7b-manifest@1"
-            : activeLab === "control-r7c"
-              ? "control.r7c-manifest@1"
-            : activeLab === "control-r7d"
-              ? "control.r7d-manifest@1"
-            : activeLab === "field-evidence"
-              ? "control.r7e-manifest@1 + physical.r4.1-manifest@1"
-            : "machine.r3-manifest@1";
+  const demoMode = import.meta.env.VITE_DEMO === "1";
+  const labMeta = LAB_META[activeLab];
+  const workbenchTitle = labMeta.title;
+  const activeManifestId = activeLab === "point" ? spec?.experimentId ?? "loading" : labMeta.manifest;
 
   const buildPointSpec = (): ExperimentSpec => {
     if (!spec) throw new Error("实验模板尚未加载。");
@@ -382,8 +390,8 @@ export function App() {
           </div>
         </div>
         <div className="topbar-context">
-          <span className={`connection-dot ${visibleError ? "offline" : ""}`} />
-          <span className="context-label">{activeLab === "benchmark" ? "离线结果比较" : visibleError ? "需要检查" : "本地 API 可用"}</span>
+          <span className={`connection-dot ${visibleError || demoMode ? "offline" : ""}`} />
+          <span className="context-label">{demoMode ? "静态演示模式" : activeLab === "benchmark" ? "离线结果比较" : visibleError ? "需要检查" : "本地 API 可用"}</span>
           <code>{activeManifestId}</code>
         </div>
         <div className="topbar-actions">
@@ -399,30 +407,7 @@ export function App() {
               </button>
             </>
           ) : (
-            <span className="f1-top-boundary">
-              {activeLab === "benchmark" ? "同一案例 · 两个算法版本"
-                : activeLab === "machine-r3"
-                ? "READ ONLY · NOT DEVICE SAFE"
-                : activeLab === "intelligence-r5"
-                  ? "SYNTHETIC LEARNING · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
-                : activeLab === "intelligence-r5b"
-                  ? "REAL HOLDOUT VALIDATION · REAL GENERALIZATION OPEN · NOT DEVICE SAFE"
-                : activeLab === "physical-r4"
-                  ? "MODEL VALIDATION · NOT DEVICE SAFE"
-                : activeLab === "optimization-r6"
-                  ? "OFFLINE RECOMMENDATION · NO DEVICE WRITE · REALITY OPEN"
-                : activeLab === "control-r7"
-                  ? "SHADOW ONLY · NO DEVICE AUTHORITY · DEPLOYMENT OPEN"
-                : activeLab === "control-r7b"
-                  ? "READINESS ONLY · VENDOR UNSELECTED · NO DEVICE WRITE · REALITY OPEN"
-                : activeLab === "control-r7c"
-                  ? "VIRTUAL OPC UA ONLY · ZERO WRITE · VENDOR OPEN · REALITY OPEN"
-                : activeLab === "control-r7d"
-                  ? "BECKHOFF PROFILE · READ ONLY · VENDOR GATE · REALITY OPEN"
-                : activeLab === "field-evidence"
-                  ? "FIELD EVIDENCE · ZERO WRITE · REALITY OPEN · NOT DEVICE SAFE"
-                  : "MATH ONLY · NOT DEVICE SAFE"}
-            </span>
+            <span className="boundary-badge">{labMeta.boundary}</span>
           )}
         </div>
       </header>
@@ -444,51 +429,28 @@ export function App() {
         <span className="legacy-navigation-note">先比较实际算法，再按需要查看数学与设备证据</span>
       </nav>
       {showLegacy && <div className="lab-switcher" aria-label="领域实验室">
-        <button className={`lab ${activeLab === "point" ? "active" : ""}`} type="button" onClick={() => setActiveLab("point")}>
-          <span>01</span>Point Lab
-        </button>
-        <button className={`lab ${activeLab === "five-axis-f1" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f1")}>
-          <span>02</span>Five-Axis<small>F1</small>
-        </button>
-        <button className={`lab ${activeLab === "five-axis-f2" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f2")}>
-          <span>03</span>Five-Axis<small>F2</small>
-        </button>
-        <button className={`lab ${activeLab === "five-axis-f3" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f3")}>
-          <span>04</span>Five-Axis<small>F3</small>
-        </button>
-        <button className={`lab ${activeLab === "five-axis-f4" ? "active" : ""}`} type="button" onClick={() => setActiveLab("five-axis-f4")}>
-          <span>05</span>Five-Axis<small>F4</small>
-        </button>
-        <button className={`lab ${activeLab === "machine-r3" ? "active" : ""}`} type="button" onClick={() => setActiveLab("machine-r3")}>
-          <span>06</span>Machine<small>R3</small>
-        </button>
-        <button className={`lab ${activeLab === "physical-r4" ? "active" : ""}`} type="button" onClick={() => setActiveLab("physical-r4")}>
-          <span>07</span>Physical<small>R4</small>
-        </button>
-        <button className={`lab ${activeLab === "intelligence-r5" ? "active" : ""}`} type="button" onClick={() => setActiveLab("intelligence-r5")}>
-          <span>08</span>Intelligence<small>R5-A</small>
-        </button>
-        <button className={`lab ${activeLab === "intelligence-r5b" ? "active" : ""}`} type="button" onClick={() => setActiveLab("intelligence-r5b")}>
-          <span>09</span>Intelligence<small>R5-B</small>
-        </button>
-        <button className={`lab ${activeLab === "optimization-r6" ? "active" : ""}`} type="button" onClick={() => setActiveLab("optimization-r6")}>
-          <span>10</span>Optimization<small>R6</small>
-        </button>
-        <button className={`lab ${activeLab === "control-r7" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7")}>
-          <span>11</span>Controlled<small>R7-A</small>
-        </button>
-        <button className={`lab ${activeLab === "control-r7b" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7b")}>
-          <span>12</span>Deployment<small>R7-B</small>
-        </button>
-        <button className={`lab ${activeLab === "control-r7c" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7c")}>
-          <span>13</span>OPC UA<small>R7-C</small>
-        </button>
-        <button className={`lab ${activeLab === "control-r7d" ? "active" : ""}`} type="button" onClick={() => setActiveLab("control-r7d")}>
-          <span>14</span>Beckhoff<small>R7-D</small>
-        </button>
-        <button className={`lab ${activeLab === "field-evidence" ? "active" : ""}`} type="button" onClick={() => setActiveLab("field-evidence")}>
-          <span>15</span>Field Evidence<small>R7-E / R4.1</small>
-        </button>
+        {LAB_GROUPS.map((group) => (
+          <section className="lab-group" key={group.id}>
+            <h3 className="lab-group-label">{group.label}</h3>
+            <div className="lab-group-cards">
+              {group.labs.map((lab) => (
+                <button
+                  key={lab.id}
+                  className={`lab ${activeLab === lab.id ? "active" : ""}`}
+                  type="button"
+                  onClick={() => setActiveLab(lab.id)}
+                >
+                  <span className="lab-head">
+                    <span className="lab-index">{lab.index}</span>
+                    <span className="lab-name">{lab.name}</span>
+                    {lab.tag && <small>{lab.tag}</small>}
+                  </span>
+                  <span className="lab-desc">{lab.desc}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>}
 
       {activeLab === "benchmark" ? <CncBenchmarkWorkbench /> : activeLab === "point" ? (
@@ -567,33 +529,19 @@ export function App() {
             {pointView === "geometry" ? (
               <div className="geometry-view">
                 <div className="plot-toolbar">
-                  <div className="legend">
-                    {pointPaths.map((path) => <span className={`legend-${path.tone}`} key={path.key}><i />{path.label}</span>)}
-                  </div>
                   <code>
                     {spec?.sharedInput.semantics?.coordinateFrame ?? "unknown frame"} · XY
                     {pointDimension > 2 ? ` projection of ${pointDimension}D` : ""} · {pointUnit}
                   </code>
                 </div>
                 <div className="plot-stage">
-                  <svg viewBox="0 0 640 360" role="img" aria-label="共享输入与两个 Subject 输出的轨迹比较">
-                    <defs>
-                      <pattern id="minor-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                        <path d="M 32 0 L 0 0 0 32" fill="none" className="minor-grid" />
-                      </pattern>
-                    </defs>
-                    <rect width="640" height="360" fill="url(#minor-grid)" />
-                    <line x1="32" y1="306" x2="610" y2="306" className="axis-line" />
-                    <line x1="54" y1="32" x2="54" y2="328" className="axis-line" />
-                    {pointPaths.map((path) => (
-                      <g className={`path-series path-${path.tone}`} key={path.key}>
-                        <path d={path.d} />
-                        {path.dots.map(([x, y], index) => <circle key={`${path.key}-${index}`} cx={x} cy={y} r={path.tone === "reference" ? 2.5 : 3.5} />)}
-                      </g>
-                    ))}
-                    <text x="600" y="326" className="axis-label">X</text>
-                    <text x="37" y="42" className="axis-label">Y</text>
-                  </svg>
+                  <XYChart
+                    series={pointSeries}
+                    ariaLabel="共享输入与两个 Subject 输出的轨迹比较"
+                    xLabel="X"
+                    yLabel="Y"
+                    height={380}
+                  />
                   {!report && !pointBusyState && <div className="empty-overlay">配置已加载，运行实验以生成双臂观测。</div>}
                 </div>
               </div>

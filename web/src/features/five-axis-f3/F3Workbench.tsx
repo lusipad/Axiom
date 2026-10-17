@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { LineChart } from "../../charts";
+import type { ChartMarker, ChartSeries } from "../../charts";
 import type { Catalog, Claim } from "../../types";
 import { executeF3Example, loadF3Example, loadF3Manifest, loadF3Scenarios } from "./api";
 import type {
-  ContinuousTrajectorySpan,
   F3ExamplePayload,
   F3MathStageManifest,
   F3RunBundle,
@@ -91,26 +92,6 @@ function timeSpanPoints(trajectory?: M4ContinuousTrajectory): Array<[number, num
     points.push([span.endTimeSeconds, span.sigmaEnd]);
   });
   return points;
-}
-
-function sigmaPath(trajectory?: M4ContinuousTrajectory): string {
-  const points = timeSpanPoints(trajectory);
-  if (!points.length) return "";
-  const times = points.map(([time]) => time);
-  const sigmas = points.map(([, sigma]) => sigma);
-  const minT = Math.min(...times);
-  const maxT = Math.max(...times) || 1;
-  const minSigma = Math.min(...sigmas);
-  const maxSigma = Math.max(...sigmas) || 1;
-  const spanT = maxT - minT || 1;
-  const spanSigma = maxSigma - minSigma || 1;
-  return points
-    .map(([time, sigma], index) => {
-      const x = 44 + ((time - minT) / spanT) * 556;
-      const y = 250 - ((sigma - minSigma) / spanSigma) * 170;
-      return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
 }
 
 function timeForSigma(trajectory: M4ContinuousTrajectory | undefined, sigma: number): number {
@@ -301,7 +282,6 @@ export function F3Workbench({ catalog }: { catalog: Catalog | null }) {
       : bundle
         ? "Inconclusive"
         : "Pending";
-  const effectivePath = sigmaPath(trajectory);
   const nodeCards = axisPath?.nodeEvents.map((node) => {
     const nodeConstraint = profile?.nodeConstraints.find((item) => item.nodeId === node.nodeId || Math.abs(item.sigma - node.sigma) < 1e-9);
     return {
@@ -315,6 +295,13 @@ export function F3Workbench({ catalog }: { catalog: Catalog | null }) {
   }) ?? [];
   const dwellSpans = trajectory?.spans.filter((item) => item.spanKind === "dwell") ?? [];
   const axisUsageMap = new Map(trajectory?.verification.axisConstraintUsage.map((item) => [item.axisId, item]) ?? []);
+  const sigmaSeries: ChartSeries[] = [{
+    id: "sigma",
+    label: "σ(t)",
+    points: timeSpanPoints(trajectory),
+    tone: "candidate",
+  }];
+  const sigmaMarkers: ChartMarker[] = nodeCards.map((node) => ({ x: node.timeSeconds, tone: node.kind }));
 
   return (
     <>
@@ -421,32 +408,15 @@ export function F3Workbench({ catalog }: { catalog: Catalog | null }) {
               </header>
               <div className="f3-time-grid">
                 <div className="f3-time-plot">
-                  <svg viewBox="0 0 640 280" role="img" aria-label="sigma(t) 与时间分段">
-                    <defs>
-                      <pattern id="f3-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                        <path d="M 32 0 L 0 0 0 32" className="f3-minor-grid" fill="none" />
-                      </pattern>
-                      <linearGradient id="f3-line" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="var(--f3-accent-2)" />
-                        <stop offset="100%" stopColor="var(--f3-accent)" />
-                      </linearGradient>
-                    </defs>
-                    <rect width="640" height="280" fill="url(#f3-grid)" />
-                    <line x1="40" y1="232" x2="604" y2="232" className="f3-axis-line" />
-                    <line x1="44" y1="28" x2="44" y2="244" className="f3-axis-line" />
-                    <path d={effectivePath} className="f3-time-path" />
-                    {axisPath?.nodeEvents.map((node) => (
-                      <circle
-                        key={node.nodeId}
-                        cx={44 + ((timeForSigma(trajectory, node.sigma) - (trajectory?.spans[0]?.startTimeSeconds ?? 0)) / (((trajectory?.spans.at(-1)?.endTimeSeconds ?? 1) - (trajectory?.spans[0]?.startTimeSeconds ?? 0)) || 1)) * 556}
-                        cy={250 - (node.sigma / (Math.max(...(trajectory?.spans.flatMap((span) => [span.sigmaStart, span.sigmaEnd]) ?? [1])) || 1)) * 170}
-                        r="3"
-                        className={`f3-node-dot kind-${markerKind(node.eventType)}`}
-                      />
-                    ))}
-                    <text x="592" y="250" className="f3-axis-label">t</text>
-                    <text x="34" y="38" className="f3-axis-label">σ</text>
-                  </svg>
+                  <LineChart
+                    series={sigmaSeries}
+                    markers={sigmaMarkers}
+                    ariaLabel="sigma(t) 与时间分段"
+                    xLabel="t"
+                    yLabel="σ"
+                    caption="sigma(t) 与时间分段"
+                    xFormat={(value) => `${formatValue(value, 2)} s`}
+                  />
                   <div className="f3-time-stats">
                     <div><span>duration</span><strong>{formatValue(trajectory?.verification.totalDurationSeconds ?? m5Artifact?.duration, 4)} s</strong></div>
                     <div><span>moving</span><strong>{formatValue((trajectory?.spans ?? []).filter((item) => item.spanKind === "move").reduce((sum, span) => sum + (span.endTimeSeconds - span.startTimeSeconds), 0), 4)} s</strong></div>

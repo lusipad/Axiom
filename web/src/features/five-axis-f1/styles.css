@@ -1,5 +1,4 @@
 .f1-workspace { grid-template-columns: 300px minmax(560px, 1fr) 340px; }
-.f1-top-boundary { padding: 5px 8px; color: #d99b82; border: 1px solid #724936; background: #251b18; font: 8px var(--mono); letter-spacing: .08em; }
 .f1-analysis-panel { grid-template-rows: 48px minmax(0, 1fr) auto; }
 .f1-analysis-body { min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .f1-scenario-description { min-height: 42px; margin: 10px 0; color: #96a8b0; font-size: 10px; line-height: 1.55; }
@@ -27,27 +26,6 @@
 .f1-domain-badge.continuous { color: #8ee2b4; border-color: #347855; background: #12261c; }
 .f1-domain-badge.grid { color: #e1c275; border-color: #6b5b31; background: #282314; }
 .f1-evidence-badge { color: #91bfe0; border-color: #385a70; background: #13212a; }
-
-.f1-plot-stage { position: relative; min-height: 260px; overflow: hidden; border: 1px solid #223038; background: radial-gradient(circle at 50% 45%, rgba(75,102,116,.18), transparent 67%); }
-.f1-plot-stage svg { width: 100%; height: 100%; min-height: 300px; }
-.f1-reference-path, .f1-candidate-path { fill: none; vector-effect: non-scaling-stroke; }
-.f1-reference-path { stroke: #899ba4; stroke-width: 5; opacity: .64; stroke-dasharray: 7 5; }
-.f1-candidate-path { stroke: var(--green); stroke-width: 2.5; }
-.f1-reference-node { fill: #121a1e; stroke: #8fa0a8; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.f1-candidate-node { fill: #10171b; stroke: var(--green); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.f1-obstacle rect { vector-effect: non-scaling-stroke; }
-.f1-obstacle text { font: 7px var(--mono); }
-.f1-obstacle-stock rect { fill: rgba(102,169,216,.08); stroke: #42657c; stroke-width: 1; }
-.f1-obstacle-stock text { fill: #658da6; }
-.f1-obstacle-fixture rect { fill: rgba(231,131,89,.12); stroke: #9a5d43; stroke-width: 1.5; }
-.f1-obstacle-fixture text { fill: #d58f72; }
-.f1-plot-legend { position: absolute; left: 11px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px; padding: 5px 7px; color: #82939b; background: rgba(13,19,23,.82); font-size: 8px; }
-.f1-plot-legend span { display: flex; gap: 5px; align-items: center; }
-.f1-plot-legend i { width: 12px; height: 2px; background: #7f9199; }
-.f1-plot-legend i.candidate { background: var(--green); }
-.f1-plot-legend i.stock { background: var(--blue); }
-.f1-plot-legend i.fixture { background: var(--orange); }
-.f1-projection-label { position: absolute; right: 11px; bottom: 10px; color: #62747c; font: 8px var(--mono); }
 
 .f1-correspondence-strip { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #293840; border-top: 0; background: #111a1e; }
 .f1-correspondence-strip > div { min-width: 0; padding: 8px 10px; border-right: 1px solid #293840; }
@@ -113,7 +91,6 @@
   .f1-correspondence-strip { grid-template-columns: 1fr 1fr; }
   .f1-correspondence-strip > div:nth-child(2) { border-right: 0; }
   .f1-correspondence-strip > div:nth-child(-n+2) { border-bottom: 1px solid #293840; }
-  .f1-projection-label { display: none; }
 }
 
 .f1-status-pass { color: var(--green); }

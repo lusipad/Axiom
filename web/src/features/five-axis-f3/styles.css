@@ -179,53 +179,44 @@
     #0c1317;
 }
 
-.f3-time-plot svg {
-  width: 100%;
-  height: 280px;
-  display: block;
+.f3-time-plot .ax-chart {
+  padding: 6px 8px 0;
 }
 
-.f3-minor-grid {
-  stroke: #1a272e;
-  stroke-width: 1;
+.f3-workspace .ax-chart-marker.ax-marker-start line,
+.f3-workspace .ax-chart-marker.ax-marker-restart line {
+  stroke: var(--green);
 }
 
-.f3-axis-line {
-  stroke: #37505c;
-  stroke-width: 1;
+.f3-workspace .ax-chart-marker.ax-marker-start circle,
+.f3-workspace .ax-chart-marker.ax-marker-restart circle {
+  fill: var(--green);
 }
 
-.f3-axis-label {
-  fill: #677c85;
-  font: 8px var(--mono);
+.f3-workspace .ax-chart-marker.ax-marker-move line,
+.f3-workspace .ax-chart-marker.ax-marker-end line {
+  stroke: var(--blue);
 }
 
-.f3-time-path {
-  fill: none;
-  stroke: url(#f3-line);
-  stroke-width: 2.4;
-  vector-effect: non-scaling-stroke;
+.f3-workspace .ax-chart-marker.ax-marker-move circle,
+.f3-workspace .ax-chart-marker.ax-marker-end circle {
+  fill: var(--blue);
 }
 
-.f3-node-dot {
-  fill: #11191d;
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+.f3-workspace .ax-chart-marker.ax-marker-dwell line {
+  stroke: var(--yellow);
 }
 
-.f3-node-dot.kind-dwell {
-  stroke: var(--f3-accent-2);
+.f3-workspace .ax-chart-marker.ax-marker-dwell circle {
+  fill: var(--yellow);
 }
 
-.f3-node-dot.kind-stop {
-  stroke: #ff8f70;
+.f3-workspace .ax-chart-marker.ax-marker-stop line {
+  stroke: var(--orange);
 }
 
-.f3-node-dot.kind-start,
-.f3-node-dot.kind-restart,
-.f3-node-dot.kind-move,
-.f3-node-dot.kind-end {
-  stroke: var(--f3-accent);
+.f3-workspace .ax-chart-marker.ax-marker-stop circle {
+  fill: var(--orange);
 }
 
 .f3-time-stats {
@@ -303,14 +294,17 @@
 .f3-axis-meter {
   height: 6px;
   margin: 9px 0 10px;
-  background: #18252b;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--panel-inset);
 }
 
 .f3-axis-meter span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--f3-accent-2), var(--f3-accent));
-  box-shadow: 0 0 10px rgba(111, 211, 255, .28);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--orange), var(--blue));
+  box-shadow: 0 0 10px rgba(111, 179, 224, .28);
 }
 
 .f3-axis-card dl {
@@ -345,8 +339,9 @@
 .f3-timeline-rail {
   position: relative;
   height: 58px;
-  border: 1px solid #293841;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .015), transparent), #10181d;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .015), transparent), var(--panel-deep);
 }
 
 .f3-timeline-rail::before {
@@ -356,7 +351,8 @@
   right: 12px;
   top: 28px;
   height: 2px;
-  background: linear-gradient(90deg, rgba(111, 211, 255, .28), rgba(255, 179, 106, .38));
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, rgba(111, 179, 224, .28), rgba(238, 144, 104, .38));
 }
 
 .f3-timeline-marker {
@@ -367,37 +363,40 @@
   margin-left: -4px;
   border-radius: 50%;
   border: 2px solid currentColor;
-  background: #10181d;
+  background: var(--panel-deep);
 }
 
 .f3-timeline-marker.kind-dwell {
   height: 14px;
   top: 20px;
   border-radius: 999px;
-  background: rgba(255, 179, 106, .14);
+  background: rgba(223, 192, 106, .14);
 }
 
 .f3-timeline-marker.kind-stop {
-  color: #ff8f70;
+  color: var(--orange);
 }
 
 .f3-timeline-marker.kind-dwell {
-  color: var(--f3-accent-2);
+  color: var(--yellow);
 }
 
 .f3-timeline-marker.kind-start,
-.f3-timeline-marker.kind-restart,
+.f3-timeline-marker.kind-restart {
+  color: var(--green);
+}
+
 .f3-timeline-marker.kind-move,
 .f3-timeline-marker.kind-end {
-  color: var(--f3-accent);
+  color: var(--blue);
 }
 
 .f3-timeline-start,
 .f3-timeline-end {
   position: absolute;
   top: 5px;
-  color: #738890;
-  font: 7px var(--mono);
+  color: var(--faint);
+  font: var(--font-xs) var(--mono);
 }
 
 .f3-timeline-start { left: 11px; }

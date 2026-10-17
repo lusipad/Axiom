@@ -166,62 +166,6 @@
   font: 8px var(--mono);
 }
 
-.physical-r4-legend {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-  color: var(--muted);
-  font-size: 9px;
-}
-
-.physical-r4-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.physical-r4-legend i {
-  width: 14px;
-  height: 2px;
-  display: inline-block;
-}
-
-.physical-r4-legend .command { background: #8aa0aa; }
-.physical-r4-legend .simulation { background: #58c58a; }
-.physical-r4-legend .observation { background: #e78359; }
-
-.physical-r4-plot {
-  width: 100%;
-  min-height: 260px;
-  background: radial-gradient(circle at 50% 50%, rgba(56, 76, 87, 0.16), transparent 65%);
-}
-
-.physical-r4-plot text {
-  fill: #71838c;
-  font: 9px var(--mono);
-}
-
-.physical-r4-grid-line {
-  stroke: #233038;
-  stroke-width: 1;
-}
-
-.physical-r4-axis-line {
-  stroke: #38474f;
-  stroke-width: 1;
-}
-
-.physical-r4-series {
-  fill: none;
-  stroke-width: 2.2;
-  vector-effect: non-scaling-stroke;
-}
-
-.physical-r4-series.command { stroke: #8aa0aa; }
-.physical-r4-series.simulation { stroke: #58c58a; }
-.physical-r4-series.observation { stroke: #e78359; }
-
 .physical-r4-metric-group {
   padding: 12px;
   border: 1px solid #2b3a42;

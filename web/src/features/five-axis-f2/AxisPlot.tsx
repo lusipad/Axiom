@@ -1,6 +1,32 @@
+import { useMemo, useRef, useState } from "react";
+import type { PointerEvent } from "react";
+import { extent, formatTick, makeProjection, niceTicks, pathFrom } from "../../charts";
 import type { JointPolynomialSegment, MachineAxis } from "./types";
 
-const COLORS = ["#68d5ff", "#8ce6a4", "#f4c76b", "#ff8f70", "#c7a4ff"];
+const COLORS = [
+  "var(--chart-series-3)",
+  "var(--chart-series-4)",
+  "var(--chart-series-5)",
+  "var(--chart-baseline)",
+  "var(--chart-candidate)",
+];
+const TONES = ["s3", "s4", "s5", "baseline", "candidate"];
+const SIGMA_TICKS = [0, 0.25, 0.5, 0.75, 1];
+const WIDTH = 720;
+const LEFT = 54;
+const RIGHT = 22;
+const TOP = 20;
+const BOTTOM = 40;
+const ROW_HEIGHT = 54;
+const ROW_PAD = 9;
+
+interface HoverValue {
+  axisId: string;
+  value: number;
+  unit: string;
+  tone: string;
+  y: number;
+}
 
 function evaluate(segment: JointPolynomialSegment, sigma: number, axisIndex: number): number {
   const span = segment.sigmaEnd - segment.sigmaStart;
@@ -19,56 +45,120 @@ function samples(segments: JointPolynomialSegment[], axisIndex: number): Array<[
 }
 
 export function AxisPlot({ axes, segments }: { axes: MachineAxis[]; segments: JointPolynomialSegment[] }) {
-  const series = axes.map((axis, index) => ({ axis, values: samples(segments, index), color: COLORS[index] ?? "#ffffff" }));
-  const width = 720;
-  const height = 330;
-  const left = 54;
-  const right = 22;
-  const top = 20;
-  const rowHeight = 54;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<{ px: number; sigma: number; values: HoverValue[] } | null>(null);
+
+  const { rows, xProjection, height } = useMemo(() => {
+    const plotHeight = TOP + ROW_HEIGHT * axes.length + BOTTOM;
+    const sampled = axes.map((axis, index) => ({
+      axis,
+      index,
+      values: samples(segments, index),
+      color: COLORS[index % COLORS.length]!,
+      tone: TONES[index % TONES.length] ?? "muted",
+    }));
+    const sigmas = sampled.flatMap((row) => row.values.map(([sigma]) => sigma));
+    const domainX = extent(sigmas.length ? sigmas : [0, 1]);
+    const xBox = { width: WIDTH, height: plotHeight, left: LEFT, right: RIGHT, top: TOP, bottom: BOTTOM };
+    const rows = sampled.map((row) => {
+      const [min, max] = extent(row.values.map(([, value]) => value));
+      const padY = (max - min) * 0.12 || Math.abs(max) * 0.12 || 1;
+      const rowTop = TOP + row.index * ROW_HEIGHT;
+      const projection = makeProjection(domainX, [min - padY, max + padY], {
+        width: WIDTH,
+        height: plotHeight,
+        left: LEFT,
+        right: RIGHT,
+        top: rowTop + ROW_PAD,
+        bottom: plotHeight - (rowTop + ROW_HEIGHT - ROW_PAD),
+      });
+      const ticks = niceTicks(min, max, 3);
+      return {
+        ...row,
+        projection,
+        baseline: rowTop + ROW_HEIGHT / 2,
+        rangeLow: ticks[0] ?? min,
+        rangeHigh: ticks[ticks.length - 1] ?? max,
+      };
+    });
+    return { rows, xProjection: makeProjection(domainX, [0, 1], xBox), height: plotHeight };
+  }, [axes, segments]);
+
+  const handleMove = (event: PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg || rows.length === 0) return;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const px = (event.clientX - rect.left) * (WIDTH / rect.width);
+    const sigma = xProjection.invertX(px);
+    const values = rows.flatMap((row) => {
+      if (row.values.length === 0) return [];
+      let best = row.values[0]!;
+      let bestDistance = Infinity;
+      for (const point of row.values) {
+        const distance = Math.abs(point[0] - sigma);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = point;
+        }
+      }
+      return [{ axisId: row.axis.axisId, value: best[1], unit: row.axis.limits.unit, tone: row.tone, y: row.projection.y(best[1]) }];
+    });
+    setHover(values.length ? { px, sigma, values } : null);
+  };
+
+  const plotBottom = TOP + ROW_HEIGHT * rows.length;
 
   return (
-    <figure className="f2-axis-plot" role="img" aria-label="选定连续分支的五轴坐标随路径进度变化">
-      <svg viewBox={`0 0 ${width} ${height}`}>
-        <defs>
-          <linearGradient id="f2-grid-fade" x1="0" x2="1">
-            <stop offset="0" stopColor="#486075" stopOpacity=".55" />
-            <stop offset="1" stopColor="#486075" stopOpacity=".08" />
-          </linearGradient>
-        </defs>
-        {series.map(({ axis, values, color }, row) => {
-          const numbers = values.map(([, value]) => value);
-          const min = Math.min(...numbers);
-          const max = Math.max(...numbers);
-          const span = max - min || 1;
-          const baseline = top + row * rowHeight + rowHeight / 2;
-          const path = values.map(([sigma, value], index) => {
-            const x = left + sigma * (width - left - right);
-            const y = baseline + 17 - ((value - min) / span) * 34;
-            return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
-          }).join(" ");
-          return (
-            <g key={axis.axisId}>
-              <line x1={left} x2={width - right} y1={baseline} y2={baseline} stroke="url(#f2-grid-fade)" />
-              <text x="10" y={baseline + 4} fill={color}>{axis.axisId}</text>
-              <text x={width - right} y={baseline - 8} textAnchor="end" className="axis-range">
-                {min.toFixed(3)} → {max.toFixed(3)} {axis.limits.unit}
-              </text>
-              <path d={path} fill="none" stroke={color} strokeWidth="2.3" strokeLinecap="round" />
-            </g>
-          );
-        })}
-        {[0, 0.25, 0.5, 0.75, 1].map((sigma) => {
-          const x = left + sigma * (width - left - right);
+    <figure className="f2-axis-plot ax-chart" role="img" aria-label="选定连续分支的五轴坐标随路径进度变化">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${WIDTH} ${height}`}
+        onPointerMove={handleMove}
+        onPointerLeave={() => setHover(null)}
+      >
+        {SIGMA_TICKS.map((sigma) => {
+          const x = xProjection.x(sigma);
           return (
             <g key={sigma}>
-              <line x1={x} x2={x} y1={top - 4} y2={top + rowHeight * 5 - 4} stroke="#7590a6" strokeOpacity=".14" />
-              <text x={x} y={height - 10} textAnchor="middle" className="sigma-label">σ {sigma.toFixed(2)}</text>
+              <line className="ax-chart-grid" x1={x} x2={x} y1={TOP - 4} y2={plotBottom - 4} />
+              <text className="ax-chart-tick" x={x} y={height - 10} textAnchor="middle">σ {formatTick(sigma)}</text>
             </g>
           );
         })}
+        {rows.map(({ axis, values, color, tone, index, projection, baseline, rangeLow, rangeHigh }) => (
+          <g key={axis.axisId}>
+            {index > 0 && <line className="ax-chart-grid" x1={LEFT} x2={WIDTH - RIGHT} y1={TOP + index * ROW_HEIGHT} y2={TOP + index * ROW_HEIGHT} />}
+            <line className="ax-chart-grid" x1={LEFT} x2={WIDTH - RIGHT} y1={baseline} y2={baseline} strokeDasharray="2 5" />
+            <text x="10" y={baseline + 4} fill={color}>{axis.axisId}</text>
+            <text className="ax-chart-tick" x={WIDTH - RIGHT} y={baseline - 8} textAnchor="end">
+              {formatTick(rangeLow)} → {formatTick(rangeHigh)} {axis.limits.unit}
+            </text>
+            <g className={`ax-chart-series ax-tone-${tone}`}>
+              <path d={pathFrom(values, projection)} />
+            </g>
+          </g>
+        ))}
+        {hover && (
+          <g className="ax-chart-crosshair" pointerEvents="none">
+            <line x1={hover.px} x2={hover.px} y1={TOP - 4} y2={plotBottom - 4} />
+            {hover.values.map((value) => (
+              <circle key={value.axisId} className={`ax-tone-${value.tone}`} cx={hover.px} cy={value.y} r={3} />
+            ))}
+          </g>
+        )}
       </svg>
-      <figcaption>local-power@1 · selected continuous branch · unwrapped coordinates</figcaption>
+      {hover && (
+        <div className="ax-chart-tooltip" style={{ left: `${(hover.px / WIDTH) * 100}%`, top: "14px" }}>
+          <strong>σ {formatTick(hover.sigma)}</strong>
+          {hover.values.map((value) => (
+            <span key={value.axisId} className={`ax-tooltip-${value.tone}`}>
+              {value.axisId}: {formatTick(value.value)} {value.unit}
+            </span>
+          ))}
+        </div>
+      )}
+      <figcaption className="ax-chart-caption">local-power@1 · selected continuous branch · unwrapped coordinates</figcaption>
     </figure>
   );
 }

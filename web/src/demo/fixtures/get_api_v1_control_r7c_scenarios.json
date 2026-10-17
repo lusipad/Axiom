@@ -1,0 +1,1 @@
+[{"scenarioId":"opcua-transport-evidence-open","title":"Windows OPC UA transport evidence (open)","description":"The Adapter implementation and localhost conformance test exist, but no capture evidence has been imported into this Run.","expectedOutcome":"Inconclusive","expectedReadinessOutcome":"Open","countsTowardReality":false}]

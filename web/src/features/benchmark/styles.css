@@ -1,58 +1,72 @@
 .cnc-benchmark { flex: 1; overflow: auto; min-height: 0; }
-.cnc-content { max-width: 1240px; margin: 0 auto; padding: 36px 28px 48px; }
+.cnc-content { max-width: 1240px; margin: 0 auto; padding: 44px 32px 56px; }
 .cnc-heading, .cnc-action-row, .cnc-result-heading { display: flex; justify-content: space-between; gap: 24px; align-items: center; }
-.cnc-heading h1 { margin: 8px 0 12px; font-size: 28px; letter-spacing: -.03em; }
+.cnc-heading h1 { margin: 10px 0 12px; font-size: 30px; letter-spacing: -.03em; }
 .cnc-heading p, .cnc-input-card p, .cnc-muted, .cnc-result-heading p { color: var(--muted); line-height: 1.7; font-size: 13px; }
-.cnc-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 30px; }
-.cnc-input-card { padding: 22px; border: 1px solid var(--line); background: var(--panel); min-width: 0; }
+.cnc-heading p { max-width: 56ch; }
+.cnc-heading .eyebrow, .cnc-result-heading .eyebrow { color: var(--faint); }
+
+.cnc-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 34px; }
+.cnc-input-card { padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); min-width: 0; }
+.cnc-input-card-head { display: flex; align-items: baseline; gap: 10px; }
 .cnc-step { color: var(--green); font: 12px var(--mono); }
-.cnc-input-card h2 { margin: 10px 0; font-size: 17px; }
-.cnc-file-label { display: block; margin: 20px 0 12px; font-size: 12px; color: var(--muted); }
-.cnc-file-label input { display: block; width: 100%; margin-top: 8px; font-size: 11px; }
-.cnc-file-label input::file-selector-button { background: var(--panel-raised); color: var(--text); border: 1px solid var(--line); padding: 7px 10px; margin-right: 8px; cursor: pointer; }
-.cnc-filename { display: block; overflow-wrap: anywhere; font: 12px var(--mono); }
-.cnc-input-description { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.cnc-input-card h2 { margin: 0; font-size: 17px; }
+.cnc-file-label { display: grid; gap: 4px; margin: 18px 0 14px; padding: 18px 16px; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: var(--panel-inset); cursor: pointer; text-align: center; transition: border-color .15s ease, background-color .15s ease; }
+.cnc-file-label:hover { border-color: var(--green); background: rgba(95, 211, 153, 0.05); }
+.cnc-file-cta { color: var(--text); font-size: 13px; font-weight: 600; }
+.cnc-file-hint { color: var(--faint); font-size: 11px; line-height: 1.6; }
+.cnc-file-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.cnc-filename { display: block; overflow-wrap: anywhere; color: var(--muted); font: 12px var(--mono); }
+.cnc-input-description { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .cnc-link { color: var(--green); background: none; border: 0; padding: 4px 0; text-align: left; cursor: pointer; font-size: 12px; }
-.cnc-action-row { padding: 22px 0; }
-.cnc-action-row p { color: var(--muted); font-size: 12px; }
+.cnc-link:hover { text-decoration: underline; }
+
+.cnc-action-row { padding: 26px 0; }
+.cnc-action-row p { color: var(--faint); font-size: 12px; }
 .cnc-action-row > div { display: flex; gap: 10px; }
-.cnc-example-note { padding: 12px 16px; margin: 16px 0 0; background: #28251a; border-left: 2px solid var(--yellow); color: #d4c99f; font-size: 12px; line-height: 1.7; }
-.cnc-error { border: 1px solid var(--orange); padding: 16px; color: var(--orange); white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 16px; }
-.cnc-preview { margin: 0 0 24px; padding: 18px 22px 10px; background: var(--panel-deep); border: 1px solid var(--line); }
-.cnc-preview figcaption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; }
-.cnc-preview figcaption span { color: var(--muted); display: flex; align-items: center; gap: 8px; }
-.cnc-preview i { width: 14px; height: 3px; display: inline-block; background: var(--muted); }
-.cnc-preview svg { display: block; width: 100%; max-height: 260px; margin-top: 14px; }
-.cnc-preview polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.cnc-preview .reference { stroke: #82939b; }
-.cnc-preview .baseline { stroke: #66a9d8; background: #66a9d8; }
-.cnc-preview .candidate { stroke: #e78359; background: #e78359; }
-.cnc-grid { fill: none; stroke: var(--line-soft); stroke-dasharray: 4 5; }
+.cnc-action-row .button-primary { min-height: 42px; padding: 0 26px; font-size: 13px; font-weight: 600; }
+.cnc-example-note { padding: 12px 16px; margin: 16px 0 0; background: #28251a; border-left: 2px solid var(--yellow); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: #d4c99f; font-size: 12px; line-height: 1.7; }
+.cnc-error { border: 1px solid var(--orange); border-radius: var(--radius); padding: 16px; color: var(--orange); white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 16px; }
+
+.cnc-preview { margin: 0 0 28px; padding: 20px 24px 12px; background: var(--panel-deep); border: 1px solid var(--line); border-radius: var(--radius); }
+.cnc-preview figcaption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.cnc-preview svg { display: block; width: 100%; margin-top: 12px; }
 .cnc-preview p { color: var(--faint); font-size: 11px; line-height: 1.6; }
-.cnc-results { border-top: 1px solid var(--line); padding-top: 24px; }
-.cnc-result-heading h2 { margin: 8px 0; font-size: 25px; }
-.cnc-table-scroll { overflow-x: auto; margin: 18px 0 28px; border: 1px solid var(--line); }
+
+.cnc-results { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 32px; }
+.cnc-result-heading h2 { margin: 10px 0; font-size: 28px; }
+.cnc-outcome { display: inline-block; padding: 6px 18px; border: 1px solid currentColor; border-radius: 999px; }
+.cnc-table-scroll { overflow-x: auto; margin: 20px 0 32px; border: 1px solid var(--line); border-radius: var(--radius); }
 .cnc-benchmark table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; text-align: left; }
-.cnc-benchmark th, .cnc-benchmark td { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.cnc-benchmark th, .cnc-benchmark td { padding: 13px 16px; border-bottom: 1px solid var(--line-soft); }
+.cnc-benchmark tbody tr:last-child th, .cnc-benchmark tbody tr:last-child td { border-bottom: 0; }
+.cnc-benchmark tbody tr:hover th, .cnc-benchmark tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
 .cnc-benchmark thead { color: var(--muted); background: var(--panel); }
 .cnc-benchmark tbody th { font-weight: 500; }
 .cnc-benchmark small { display: block; margin-top: 5px; font-size: 10px; color: var(--muted); white-space: normal; max-width: 250px; }
 .cnc-benchmark .Improved, .cnc-benchmark .WithinLimit { color: var(--green); }
 .cnc-benchmark .Regressed, .cnc-benchmark .Violated, .cnc-benchmark .CandidateViolatesLimits { color: var(--orange); }
 .cnc-benchmark .Tradeoff, .cnc-benchmark .Inconclusive, .cnc-benchmark .InsufficientSamples { color: var(--yellow); }
-.cnc-results h3 { font-size: 16px; margin-bottom: 8px; }
-.cnc-empty { border: 1px dashed var(--line); padding: 32px; text-align: center; }
-.cnc-empty h2 { font-size: 17px; margin-top: 0; }
-.cnc-empty p { color: var(--muted); font-size: 13px; line-height: 1.8; }
-.cnc-scope { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 20px; font-size: 12px; color: var(--muted); line-height: 1.8; }
-.cnc-scope strong { color: var(--text); }
+.cnc-status { display: inline-block; padding: 3px 10px; border: 1px solid currentColor; border-radius: 999px; font-size: 11px; }
+small.cnc-status { margin-top: 6px; }
+.cnc-results h3 { font-size: 15px; margin: 28px 0 6px; }
+.cnc-results .cnc-muted { margin-top: 0; max-width: 72ch; }
+.cnc-empty { border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 44px 32px; text-align: center; }
+.cnc-empty h2 { font-size: 18px; margin-top: 0; }
+.cnc-empty p { max-width: 52ch; margin: 0 auto; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.cnc-scope { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.8; }
+.cnc-scope summary { display: inline-block; cursor: pointer; color: var(--text); font-weight: 600; padding: 4px 0; }
+.cnc-scope summary:hover { color: var(--green); }
+.cnc-scope p { max-width: 88ch; }
 .cnc-report-details { font-size: 12px; color: var(--muted); line-height: 1.8; overflow-wrap: anywhere; }
 .cnc-report-details summary { cursor: pointer; color: var(--text); }
+
 .primary-navigation { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); }
 .primary-navigation .active { border-color: var(--green); color: var(--green); }
 .legacy-navigation-note { color: var(--muted); font-size: 11px; margin-left: auto; }
+
 @media (max-width: 760px) {
-  .cnc-content { padding: 24px 16px; }
+  .cnc-content { padding: 28px 16px; }
   .cnc-inputs { grid-template-columns: 1fr; }
   .cnc-heading, .cnc-action-row, .cnc-result-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
   .cnc-action-row > div { flex-wrap: wrap; }

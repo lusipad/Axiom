@@ -32,10 +32,9 @@
 .f2-plot-card header > div:last-child { display: flex; align-items: center; gap: 8px; color: #718892; font-size: 8px; }
 .f2-plot-card header code { padding: 3px 6px; color: #8ce6a4; border: 1px solid #316547; font: 8px var(--mono); }
 .f2-axis-plot { margin: 0; padding: 5px 10px 0; }
-.f2-axis-plot svg { width: 100%; height: 310px; display: block; }
+.f2-axis-plot svg { width: 100%; height: auto; display: block; }
 .f2-axis-plot text { font: 8px var(--mono); }
-.f2-axis-plot .axis-range, .f2-axis-plot .sigma-label { fill: #637985; }
-.f2-axis-plot figcaption { padding: 7px 0 9px; color: #5f7681; border-top: 1px solid #22323a; font: 7px var(--mono); text-align: right; }
+.f2-axis-plot figcaption { padding: 7px 0 9px; color: var(--faint); border-top: 1px solid var(--line-soft); font-size: 7px; text-align: right; }
 .f2-bound-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid #293b44; background: #111a1f; }
 .f2-bound-strip > div { min-width: 0; padding: 9px 10px; border-right: 1px solid #293b44; }
 .f2-bound-strip > div:last-child { border: 0; }

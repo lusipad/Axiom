@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { Catalog } from "../../types";
+import { LineChart } from "../../charts";
 import {
   loadPhysicalR4Example,
   loadPhysicalR4Manifest,
@@ -12,7 +13,6 @@ import type {
   PhysicalR4Manifest,
   PhysicalR4MetricResult,
   PhysicalR4ScenarioSummary,
-  PhysicalR4SignalSample,
 } from "./types";
 import "./styles.css";
 
@@ -61,25 +61,6 @@ function resultClass(value?: string | boolean): string {
   return "status-neutral";
 }
 
-function buildPath(
-  samples: PhysicalR4SignalSample[],
-  width: number,
-  height: number,
-  padding: { left: number; right: number; top: number; bottom: number },
-  xMin: number,
-  xSpan: number,
-  yMin: number,
-  ySpan: number,
-): string {
-  return samples
-    .map((sample, index) => {
-      const x = padding.left + ((sample.time - xMin) / xSpan) * (width - padding.left - padding.right);
-      const y = height - padding.bottom - ((sample.value - yMin) / ySpan) * (height - padding.top - padding.bottom);
-      return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-}
-
 function SignalPlot({
   axis,
   curveMode,
@@ -93,28 +74,8 @@ function SignalPlot({
     return <div className="empty-state">当前场景没有可视化轴。</div>;
   }
 
-  const width = 720;
-  const height = 280;
-  const padding = { left: 52, right: 20, top: 16, bottom: 30 };
-  const allSamples = [
-    ...axis.series.command,
-    ...axis.series.simulation,
-    ...axis.series.observation,
-  ];
-  const times = allSamples.map((sample) => sample.time);
-  const values = allSamples.map((sample) => sample.value);
-  const xMin = Math.min(...times);
-  const xMax = Math.max(...times);
-  const yMinRaw = Math.min(...values);
-  const yMaxRaw = Math.max(...values);
-  const xSpan = xMax - xMin || 1;
-  const yPad = (yMaxRaw - yMinRaw || 1) * 0.15;
-  const yMin = yMinRaw - yPad;
-  const yMax = yMaxRaw + yPad;
-  const ySpan = yMax - yMin || 1;
-
   return (
-    <figure className="physical-r4-signal-card" role="img" aria-label="选定轴的 command / simulation / observation 曲线">
+    <div className="physical-r4-signal-card">
       <header>
         <div>
           <span className="eyebrow">AXIS CURVES</span>
@@ -126,46 +87,35 @@ function SignalPlot({
         <code>{axis.unit}</code>
       </header>
       {curveNotice && <p className="f3-scenario-description">{curveNotice}</p>}
-      <div className="physical-r4-legend" aria-hidden="true">
-        <span><i className="command" />command</span>
-        <span><i className="simulation" />simulation</span>
-        <span><i className="observation" />observation</span>
-      </div>
-      <svg className="physical-r4-plot" viewBox={`0 0 ${width} ${height}`}>
-        {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
-          const x = padding.left + tick * (width - padding.left - padding.right);
-          return (
-            <g key={tick}>
-              <line className="physical-r4-grid-line" x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} />
-              <text x={x} y={height - 10} textAnchor="middle">{(xMin + tick * xSpan).toFixed(2)} s</text>
-            </g>
-          );
-        })}
-        {[0, 0.5, 1].map((tick) => {
-          const y = height - padding.bottom - tick * (height - padding.top - padding.bottom);
-          return (
-            <g key={tick}>
-              <line className="physical-r4-grid-line" x1={padding.left} x2={width - padding.right} y1={y} y2={y} />
-              <text x={8} y={y + 4}>{(yMin + tick * ySpan).toFixed(3)}</text>
-            </g>
-          );
-        })}
-        <line className="physical-r4-axis-line" x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} />
-        <line className="physical-r4-axis-line" x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} />
-        <path
-          className="physical-r4-series command"
-          d={buildPath(axis.series.command, width, height, padding, xMin, xSpan, yMin, ySpan)}
-        />
-        <path
-          className="physical-r4-series simulation"
-          d={buildPath(axis.series.simulation, width, height, padding, xMin, xSpan, yMin, ySpan)}
-        />
-        <path
-          className="physical-r4-series observation"
-          d={buildPath(axis.series.observation, width, height, padding, xMin, xSpan, yMin, ySpan)}
-        />
-      </svg>
-    </figure>
+      <LineChart
+        wrapper="figure"
+        height={280}
+        ariaLabel="选定轴的 command / simulation / observation 曲线"
+        xLabel="time (s)"
+        yLabel={axis.unit}
+        series={[
+          {
+            id: "command",
+            label: "command",
+            tone: "reference",
+            dashed: true,
+            points: axis.series.command.map((sample) => [sample.time, sample.value]),
+          },
+          {
+            id: "simulation",
+            label: "simulation",
+            tone: "s3",
+            points: axis.series.simulation.map((sample) => [sample.time, sample.value]),
+          },
+          {
+            id: "observation",
+            label: "observation",
+            tone: "candidate",
+            points: axis.series.observation.map((sample) => [sample.time, sample.value]),
+          },
+        ]}
+      />
+    </div>
   );
 }
 

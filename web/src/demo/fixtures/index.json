@@ -1,0 +1,527 @@
+{
+  "GET /api/v1/benchmarks/cnc/example": [
+    {
+      "file": "get_api_v1_benchmarks_cnc_example.json"
+    }
+  ],
+  "GET /api/v1/benchmarks/cnc/param-demo": [
+    {
+      "file": "get_api_v1_benchmarks_cnc_param_demo.json"
+    }
+  ],
+  "GET /api/v1/catalog": [
+    {
+      "file": "get_api_v1_catalog.json"
+    }
+  ],
+  "GET /api/v1/control/r7/manifest": [
+    {
+      "file": "get_api_v1_control_r7_manifest.json"
+    }
+  ],
+  "GET /api/v1/control/r7/scenarios": [
+    {
+      "file": "get_api_v1_control_r7_scenarios.json"
+    }
+  ],
+  "GET /api/v1/control/r7b/manifest": [
+    {
+      "file": "get_api_v1_control_r7b_manifest.json"
+    }
+  ],
+  "GET /api/v1/control/r7b/scenarios": [
+    {
+      "file": "get_api_v1_control_r7b_scenarios.json"
+    }
+  ],
+  "GET /api/v1/control/r7c/manifest": [
+    {
+      "file": "get_api_v1_control_r7c_manifest.json"
+    }
+  ],
+  "GET /api/v1/control/r7c/scenarios": [
+    {
+      "file": "get_api_v1_control_r7c_scenarios.json"
+    }
+  ],
+  "GET /api/v1/control/r7d/manifest": [
+    {
+      "file": "get_api_v1_control_r7d_manifest.json"
+    }
+  ],
+  "GET /api/v1/control/r7d/scenarios": [
+    {
+      "file": "get_api_v1_control_r7d_scenarios.json"
+    }
+  ],
+  "GET /api/v1/control/r7e/manifest": [
+    {
+      "file": "get_api_v1_control_r7e_manifest.json"
+    }
+  ],
+  "GET /api/v1/examples/contour-ab": [
+    {
+      "file": "get_api_v1_examples_contour_ab.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7?scenarioId=controlled-trial-without-authority": [
+    {
+      "file": "get_api_v1_examples_control_r7_scenarioid_controlled_trial_without_authority.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7?scenarioId=deployment-shadow-reality-open": [
+    {
+      "file": "get_api_v1_examples_control_r7_scenarioid_deployment_shadow_reality_open.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7?scenarioId=device-write-request-blocked": [
+    {
+      "file": "get_api_v1_examples_control_r7_scenarioid_device_write_request_blocked.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7?scenarioId=synthetic-shadow-limit-breach": [
+    {
+      "file": "get_api_v1_examples_control_r7_scenarioid_synthetic_shadow_limit_breach.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7?scenarioId=synthetic-shadow-nominal": [
+    {
+      "file": "get_api_v1_examples_control_r7_scenarioid_synthetic_shadow_nominal.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7b?scenarioId=contract-fixture-blocked": [
+    {
+      "file": "get_api_v1_examples_control_r7b_scenarioid_contract_fixture_blocked.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7b?scenarioId=deployment-shadow-readiness-open": [
+    {
+      "file": "get_api_v1_examples_control_r7b_scenarioid_deployment_shadow_readiness_open.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7c?scenarioId=opcua-transport-evidence-open": [
+    {
+      "file": "get_api_v1_examples_control_r7c_scenarioid_opcua_transport_evidence_open.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7d?scenarioId=beckhoff-twincat-runtime-open": [
+    {
+      "file": "get_api_v1_examples_control_r7d_scenarioid_beckhoff_twincat_runtime_open.json"
+    }
+  ],
+  "GET /api/v1/examples/control-r7e": [
+    {
+      "file": "get_api_v1_examples_control_r7e.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f1?scenarioId=fixture-collision": [
+    {
+      "file": "get_api_v1_examples_five_axis_f1_scenarioid_fixture_collision.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f1?scenarioId=geometry-tolerance-violation": [
+    {
+      "file": "get_api_v1_examples_five_axis_f1_scenarioid_geometry_tolerance_violation.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f1?scenarioId=nominal-certified": [
+    {
+      "file": "get_api_v1_examples_five_axis_f1_scenarioid_nominal_certified.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f2?scenarioId=canonical-head-head": [
+    {
+      "file": "get_api_v1_examples_five_axis_f2_scenarioid_canonical_head_head.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f2?scenarioId=canonical-head-table": [
+    {
+      "file": "get_api_v1_examples_five_axis_f2_scenarioid_canonical_head_table.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f2?scenarioId=canonical-table-table": [
+    {
+      "file": "get_api_v1_examples_five_axis_f2_scenarioid_canonical_table_table.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f2?scenarioId=configuration-interior-collision": [
+    {
+      "file": "get_api_v1_examples_five_axis_f2_scenarioid_configuration_interior_collision.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=canonical-head-head-jerk": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_canonical_head_head_jerk.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=canonical-head-table-jerk": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_canonical_head_table_jerk.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=canonical-table-table-jerk": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_canonical_table_table_jerk.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=dwell-mandatory-stop": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_dwell_mandatory_stop.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=polynomial-interior-violation": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_polynomial_interior_violation.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=second-order-proven-optimal": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_second_order_proven_optimal.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f3?scenarioId=zoh-moving-unsupported": [
+    {
+      "file": "get_api_v1_examples_five_axis_f3_scenarioid_zoh_moving_unsupported.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f4?scenarioId=adapter-input-hash-mismatch": [
+    {
+      "file": "get_api_v1_examples_five_axis_f4_scenarioid_adapter_input_hash_mismatch.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f4?scenarioId=canonical-dual-head-solver": [
+    {
+      "file": "get_api_v1_examples_five_axis_f4_scenarioid_canonical_dual_head_solver.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f4?scenarioId=canonical-dual-table-solver": [
+    {
+      "file": "get_api_v1_examples_five_axis_f4_scenarioid_canonical_dual_table_solver.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f4?scenarioId=canonical-head-table-solver": [
+    {
+      "file": "get_api_v1_examples_five_axis_f4_scenarioid_canonical_head_table_solver.json"
+    }
+  ],
+  "GET /api/v1/examples/five-axis-f4?scenarioId=interval-interior-collision": [
+    {
+      "file": "get_api_v1_examples_five_axis_f4_scenarioid_interval_interior_collision.json"
+    }
+  ],
+  "GET /api/v1/examples/intelligence-r5?scenarioId=bundle-tamper": [
+    {
+      "file": "get_api_v1_examples_intelligence_r5_scenarioid_bundle_tamper.json"
+    }
+  ],
+  "GET /api/v1/examples/intelligence-r5?scenarioId=group-leak": [
+    {
+      "file": "get_api_v1_examples_intelligence_r5_scenarioid_group_leak.json"
+    }
+  ],
+  "GET /api/v1/examples/intelligence-r5?scenarioId=parity-tamper": [
+    {
+      "file": "get_api_v1_examples_intelligence_r5_scenarioid_parity_tamper.json"
+    }
+  ],
+  "GET /api/v1/examples/intelligence-r5?scenarioId=synthetic-residual-contract": [
+    {
+      "file": "get_api_v1_examples_intelligence_r5_scenarioid_synthetic_residual_contract.json"
+    }
+  ],
+  "GET /api/v1/examples/intelligence-r5?scenarioId=time-order-reversal": [
+    {
+      "file": "get_api_v1_examples_intelligence_r5_scenarioid_time_order_reversal.json"
+    }
+  ],
+  "GET /api/v1/examples/intelligence-r5b?scenarioId=real-holdout-readiness-open": [
+    {
+      "file": "get_api_v1_examples_intelligence_r5b_scenarioid_real_holdout_readiness_open.json"
+    }
+  ],
+  "GET /api/v1/examples/machine-r3?scenarioId=forbidden-write-operation": [
+    {
+      "file": "get_api_v1_examples_machine_r3_scenarioid_forbidden_write_operation.json"
+    }
+  ],
+  "GET /api/v1/examples/machine-r3?scenarioId=missing-clock-alignment": [
+    {
+      "file": "get_api_v1_examples_machine_r3_scenarioid_missing_clock_alignment.json"
+    }
+  ],
+  "GET /api/v1/examples/machine-r3?scenarioId=out-of-order-gap": [
+    {
+      "file": "get_api_v1_examples_machine_r3_scenarioid_out_of_order_gap.json"
+    }
+  ],
+  "GET /api/v1/examples/machine-r3?scenarioId=read-only-paired-pass": [
+    {
+      "file": "get_api_v1_examples_machine_r3_scenarioid_read_only_paired_pass.json"
+    }
+  ],
+  "GET /api/v1/examples/machine-r3?scenarioId=read-only-unpaired-pass": [
+    {
+      "file": "get_api_v1_examples_machine_r3_scenarioid_read_only_unpaired_pass.json"
+    }
+  ],
+  "GET /api/v1/examples/optimization-r6": [
+    {
+      "file": "get_api_v1_examples_optimization_r6.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r41": [
+    {
+      "file": "get_api_v1_examples_physical_r41.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r4?scenarioId=calibration-validation-leakage": [
+    {
+      "file": "get_api_v1_examples_physical_r4_scenarioid_calibration_validation_leakage.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r4?scenarioId=in-domain-synthetic-sil": [
+    {
+      "file": "get_api_v1_examples_physical_r4_scenarioid_in_domain_synthetic_sil.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r4?scenarioId=insufficient-axis-excitation": [
+    {
+      "file": "get_api_v1_examples_physical_r4_scenarioid_insufficient_axis_excitation.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r4?scenarioId=missing-coordinate-context": [
+    {
+      "file": "get_api_v1_examples_physical_r4_scenarioid_missing_coordinate_context.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r4?scenarioId=model-mismatch-detected": [
+    {
+      "file": "get_api_v1_examples_physical_r4_scenarioid_model_mismatch_detected.json"
+    }
+  ],
+  "GET /api/v1/examples/physical-r4?scenarioId=time-alignment-mismatch": [
+    {
+      "file": "get_api_v1_examples_physical_r4_scenarioid_time_alignment_mismatch.json"
+    }
+  ],
+  "GET /api/v1/five-axis/f1/scenarios": [
+    {
+      "file": "get_api_v1_five_axis_f1_scenarios.json"
+    }
+  ],
+  "GET /api/v1/five-axis/f2/scenarios": [
+    {
+      "file": "get_api_v1_five_axis_f2_scenarios.json"
+    }
+  ],
+  "GET /api/v1/five-axis/f3/manifest": [
+    {
+      "file": "get_api_v1_five_axis_f3_manifest.json"
+    }
+  ],
+  "GET /api/v1/five-axis/f3/scenarios": [
+    {
+      "file": "get_api_v1_five_axis_f3_scenarios.json"
+    }
+  ],
+  "GET /api/v1/five-axis/f4/manifest": [
+    {
+      "file": "get_api_v1_five_axis_f4_manifest.json"
+    }
+  ],
+  "GET /api/v1/five-axis/f4/scenarios": [
+    {
+      "file": "get_api_v1_five_axis_f4_scenarios.json"
+    }
+  ],
+  "GET /api/v1/intelligence/r5/manifest": [
+    {
+      "file": "get_api_v1_intelligence_r5_manifest.json"
+    }
+  ],
+  "GET /api/v1/intelligence/r5/scenarios": [
+    {
+      "file": "get_api_v1_intelligence_r5_scenarios.json"
+    }
+  ],
+  "GET /api/v1/intelligence/r5b/manifest": [
+    {
+      "file": "get_api_v1_intelligence_r5b_manifest.json"
+    }
+  ],
+  "GET /api/v1/intelligence/r5b/scenarios": [
+    {
+      "file": "get_api_v1_intelligence_r5b_scenarios.json"
+    }
+  ],
+  "GET /api/v1/machine/r3/scenarios": [
+    {
+      "file": "get_api_v1_machine_r3_scenarios.json"
+    }
+  ],
+  "GET /api/v1/optimization/r6/manifest": [
+    {
+      "file": "get_api_v1_optimization_r6_manifest.json"
+    }
+  ],
+  "GET /api/v1/optimization/r6/scenarios": [
+    {
+      "file": "get_api_v1_optimization_r6_scenarios.json"
+    }
+  ],
+  "GET /api/v1/physical/r4/manifest": [
+    {
+      "file": "get_api_v1_physical_r4_manifest.json"
+    }
+  ],
+  "GET /api/v1/physical/r4/scenarios": [
+    {
+      "file": "get_api_v1_physical_r4_scenarios.json"
+    }
+  ],
+  "GET /api/v1/physical/r41/manifest": [
+    {
+      "file": "get_api_v1_physical_r41_manifest.json"
+    }
+  ],
+  "POST /api/v1/benchmarks/cnc/compare": [
+    {
+      "file": "post_api_v1_benchmarks_cnc_compare.json",
+      "requestFile": "post_api_v1_benchmarks_cnc_compare.request.json"
+    }
+  ],
+  "POST /api/v1/control/r7/replay": [
+    {
+      "file": "post_api_v1_control_r7_replay.json",
+      "requestFile": "post_api_v1_control_r7_replay.request.json"
+    },
+    {
+      "file": "post_api_v1_control_r7_replay_2.json",
+      "requestFile": "post_api_v1_control_r7_replay_2.request.json"
+    },
+    {
+      "file": "post_api_v1_control_r7_replay_3.json",
+      "requestFile": "post_api_v1_control_r7_replay_3.request.json"
+    },
+    {
+      "file": "post_api_v1_control_r7_replay_4.json",
+      "requestFile": "post_api_v1_control_r7_replay_4.request.json"
+    },
+    {
+      "file": "post_api_v1_control_r7_replay_5.json",
+      "requestFile": "post_api_v1_control_r7_replay_5.request.json"
+    }
+  ],
+  "POST /api/v1/experiments/run": [
+    {
+      "file": "post_api_v1_experiments_run.json",
+      "requestFile": "post_api_v1_experiments_run.request.json"
+    }
+  ],
+  "POST /api/v1/field-evidence/assess": [
+    {
+      "file": "post_api_v1_field_evidence_assess.json",
+      "requestFile": "post_api_v1_field_evidence_assess.request.json"
+    }
+  ],
+  "POST /api/v1/optimization/r6/search": [
+    {
+      "file": "post_api_v1_optimization_r6_search.json",
+      "requestFile": "post_api_v1_optimization_r6_search.request.json"
+    }
+  ],
+  "POST /api/v1/runs/evaluate": [
+    {
+      "file": "post_api_v1_runs_evaluate.json",
+      "requestFile": "post_api_v1_runs_evaluate.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_2.json",
+      "requestFile": "post_api_v1_runs_evaluate_2.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_3.json",
+      "requestFile": "post_api_v1_runs_evaluate_3.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_4.json",
+      "requestFile": "post_api_v1_runs_evaluate_4.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_5.json",
+      "requestFile": "post_api_v1_runs_evaluate_5.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_6.json",
+      "requestFile": "post_api_v1_runs_evaluate_6.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_7.json",
+      "requestFile": "post_api_v1_runs_evaluate_7.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_8.json",
+      "requestFile": "post_api_v1_runs_evaluate_8.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_9.json",
+      "requestFile": "post_api_v1_runs_evaluate_9.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_10.json",
+      "requestFile": "post_api_v1_runs_evaluate_10.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_11.json",
+      "requestFile": "post_api_v1_runs_evaluate_11.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_12.json",
+      "requestFile": "post_api_v1_runs_evaluate_12.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_13.json",
+      "requestFile": "post_api_v1_runs_evaluate_13.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_14.json",
+      "requestFile": "post_api_v1_runs_evaluate_14.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_15.json",
+      "requestFile": "post_api_v1_runs_evaluate_15.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_16.json",
+      "requestFile": "post_api_v1_runs_evaluate_16.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_17.json",
+      "requestFile": "post_api_v1_runs_evaluate_17.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_18.json",
+      "requestFile": "post_api_v1_runs_evaluate_18.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_19.json",
+      "requestFile": "post_api_v1_runs_evaluate_19.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_20.json",
+      "requestFile": "post_api_v1_runs_evaluate_20.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_21.json",
+      "requestFile": "post_api_v1_runs_evaluate_21.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_22.json",
+      "requestFile": "post_api_v1_runs_evaluate_22.request.json"
+    },
+    {
+      "file": "post_api_v1_runs_evaluate_23.json",
+      "requestFile": "post_api_v1_runs_evaluate_23.request.json"
+    }
+  ]
+}

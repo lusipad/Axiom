@@ -1,4 +1,6 @@
 import { ChangeEvent, useRef, useState } from "react";
+import { XYChart } from "../../charts";
+import type { ChartSeries } from "../../charts";
 import "./styles.css";
 
 type JsonObject = Record<string, unknown>;
@@ -75,19 +77,15 @@ function previewPoints(value: JsonObject | null, reference = false): [number, nu
 
 function PathPreview({ inputs }: { inputs: Inputs }) {
   const paths = [previewPoints(inputs.case, true), previewPoints(inputs.baseline), previewPoints(inputs.candidate)];
-  const all = paths.flat();
-  if (!all.length) return null;
-  const xs = all.map(point => point[0]);
-  const ys = all.map(point => point[1]);
-  const xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
-  const scale = Math.min(640 / Math.max(xmax - xmin, 0.001), 150 / Math.max(ymax - ymin, 0.001));
-  const cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2;
+  if (!paths.some((points) => points.length)) return null;
+  const series: ChartSeries[] = [
+    { id: "reference", label: "参考路径", points: paths[0]!.map(([x, y]) => [x, y]), tone: "reference", dashed: true, markers: false },
+    { id: "baseline", label: "基线 A", points: paths[1]!.map(([x, y]) => [x, y]), tone: "baseline", markers: false },
+    { id: "candidate", label: "候选 B", points: paths[2]!.map(([x, y]) => [x, y]), tone: "candidate", markers: false },
+  ];
   return <figure className="cnc-preview">
-    <figcaption><strong>XY 轨迹预览</strong><span>参考路径 <i className="reference" /> 基线 A <i className="baseline" /> 候选 B <i className="candidate" /></span></figcaption>
-    <svg viewBox="0 0 700 200" role="img" aria-label="参考路径与 A/B 指令的 XY 投影">
-      <path d="M20 100H680M350 10V190" className="cnc-grid" />
-      {paths.map((points, index) => <polyline key={index} className={["reference", "baseline", "candidate"][index]} points={points.map(point => `${350 + (point[0] - cx) * scale},${100 - (point[1] - cy) * scale}`).join(" ")} />)}
-    </svg>
+    <figcaption><strong>XY 轨迹预览</strong></figcaption>
+    <XYChart series={series} ariaLabel="参考路径与 A/B 指令的 XY 投影" height={240} xLabel="X (mm)" yLabel="Y (mm)" />
     <p>预览最多显示每条轨迹约 1,500 个点；报告使用所有导入样本。这里只显示 XY 投影。</p>
   </figure>;
 }
@@ -166,11 +164,14 @@ export function CncBenchmarkWorkbench() {
       </div>
       <div className="cnc-inputs">
         {(["case", "baseline", "candidate"] as Role[]).map((role, index) => <section className="cnc-input-card" key={role}>
-          <span className="cnc-step">0{index + 1}</span><h2>{labels[role]}</h2>
-          <p>{role === "case" ? "参考折线、坐标系、固定周期与限制" : "算法名称、版本与固定周期 XYZ 位置"}</p>
-          <label className="cnc-file-label">选择{labels[role]}文件<input type="file" accept=".json,application/json" aria-label={`选择${labels[role]}文件`} disabled={busy} onChange={event => importFile(role, event)} /></label>
+          <div className="cnc-input-card-head"><span className="cnc-step">0{index + 1}</span><h2>{labels[role]}</h2></div>
+          <label className="cnc-file-label">
+            <span className="cnc-file-cta">选择{labels[role]}文件</span>
+            <span className="cnc-file-hint">{role === "case" ? "参考折线、坐标系、固定周期与限制" : "算法名称、版本与固定周期 XYZ 位置"}</span>
+            <input type="file" accept=".json,application/json" aria-label={`选择${labels[role]}文件`} disabled={busy} onChange={event => importFile(role, event)} />
+          </label>
           <strong className="cnc-filename">{filenames[role] ?? "尚未导入"}</strong>
-          {inputs[role] && <div className="cnc-input-description"><span>{String(inputs[role]?.caseId ?? inputs[role]?.algorithmId ?? "待验证输入")}</span>{role !== "case" && <span>版本：{String(inputs[role]?.algorithmVersion ?? "未填写")}</span>}<button type="button" className="cnc-link" disabled={busy} onClick={() => download(inputs[role], `${role}.json`)}>下载此输入</button></div>}
+          {inputs[role] && <div className="cnc-input-description"><span>{String(inputs[role]?.caseId ?? inputs[role]?.algorithmId ?? "待验证输入")}</span>{role !== "case" && <span>版本:{String(inputs[role]?.algorithmVersion ?? "未填写")}</span>}<button type="button" className="cnc-link" disabled={busy} onClick={() => download(inputs[role], `${role}.json`)}>下载此输入</button></div>}
         </section>)}
       </div>
       {synthetic && <p className="cnc-example-note">当前包含合成示例，用于演示回归定位；请替换为实际算法导出结果后再作工程判断。</p>}
@@ -179,9 +180,9 @@ export function CncBenchmarkWorkbench() {
       <PathPreview inputs={inputs} />
       {report ? <section className="cnc-results" aria-label="算法比较报告">
         <div className="cnc-result-heading"><div><span className="eyebrow">采样命令范围内的比较</span><h2 className={`cnc-outcome ${report.outcome}`}>{statusLabels[report.outcome] ?? report.outcome}</h2><p>{report.baseline.algorithmId} {report.baseline.algorithmVersion} → {report.candidate.algorithmId} {report.candidate.algorithmVersion}</p></div><button className="button button-secondary" type="button" onClick={() => download(report, "cnc-benchmark-report.json")}>下载报告</button></div>
-        <div className="cnc-table-scroll"><table><thead><tr><th>比较指标</th><th>基线 A</th><th>候选 B</th><th>B − A</th><th>结论</th></tr></thead><tbody>{report.differences.map(item => <tr key={item.metricId}><th>{metricLabels[item.metricId] ?? item.metricId}<small>{item.unit} · 比较容差 {number(item.tolerance)}</small></th><td>{number(item.baseline)}</td><td>{number(item.candidate)}</td><td>{item.delta == null ? "—" : number(item.delta)}</td><td className={item.status}>{statusLabels[item.status] ?? item.status}{item.reason && <small>{item.reason}</small>}</td></tr>)}</tbody></table></div>
+        <div className="cnc-table-scroll"><table><thead><tr><th>比较指标</th><th>基线 A</th><th>候选 B</th><th>B − A</th><th>结论</th></tr></thead><tbody>{report.differences.map(item => <tr key={item.metricId}><th>{metricLabels[item.metricId] ?? item.metricId}<small>{item.unit} · 比较容差 {number(item.tolerance)}</small></th><td>{number(item.baseline)}</td><td>{number(item.candidate)}</td><td>{item.delta == null ? "—" : number(item.delta)}</td><td className={item.status}><span className="cnc-status">{statusLabels[item.status] ?? item.status}</span>{item.reason && <small>{item.reason}</small>}</td></tr>)}</tbody></table></div>
         <h3>约束检查与最差位置</h3><p className="cnc-muted">速度、加速度与 Jerk 使用指令位置的离散差分。轨迹开头和结尾之外的状态不在输入中，未推断启停边界。</p>
-        <div className="cnc-table-scroll"><table><thead><tr><th>检查项</th><th>基线 A</th><th>候选 B</th><th>限制</th><th>候选最差位置</th></tr></thead><tbody>{report.candidate.checks.map((check, index) => <tr key={check.checkId}><th>{check.checkId}<small>{check.unit}</small></th><td className={report.baseline.checks[index]?.status}>{number(report.baseline.checks[index]?.value)}</td><td className={check.status}>{number(check.value)}<small>{statusLabels[check.status]}</small></td><td>{number(check.limit)}</td><td>{locate(check.location)}</td></tr>)}</tbody></table></div>
+        <div className="cnc-table-scroll"><table><thead><tr><th>检查项</th><th>基线 A</th><th>候选 B</th><th>限制</th><th>候选最差位置</th></tr></thead><tbody>{report.candidate.checks.map((check, index) => <tr key={check.checkId}><th>{check.checkId}<small>{check.unit}</small></th><td className={report.baseline.checks[index]?.status}>{number(report.baseline.checks[index]?.value)}</td><td className={check.status}>{number(check.value)}<small className="cnc-status">{statusLabels[check.status]}</small></td><td>{number(check.limit)}</td><td>{locate(check.location)}</td></tr>)}</tbody></table></div>
         <details className="cnc-report-details"><summary>结果身份与计算说明</summary><p>案例：{report.caseId}</p><p>报告：<code>{report.reportContentHash}</code></p><ul>{report.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul></details>
       </section> : <section className="cnc-empty"><h2>从一次可复现的版本比较开始</h2><p>上传三份文件，或载入带有已知偏差的示例。报告会保留指标差异以及超限的样本、时间和轴。</p></section>}
 
@@ -240,7 +241,7 @@ export function CncBenchmarkWorkbench() {
         </ul>
       </section>}
 
-      <aside className="cnc-scope"><strong>本次检查覆盖什么？</strong><p>采样点到参考折线的单向距离、首尾位置、轴行程和离散 V/A/J 差分，以及同条件下声明的计算耗时。尚未验证采样间连续运动、整条路径的遍历顺序与覆盖、碰撞、实机跟随或加工质量。采样结果中的“改善”只针对本页列出的指标。</p><p>算法导出格式、Case hash 生成方法与 CLI 用法见仓库的 CNC-BENCHMARK.md。</p></aside>
+      <details className="cnc-scope"><summary>本次检查覆盖什么？</summary><p>采样点到参考折线的单向距离、首尾位置、轴行程和离散 V/A/J 差分，以及同条件下声明的计算耗时。尚未验证采样间连续运动、整条路径的遍历顺序与覆盖、碰撞、实机跟随或加工质量。采样结果中的“改善”只针对本页列出的指标。</p><p>算法导出格式、Case hash 生成方法与 CLI 用法见仓库的 CNC-BENCHMARK.md。</p></details>
     </div>
   </main>;
 }

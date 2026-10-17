@@ -1,0 +1,91 @@
+.ax-chart { position: relative; min-height: 0; }
+.ax-chart svg { display: block; width: 100%; height: auto; }
+.ax-chart-grid-minor { stroke: var(--chart-grid); stroke-width: 1; }
+.ax-chart-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.ax-chart-axis { stroke: var(--chart-axis); stroke-width: 1; }
+.ax-chart-tick { fill: var(--chart-tick); font: 10px var(--mono); }
+.ax-chart-axis-label { fill: var(--chart-tick); font: 10px var(--mono); letter-spacing: .06em; }
+
+.ax-chart-series path { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ax-chart-series circle { vector-effect: non-scaling-stroke; }
+
+.ax-tone-reference path { stroke: var(--chart-reference); stroke-width: 3.4; opacity: .6; }
+.ax-tone-reference circle { fill: var(--chart-reference); opacity: .75; }
+.ax-tone-baseline path { stroke: var(--chart-baseline); }
+.ax-tone-baseline circle { fill: var(--panel-deep); stroke: var(--chart-baseline); stroke-width: 1.8; }
+.ax-tone-candidate path { stroke: var(--chart-candidate); }
+.ax-tone-candidate circle { fill: var(--panel-deep); stroke: var(--chart-candidate); stroke-width: 1.8; }
+.ax-tone-s3 path { stroke: var(--chart-series-3); }
+.ax-tone-s3 circle { fill: var(--chart-series-3); }
+.ax-tone-s4 path { stroke: var(--chart-series-4); }
+.ax-tone-s4 circle { fill: var(--chart-series-4); }
+.ax-tone-s5 path { stroke: var(--chart-series-5); }
+.ax-tone-s5 circle { fill: var(--chart-series-5); }
+.ax-tone-muted path { stroke: var(--muted); }
+.ax-tone-muted circle { fill: var(--muted); }
+
+.ax-chart-obstacle rect { stroke-width: 1; }
+.ax-chart-obstacle text { font: 10px var(--mono); }
+.ax-obstacle-stock rect { fill: rgba(238, 144, 104, 0.10); stroke: rgba(238, 144, 104, 0.55); }
+.ax-obstacle-stock text { fill: var(--orange); }
+.ax-obstacle-fixture rect { fill: rgba(223, 192, 106, 0.10); stroke: rgba(223, 192, 106, 0.55); }
+.ax-obstacle-fixture text { fill: var(--yellow); }
+.ax-obstacle-muted rect { fill: rgba(125, 143, 153, 0.10); stroke: rgba(125, 143, 153, 0.5); }
+.ax-obstacle-muted text { fill: var(--muted); }
+
+.ax-chart-marker line { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.ax-chart-marker circle { fill: var(--muted); }
+.ax-chart-marker text { fill: var(--chart-tick); font: 9px var(--mono); }
+
+.ax-chart-crosshair line { stroke: #54687255; stroke-width: 1; }
+.ax-chart-crosshair circle { fill: none; stroke-width: 2; }
+.ax-chart-crosshair .ax-tone-reference circle,
+.ax-chart-crosshair circle.ax-tone-reference { stroke: var(--chart-reference); }
+.ax-chart-crosshair circle.ax-tone-baseline { stroke: var(--chart-baseline); }
+.ax-chart-crosshair circle.ax-tone-candidate { stroke: var(--chart-candidate); }
+.ax-chart-crosshair circle.ax-tone-s3 { stroke: var(--chart-series-3); }
+.ax-chart-crosshair circle.ax-tone-s4 { stroke: var(--chart-series-4); }
+.ax-chart-crosshair circle.ax-tone-s5 { stroke: var(--chart-series-5); }
+.ax-chart-crosshair circle.ax-tone-muted { stroke: var(--muted); }
+
+.ax-chart-tooltip {
+  position: absolute;
+  transform: translate(12px, -50%);
+  display: grid;
+  gap: 3px;
+  min-width: 110px;
+  padding: 8px 10px;
+  background: var(--chart-tooltip-bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  font: 10px var(--mono);
+  pointer-events: none;
+  z-index: 5;
+}
+.ax-chart-tooltip strong { font-size: 10px; letter-spacing: .04em; }
+.ax-chart-tooltip span { color: var(--muted); white-space: nowrap; }
+.ax-tooltip-baseline { color: var(--chart-baseline) !important; }
+.ax-tooltip-candidate { color: var(--chart-candidate) !important; }
+.ax-tooltip-reference { color: var(--chart-reference) !important; }
+.ax-tooltip-s3 { color: var(--chart-series-3) !important; }
+.ax-tooltip-s4 { color: var(--chart-series-4) !important; }
+.ax-tooltip-s5 { color: var(--chart-series-5) !important; }
+
+.ax-chart-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 2px 0; color: var(--muted); font-size: var(--font-xs); }
+.ax-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ax-chart-legend i { width: 16px; height: 0; border-top: 2px solid var(--muted); border-radius: 1px; }
+.ax-chart-legend i.dashed { border-top-style: dashed; }
+.ax-chart-legend .ax-legend-reference i { border-color: var(--chart-reference); }
+.ax-chart-legend .ax-legend-baseline i { border-color: var(--chart-baseline); }
+.ax-chart-legend .ax-legend-candidate i { border-color: var(--chart-candidate); }
+.ax-chart-legend .ax-legend-s3 i { border-color: var(--chart-series-3); }
+.ax-chart-legend .ax-legend-s4 i { border-color: var(--chart-series-4); }
+.ax-chart-legend .ax-legend-s5 i { border-color: var(--chart-series-5); }
+.ax-chart-legend .ax-legend-stock i, .ax-chart-legend .ax-legend-fixture i { height: 8px; width: 10px; border: 1px solid; border-radius: 2px; }
+.ax-chart-legend .ax-legend-stock i { border-color: rgba(238, 144, 104, 0.6); background: rgba(238, 144, 104, 0.12); }
+.ax-chart-legend .ax-legend-fixture i { border-color: rgba(223, 192, 106, 0.6); background: rgba(223, 192, 106, 0.12); }
+
+.ax-chart-caption { display: block; padding-top: 6px; color: var(--faint); font: 10px var(--mono); }
+figure.ax-chart { margin: 0; }

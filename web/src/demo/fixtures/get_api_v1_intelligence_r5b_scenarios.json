@@ -1,0 +1,1 @@
+[{"scenarioId":"real-holdout-readiness-open","title":"Windows real holdout readiness (open)","description":"The R5-A model lineage is sealed, but no bundled controller-export or device-read holdout exists.","expectedOutcome":"Inconclusive","expectedExecutionStatus":"Succeeded","realWorldGeneralizationStatus":"Open"}]

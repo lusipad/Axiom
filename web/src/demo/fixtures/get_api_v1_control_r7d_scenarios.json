@@ -1,0 +1,1 @@
+[{"scenarioId":"beckhoff-twincat-runtime-open","title":"Beckhoff TwinCAT runtime evidence (open)","description":"The Windows-only TwinCAT 3 Build 4026+ / TF6100 Vendor Profile is frozen, while deployment identity, node bindings, license and real runtime evidence remain open.","expectedOutcome":"Inconclusive","expectedReadinessOutcome":"Open","countsTowardReality":false}]

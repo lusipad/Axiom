@@ -1,76 +1,576 @@
-.cnc-benchmark { flex: 1; overflow: auto; min-height: 0; }
-.cnc-content { max-width: 1240px; margin: 0 auto; padding: 44px 32px 56px; }
-.cnc-heading, .cnc-action-row, .cnc-result-heading { display: flex; justify-content: space-between; gap: 24px; align-items: center; }
-.cnc-heading h1 { margin: 10px 0 12px; font-size: 30px; letter-spacing: -.03em; }
-.cnc-heading p, .cnc-input-card p, .cnc-muted, .cnc-result-heading p { color: var(--muted); line-height: 1.7; font-size: 13px; }
-.cnc-heading p { max-width: 56ch; }
-.cnc-heading .eyebrow, .cnc-result-heading .eyebrow { color: var(--faint); }
+.cnc-benchmark-page {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
 
-.cnc-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 34px; }
-.cnc-input-card { padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); min-width: 0; }
-.cnc-input-card-head { display: flex; align-items: baseline; gap: 10px; }
-.cnc-step { color: var(--green); font: 12px var(--mono); }
-.cnc-input-card h2 { margin: 0; font-size: 17px; }
-.cnc-file-label { display: grid; gap: 4px; margin: 18px 0 14px; padding: 18px 16px; border: 1px dashed var(--line-strong); border-radius: var(--radius); background: var(--panel-inset); cursor: pointer; text-align: center; transition: border-color .15s ease, background-color .15s ease; }
-.cnc-file-label:hover { border-color: var(--green); background: rgba(95, 211, 153, 0.05); }
-.cnc-file-cta { color: var(--text); font-size: 13px; font-weight: 600; }
-.cnc-file-hint { color: var(--faint); font-size: 11px; line-height: 1.6; }
-.cnc-file-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-.cnc-filename { display: block; overflow-wrap: anywhere; color: var(--muted); font: 12px var(--mono); }
-.cnc-input-description { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.cnc-link { color: var(--green); background: none; border: 0; padding: 4px 0; text-align: left; cursor: pointer; font-size: 12px; }
-.cnc-link:hover { text-decoration: underline; }
+.cnc-container {
+  max-width: 1260px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 32px 56px;
+  box-sizing: border-box;
+}
 
-.cnc-action-row { padding: 26px 0; }
-.cnc-action-row p { color: var(--faint); font-size: 12px; }
-.cnc-action-row > div { display: flex; gap: 10px; }
-.cnc-action-row .button-primary { min-height: 42px; padding: 0 26px; font-size: 13px; font-weight: 600; }
-.cnc-example-note { padding: 12px 16px; margin: 16px 0 0; background: #28251a; border-left: 2px solid var(--yellow); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: #d4c99f; font-size: 12px; line-height: 1.7; }
-.cnc-error { border: 1px solid var(--orange); border-radius: var(--radius); padding: 16px; color: var(--orange); white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 16px; }
+.cnc-step-section {
+  margin-bottom: 28px;
+}
 
-.cnc-preview { margin: 0 0 28px; padding: 20px 24px 12px; background: var(--panel-deep); border: 1px solid var(--line); border-radius: var(--radius); }
-.cnc-preview figcaption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
-.cnc-preview svg { display: block; width: 100%; margin-top: 12px; }
-.cnc-preview p { color: var(--faint); font-size: 11px; line-height: 1.6; }
+.step-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
 
-.cnc-results { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 32px; }
-.cnc-result-heading h2 { margin: 10px 0; font-size: 28px; }
-.cnc-outcome { display: inline-block; padding: 6px 18px; border: 1px solid currentColor; border-radius: 999px; }
-.cnc-table-scroll { overflow-x: auto; margin: 20px 0 32px; border: 1px solid var(--line); border-radius: var(--radius); }
-.cnc-benchmark table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; text-align: left; }
-.cnc-benchmark th, .cnc-benchmark td { padding: 13px 16px; border-bottom: 1px solid var(--line-soft); }
-.cnc-benchmark tbody tr:last-child th, .cnc-benchmark tbody tr:last-child td { border-bottom: 0; }
-.cnc-benchmark tbody tr:hover th, .cnc-benchmark tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
-.cnc-benchmark thead { color: var(--muted); background: var(--panel); }
-.cnc-benchmark tbody th { font-weight: 500; }
-.cnc-benchmark small { display: block; margin-top: 5px; font-size: 10px; color: var(--muted); white-space: normal; max-width: 250px; }
-.cnc-benchmark .Improved, .cnc-benchmark .WithinLimit { color: var(--green); }
-.cnc-benchmark .Regressed, .cnc-benchmark .Violated, .cnc-benchmark .CandidateViolatesLimits { color: var(--orange); }
-.cnc-benchmark .Tradeoff, .cnc-benchmark .Inconclusive, .cnc-benchmark .InsufficientSamples { color: var(--yellow); }
-.cnc-status { display: inline-block; padding: 3px 10px; border: 1px solid currentColor; border-radius: 999px; font-size: 11px; }
-small.cnc-status { margin-top: 6px; }
-.cnc-results h3 { font-size: 15px; margin: 28px 0 6px; }
-.cnc-results .cnc-muted { margin-top: 0; max-width: 72ch; }
-.cnc-empty { border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 44px 32px; text-align: center; }
-.cnc-empty h2 { font-size: 18px; margin-top: 0; }
-.cnc-empty p { max-width: 52ch; margin: 0 auto; color: var(--muted); font-size: 13px; line-height: 1.8; }
-.cnc-scope { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.8; }
-.cnc-scope summary { display: inline-block; cursor: pointer; color: var(--text); font-weight: 600; padding: 4px 0; }
-.cnc-scope summary:hover { color: var(--green); }
-.cnc-scope p { max-width: 88ch; }
-.cnc-report-details { font-size: 12px; color: var(--muted); line-height: 1.8; overflow-wrap: anywhere; }
-.cnc-report-details summary { cursor: pointer; color: var(--text); }
+.step-num-eyebrow {
+  color: var(--faint);
+  font: 11px var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 
-.primary-navigation { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); }
-.primary-navigation .active { border-color: var(--green); color: var(--green); }
-.legacy-navigation-note { color: var(--muted); font-size: 11px; margin-left: auto; }
+.step-actions-quick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
 
-@media (max-width: 760px) {
-  .cnc-content { padding: 28px 16px; }
-  .cnc-inputs { grid-template-columns: 1fr; }
-  .cnc-heading, .cnc-action-row, .cnc-result-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
-  .cnc-action-row > div { flex-wrap: wrap; }
-  .cnc-heading h1 { font-size: 24px; }
-  .legacy-navigation-note { display: none; }
-  .cnc-input-card { padding: 18px; }
+.step-actions-quick .sep {
+  color: var(--line-strong);
+}
+
+.cnc-quick-link {
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.cnc-quick-link:hover {
+  color: var(--green);
+  text-decoration: underline;
+}
+
+/* Three Input Cards */
+.cnc-input-cards-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cnc-file-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: #11191f;
+  border: 1px solid #1f2c34;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.cnc-file-card:hover {
+  border-color: #384e5c;
+  background: #141f27;
+}
+
+.cnc-file-card.loaded {
+  border-color: #263842;
+}
+
+.card-icon-box {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+}
+
+.icon-case {
+  background: rgba(95, 211, 153, 0.12);
+  color: #5fd399;
+}
+
+.icon-base {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+}
+
+.icon-cand {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.card-text-box {
+  min-width: 0;
+  flex: 1;
+}
+
+.card-role-label {
+  color: var(--faint);
+  font: 10px var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.card-file-name {
+  color: #e2eaee;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 3px 0 5px;
+}
+
+.card-hash-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 10px var(--mono);
+}
+
+.pill-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.pill-tag.green {
+  background: rgba(95, 211, 153, 0.15);
+  color: #5fd399;
+}
+
+.pill-tag.amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.pill-hash {
+  color: var(--faint);
+}
+
+.cnc-plus-separator {
+  color: var(--faint);
+  font-size: 16px;
+  font-weight: 700;
+  user-select: none;
+}
+
+.cnc-example-note {
+  padding: 10px 14px;
+  margin: 14px 0 0;
+  background: #231e13;
+  border-left: 3px solid var(--yellow);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: #d6ca9b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cnc-error-banner {
+  border: 1px solid var(--orange);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  color: var(--orange);
+  background: rgba(238, 144, 104, 0.08);
+  margin-top: 14px;
+  font-size: 12px;
+}
+
+/* Two Columns for Step 02 */
+.cnc-report-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.cnc-report-left {
+  min-width: 0;
+}
+
+.cnc-report-title-row {
+  margin-bottom: 12px;
+}
+
+.cnc-report-title-row h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Outcome banner */
+.cnc-outcome-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+}
+
+.banner-Tradeoff, .banner-CandidateViolatesLimits, .banner-Inconclusive {
+  background: #1c180e;
+  border: 1px solid #4a3614;
+}
+
+.banner-Improved {
+  background: #0f1f16;
+  border: 1px solid #1c5236;
+}
+
+.banner-Regressed, .banner-Violated {
+  background: #241313;
+  border: 1px solid #542222;
+}
+
+.outcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.outcome-text-heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.badge-Tradeoff, .badge-CandidateViolatesLimits, .badge-Inconclusive {
+  background: #2e200a;
+  color: #f59e0b;
+  border: 1px solid #6b430c;
+}
+
+.badge-Improved {
+  background: #143522;
+  color: #4ade80;
+  border: 1px solid #1c663b;
+}
+
+.badge-Regressed, .badge-Violated {
+  background: #3b1717;
+  color: #f87171;
+  border: 1px solid #732626;
+}
+
+.outcome-explanation {
+  font-size: 12px;
+  color: #c4d2da;
+  line-height: 1.5;
+}
+
+/* Subheads & Tables */
+.cnc-section-subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.subhead-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2eaee;
+}
+
+.subhead-meta {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+
+.cnc-table-box {
+  border: 1px solid #1d2931;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  background: #10171d;
+}
+
+.cnc-table-box table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.cnc-table-box thead {
+  background: #131c23;
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+
+.cnc-table-box th, .cnc-table-box td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #192329;
+}
+
+.cnc-table-box tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cnc-table-box tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cnc-table-box td small {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font: 11px var(--mono);
+}
+
+.tag-Improved {
+  background: rgba(95, 211, 153, 0.15);
+  color: #5fd399;
+}
+
+.tag-Regressed, .tag-Violated {
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+}
+
+.tag-Tradeoff, .tag-WithinLimit, .tag-WithinTolerance {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.text-green {
+  color: #5fd399 !important;
+  font-family: var(--mono);
+}
+
+.text-red {
+  color: #f43f5e !important;
+  font-family: var(--mono);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+/* Callout */
+.cnc-scope-callout {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid #1a252d;
+  border-radius: var(--radius);
+  background: #0d1419;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 20px;
+}
+
+.cnc-scope-callout .callout-icon {
+  color: #38bdf8;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.cnc-scope-callout p {
+  margin: 0;
+}
+
+/* Right Column */
+.cnc-report-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cnc-preview-card {
+  border: 1px solid #1d2931;
+  border-radius: var(--radius);
+  background: #10171d;
+  padding: 16px 18px;
+}
+
+.cnc-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.cnc-preview-header strong {
+  font-size: 13px;
+  color: #e2eaee;
+}
+
+.cnc-preview-sub {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+
+.cnc-chart-body {
+  margin: 8px 0;
+}
+
+.cnc-preview-legend {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+.line-gray { background: #7d8f99; }
+.line-blue { background: #38bdf8; }
+.line-green { background: #5fd399; }
+
+.cnc-preview-caption {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* Identity card */
+.cnc-identity-card {
+  border: 1px solid #1d2931;
+  border-radius: var(--radius);
+  background: #10171d;
+  padding: 16px 18px;
+}
+
+.identity-card-header strong {
+  font-size: 13px;
+  color: #e2eaee;
+}
+
+.identity-rows {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.identity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.identity-row .label {
+  color: var(--muted);
+}
+
+.identity-row .val {
+  color: #cbd8df;
+}
+
+.identity-card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.button-sm {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  flex: 1;
+}
+
+/* Warning callout */
+.cnc-warning-callout {
+  padding: 12px 14px;
+  border-left: 3px solid #eab308;
+  background: #1a160d;
+  color: #dfba5c;
+  font-size: 11px;
+  line-height: 1.6;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Empty Card */
+.cnc-empty-card {
+  border: 1px dashed #263842;
+  border-radius: var(--radius);
+  padding: 48px 32px;
+  text-align: center;
+  background: #0f161b;
+}
+
+.empty-inner h2 {
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.empty-inner p {
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 52ch;
+  margin: 0 auto;
+  line-height: 1.7;
+}
+
+/* Closed loop section */
+.closed-loop-section {
+  border-top: 1px solid var(--line);
+  padding-top: 32px;
+  margin-top: 32px;
+}
+
+.cnc-result-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.cnc-result-heading h2 {
+  margin: 6px 0;
+  font-size: 18px;
+}
+
+.active-doe-list {
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+@media (max-width: 900px) {
+  .cnc-input-cards-row {
+    flex-direction: column;
+  }
+  .cnc-plus-separator {
+    display: none;
+  }
+  .cnc-report-columns {
+    grid-template-columns: 1fr;
+  }
 }

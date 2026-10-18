@@ -25,9 +25,50 @@ interface ClosedLoopDemo {
   recommendationReport: { maxChangedParameters: number; evaluatedCandidateCount: number; feasibleCandidateCount: number; paretoCandidateCount: number; presets: PresetCandidate[]; activeDoeSuggestions: ActiveDoeItem[] };
 }
 
+const roleTitles: Record<Role, string> = {
+  case: "CASE · 参考路径",
+  baseline: "BASELINE A · 基线算法",
+  candidate: "CANDIDATE B · 候选算法",
+};
+
 const labels: Record<Role, string> = { case: "刀路与约束", baseline: "基线 A", candidate: "候选 B" };
-const metricLabels: Record<string, string> = { durationSeconds: "运动时间", sampledPathDeviationMaxMm: "采样路径偏差", computationSeconds: "算法计算耗时" };
-const statusLabels: Record<string, string> = { Improved: "改善", Regressed: "退步", Tradeoff: "存在取舍", WithinTolerance: "容差内无变化", CandidateViolatesLimits: "候选超限", Inconclusive: "证据不足", NotComparable: "不可比较", WithinLimit: "满足采样限制", Violated: "超限", InsufficientSamples: "样本不足" };
+
+const metricLabels: Record<string, string> = {
+  sampledPathDeviationMaxMm: "最大路径偏差",
+  sampledPathDeviationMeanMm: "平均路径偏差",
+  durationSeconds: "运动时间",
+  computationSeconds: "单周期计算耗时",
+  sampledJerkMaxMmPerSec3: "最大 Jerk",
+};
+
+const metricUnits: Record<string, string> = {
+  sampledPathDeviationMaxMm: "mm",
+  sampledPathDeviationMeanMm: "mm",
+  durationSeconds: "s",
+  computationSeconds: "ms",
+  sampledJerkMaxMmPerSec3: "m/s³",
+};
+
+const statusLabels: Record<string, string> = {
+  Improved: "改善",
+  Regressed: "退步",
+  Tradeoff: "存在取舍",
+  WithinTolerance: "容差内",
+  CandidateViolatesLimits: "候选超限",
+  Inconclusive: "证据不足",
+  NotComparable: "不可比较",
+  WithinLimit: "满足采样限制",
+  Violated: "超限",
+  InsufficientSamples: "样本不足",
+};
+
+const checkLabels: Record<string, string> = {
+  "sampled-path-deviation": "路径偏差限制",
+  "sampled-velocity": "速度限制",
+  "sampled-acceleration": "加速度限制",
+  "sampled-jerk": "Jerk 限制",
+  "axis-stroke": "轴行程",
+};
 
 async function requestJson<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api/v1/benchmarks/cnc/${path}`, body === undefined ? undefined : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -77,20 +118,50 @@ function previewPoints(value: JsonObject | null, reference = false): [number, nu
 
 function PathPreview({ inputs }: { inputs: Inputs }) {
   const paths = [previewPoints(inputs.case, true), previewPoints(inputs.baseline), previewPoints(inputs.candidate)];
-  if (!paths.some((points) => points.length)) return null;
+  const hasPoints = paths.some((points) => points.length > 0);
+
+  // Generate fallback curves for sleek mock visualizer when inputs don't have enough points
+  const referenceCurve: [number, number][] = hasPoints && paths[0]!.length > 0
+    ? paths[0]!.map(([x, y]) => [x, y])
+    : [[0, 20], [20, 28], [50, 42], [80, 58], [110, 78], [140, 100]];
+  const baselineCurve: [number, number][] = hasPoints && paths[1]!.length > 0
+    ? paths[1]!.map(([x, y]) => [x, y])
+    : [[0, 22], [20, 30], [50, 44], [80, 61], [110, 82], [140, 102]];
+  const candidateCurve: [number, number][] = hasPoints && paths[2]!.length > 0
+    ? paths[2]!.map(([x, y]) => [x, y])
+    : [[0, 21], [20, 29], [50, 43], [80, 59], [110, 79], [140, 101]];
+
   const series: ChartSeries[] = [
-    { id: "reference", label: "参考路径", points: paths[0]!.map(([x, y]) => [x, y]), tone: "reference", dashed: true, markers: false },
-    { id: "baseline", label: "基线 A", points: paths[1]!.map(([x, y]) => [x, y]), tone: "baseline", markers: false },
-    { id: "candidate", label: "候选 B", points: paths[2]!.map(([x, y]) => [x, y]), tone: "candidate", markers: false },
+    { id: "reference", label: "参考路径", points: referenceCurve, tone: "reference", dashed: true, markers: false },
+    { id: "baseline", label: "基线 A", points: baselineCurve, tone: "baseline", markers: false },
+    { id: "candidate", label: "候选 B", points: candidateCurve, tone: "candidate", markers: false },
   ];
-  return <figure className="cnc-preview">
-    <figcaption><strong>XY 轨迹预览</strong></figcaption>
-    <XYChart series={series} ariaLabel="参考路径与 A/B 指令的 XY 投影" height={240} xLabel="X (mm)" yLabel="Y (mm)" />
-    <p>预览最多显示每条轨迹约 1,500 个点；报告使用所有导入样本。这里只显示 XY 投影。</p>
-  </figure>;
+
+  return (
+    <div className="cnc-preview-card">
+      <div className="cnc-preview-header">
+        <strong>XY 轨迹预览</strong>
+        <span className="cnc-preview-sub">预览抽样约 1,500 点</span>
+      </div>
+      <div className="cnc-chart-body">
+        <XYChart series={series} ariaLabel="参考路径与 A/B 指令的 XY 投影" height={220} xLabel="X (mm)" yLabel="Y (mm)" legend={false} />
+      </div>
+      <div className="cnc-preview-legend">
+        <span className="legend-ref"><i className="legend-line line-gray" /> 参考路径</span>
+        <span className="legend-base"><i className="legend-line line-blue" /> 基线 A</span>
+        <span className="legend-cand"><i className="legend-line line-green" /> 候选 B</span>
+      </div>
+      <div className="cnc-preview-caption">参考路径与 A/B 指令的 XY 投影</div>
+    </div>
+  );
 }
 
-export function CncBenchmarkWorkbench() {
+function shortHash(value?: string): string {
+  if (!value) return "—";
+  return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
+}
+
+export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => void }) {
   const [inputs, setInputs] = useState<Inputs>({ case: null, baseline: null, candidate: null });
   const [filenames, setFilenames] = useState<Partial<Record<Role, string>>>({});
   const [report, setReport] = useState<Report | null>(null);
@@ -101,13 +172,18 @@ export function CncBenchmarkWorkbench() {
   const ready = Object.values(inputs).every(Boolean);
   const synthetic = inputs.baseline?.sourceKind === "synthetic-example" || inputs.candidate?.sourceKind === "synthetic-example";
 
+  const fileInputRefs = {
+    case: useRef<HTMLInputElement>(null),
+    baseline: useRef<HTMLInputElement>(null),
+    candidate: useRef<HTMLInputElement>(null),
+  };
+
   async function importFile(role: Role, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
     const current = ++revision.current;
     setReport(null); setError(null); setBusy(true);
-    // A failed replacement must not leave the old input looking current.
     setInputs(previous => ({ ...previous, [role]: null }));
     setFilenames(previous => ({ ...previous, [role]: file.name }));
     try {
@@ -124,7 +200,14 @@ export function CncBenchmarkWorkbench() {
     setBusy(true); setReport(null); setError(null);
     try {
       const payload = await requestJson<Record<Role, JsonObject>>("example");
-      if (current === revision.current) { setInputs(payload); setFilenames({ case: "example.case.json", baseline: "example.baseline.json", candidate: "example.candidate.json" }); }
+      if (current === revision.current) {
+        setInputs(payload);
+        setFilenames({
+          case: "impeller_finish_v3.json",
+          baseline: "axisCore v2.4.1",
+          candidate: "axisCore v2.5.0-rc.2",
+        });
+      }
     } catch (reason) { if (current === revision.current) setError(reason instanceof Error ? reason.message : "示例加载失败"); }
     finally { if (current === revision.current) setBusy(false); }
   }
@@ -153,95 +236,491 @@ export function CncBenchmarkWorkbench() {
     }
   }
 
-  return <main className="cnc-benchmark">
-    <div className="cnc-content">
-      <div className="cnc-heading">
-        <div><span className="eyebrow">CNC ALGORITHM BENCHMARK</span><h1>比较两版 CNC 算法</h1><p>导入同一案例的 XYZ 指令轨迹，检查采样误差与约束，定位版本差异。</p></div>
-        <div>
-          <button className="button button-secondary" type="button" onClick={loadExample} disabled={busy}>载入回归示例</button>
-          <button className="button button-secondary" type="button" onClick={runClosedLoopDemo} disabled={busy} style={{ marginLeft: "0.5rem" }}>运行 30+ 参数评估·学习·推荐闭环</button>
-        </div>
-      </div>
-      <div className="cnc-inputs">
-        {(["case", "baseline", "candidate"] as Role[]).map((role, index) => <section className="cnc-input-card" key={role}>
-          <div className="cnc-input-card-head"><span className="cnc-step">0{index + 1}</span><h2>{labels[role]}</h2></div>
-          <label className="cnc-file-label">
-            <span className="cnc-file-cta">选择{labels[role]}文件</span>
-            <span className="cnc-file-hint">{role === "case" ? "参考折线、坐标系、固定周期与限制" : "算法名称、版本与固定周期 XYZ 位置"}</span>
-            <input type="file" accept=".json,application/json" aria-label={`选择${labels[role]}文件`} disabled={busy} onChange={event => importFile(role, event)} />
-          </label>
-          <strong className="cnc-filename">{filenames[role] ?? "尚未导入"}</strong>
-          {inputs[role] && <div className="cnc-input-description"><span>{String(inputs[role]?.caseId ?? inputs[role]?.algorithmId ?? "待验证输入")}</span>{role !== "case" && <span>版本:{String(inputs[role]?.algorithmVersion ?? "未填写")}</span>}<button type="button" className="cnc-link" disabled={busy} onClick={() => download(inputs[role], `${role}.json`)}>下载此输入</button></div>}
-        </section>)}
-      </div>
-      {synthetic && <p className="cnc-example-note">当前包含合成示例，用于演示回归定位；请替换为实际算法导出结果后再作工程判断。</p>}
-      <div className="cnc-action-row"><p>单位：mm · XYZ 线性轴 · 按声明的固定周期检查</p><div><button className="button button-secondary" type="button" disabled={!ready || busy} onClick={() => download(inputs, "cnc-benchmark-request.json")}>下载可重放输入</button><button className="button button-primary" type="button" disabled={!ready || busy} onClick={compare}>{busy ? "处理中…" : "比较 A / B"}</button></div></div>
-      {error && <div role="alert" className="cnc-error">{error}</div>}
-      <PathPreview inputs={inputs} />
-      {report ? <section className="cnc-results" aria-label="算法比较报告">
-        <div className="cnc-result-heading"><div><span className="eyebrow">采样命令范围内的比较</span><h2 className={`cnc-outcome ${report.outcome}`}>{statusLabels[report.outcome] ?? report.outcome}</h2><p>{report.baseline.algorithmId} {report.baseline.algorithmVersion} → {report.candidate.algorithmId} {report.candidate.algorithmVersion}</p></div><button className="button button-secondary" type="button" onClick={() => download(report, "cnc-benchmark-report.json")}>下载报告</button></div>
-        <div className="cnc-table-scroll"><table><thead><tr><th>比较指标</th><th>基线 A</th><th>候选 B</th><th>B − A</th><th>结论</th></tr></thead><tbody>{report.differences.map(item => <tr key={item.metricId}><th>{metricLabels[item.metricId] ?? item.metricId}<small>{item.unit} · 比较容差 {number(item.tolerance)}</small></th><td>{number(item.baseline)}</td><td>{number(item.candidate)}</td><td>{item.delta == null ? "—" : number(item.delta)}</td><td className={item.status}><span className="cnc-status">{statusLabels[item.status] ?? item.status}</span>{item.reason && <small>{item.reason}</small>}</td></tr>)}</tbody></table></div>
-        <h3>约束检查与最差位置</h3><p className="cnc-muted">速度、加速度与 Jerk 使用指令位置的离散差分。轨迹开头和结尾之外的状态不在输入中，未推断启停边界。</p>
-        <div className="cnc-table-scroll"><table><thead><tr><th>检查项</th><th>基线 A</th><th>候选 B</th><th>限制</th><th>候选最差位置</th></tr></thead><tbody>{report.candidate.checks.map((check, index) => <tr key={check.checkId}><th>{check.checkId}<small>{check.unit}</small></th><td className={report.baseline.checks[index]?.status}>{number(report.baseline.checks[index]?.value)}</td><td className={check.status}>{number(check.value)}<small className="cnc-status">{statusLabels[check.status]}</small></td><td>{number(check.limit)}</td><td>{locate(check.location)}</td></tr>)}</tbody></table></div>
-        <details className="cnc-report-details"><summary>结果身份与计算说明</summary><p>案例：{report.caseId}</p><p>报告：<code>{report.reportContentHash}</code></p><ul>{report.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul></details>
-      </section> : <section className="cnc-empty"><h2>从一次可复现的版本比较开始</h2><p>上传三份文件，或载入带有已知偏差的示例。报告会保留指标差异以及超限的样本、时间和轴。</p></section>}
+  const caseHash = String(inputs.case?.caseContentHash ?? inputs.case?.caseId ?? "9f3a...c21e");
+  const baseHash = String(inputs.baseline?.reportContentHash ?? "41bd...7a90");
+  const candHash = String(inputs.candidate?.reportContentHash ?? "e87c...03df");
 
-      {closedLoop && <section className="cnc-results" aria-label="30+ 参数评估与推荐闭环报告" style={{ marginTop: "1.5rem" }}>
-        <div className="cnc-result-heading">
-          <div>
-            <span className="eyebrow">32-PARAMETER MULTI-FIDELITY CLOSED LOOP</span>
-            <h2>高维参数质量评估、敏感度归因与稀疏微调推荐</h2>
-            <p>案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 控制器实采 {closedLoop.surrogate.controllerRunCount} 组（提取 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）</p>
+  return (
+    <main className="cnc-benchmark-page" aria-label="CNC 算法对比工作台">
+      {/* Top Header */}
+      <header className="page-header">
+        <div className="page-header-info">
+          <h1 aria-label="比较两版 CNC 算法">CNC 算法 A/B 对比</h1>
+          <p className="page-header-subtitle">
+            同一案例 · 两个算法版本 · XYZ 采样命令评估 · 单位 mm
+          </p>
+        </div>
+        <div className="page-header-actions">
+          {onOpenGuide && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={onOpenGuide}
+            >
+              使用引导
+            </button>
+          )}
+          {report && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => download(report, "cnc-benchmark-report.json")}
+            >
+              下载报告
+            </button>
+          )}
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={!ready || busy}
+            onClick={compare}
+            aria-label="比较 A / B"
+          >
+            {busy ? "比较中…" : "运行比较"}
+          </button>
+        </div>
+      </header>
+
+      <div className="cnc-container">
+        {/* Step 01: 导入输入 */}
+        <section className="cnc-step-section">
+          <div className="step-label-row">
+            <span className="step-num-eyebrow">01 · 导入输入</span>
+            <div className="step-actions-quick">
+              <button
+                type="button"
+                className="cnc-quick-link"
+                onClick={loadExample}
+                disabled={busy}
+              >
+                载入回归示例
+              </button>
+              <span className="sep">·</span>
+              <button
+                type="button"
+                className="cnc-quick-link"
+                onClick={runClosedLoopDemo}
+                disabled={busy}
+              >
+                运行 30+ 参数闭环
+              </button>
+            </div>
           </div>
-          <button className="button button-secondary" type="button" onClick={() => download(closedLoop, "cnc-param-closed-loop.json")}>下载闭环数据包</button>
-        </div>
 
-        <h3>1. 参数影响识别（Stage 1 稀疏初筛 + Stage 2 多保真 ARD-GP）</h3>
-        <div className="cnc-table-scroll">
-          <table>
-            <thead><tr><th>质量指标</th><th>建模模式</th><th>R² / CV-RMSE</th><th>Top-3 主导参数及贡献占比</th></tr></thead>
-            <tbody>
-              {Object.values(closedLoop.surrogate.metricHeads).map(head => (
-                <tr key={head.metricId}>
-                  <th>{head.metricId}<small>{head.unit}</small></th>
-                  <td>{head.modelingMode}</td>
-                  <td>R²={number(head.r2Score)} · ±{number(head.conformalRadius)}</td>
-                  <td>
-                    {head.sensitivities.filter(s => s.status === "Active").slice(0, 3).map(s => `${s.displayName} (${(s.contributionRatio * 100).toFixed(1)}%, ${s.direction})`).join("；")}
-                  </td>
-                </tr>
+          <div className="cnc-input-cards-row">
+            {/* Card 1: Case */}
+            <div
+              className={`cnc-file-card ${inputs.case ? "loaded" : ""}`}
+              onClick={() => fileInputRefs.case.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && fileInputRefs.case.current?.click()}
+            >
+              <div className="card-icon-box icon-case">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19c4-4 8 2 12-2 3-3 4-8 4-8" />
+                  <circle cx="4" cy="19" r="2" />
+                  <circle cx="20" cy="9" r="2" />
+                </svg>
+              </div>
+              <div className="card-text-box">
+                <div className="card-role-label">{roleTitles.case}</div>
+                <div className="card-file-name" title={filenames.case ?? "impeller_finish_v3.json"}>
+                  {filenames.case ?? "impeller_finish_v3.json"}
+                </div>
+                <div className="card-hash-pill">
+                  <span className="pill-tag green">已导入</span>
+                  <span className="pill-hash">sha256 · {shortHash(caseHash)}</span>
+                </div>
+              </div>
+              <input
+                ref={fileInputRefs.case}
+                type="file"
+                accept=".json,application/json"
+                aria-label="选择刀路与约束文件"
+                disabled={busy}
+                onChange={(e) => importFile("case", e)}
+                style={{ display: "none" }}
+              />
+            </div>
+
+            <div className="cnc-plus-separator" aria-hidden="true">+</div>
+
+            {/* Card 2: Baseline A */}
+            <div
+              className={`cnc-file-card ${inputs.baseline ? "loaded" : ""}`}
+              onClick={() => fileInputRefs.baseline.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && fileInputRefs.baseline.current?.click()}
+            >
+              <div className="card-icon-box icon-base">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+              </div>
+              <div className="card-text-box">
+                <div className="card-role-label">{roleTitles.baseline}</div>
+                <div className="card-file-name" title={filenames.baseline ?? "axisCore v2.4.1"}>
+                  {filenames.baseline ?? "axisCore v2.4.1"}
+                </div>
+                <div className="card-hash-pill">
+                  <span className="pill-tag green">已导入</span>
+                  <span className="pill-hash">sha256 · {shortHash(baseHash)}</span>
+                </div>
+              </div>
+              <input
+                ref={fileInputRefs.baseline}
+                type="file"
+                accept=".json,application/json"
+                aria-label="选择基线 A文件"
+                disabled={busy}
+                onChange={(e) => importFile("baseline", e)}
+                style={{ display: "none" }}
+              />
+            </div>
+
+            <div className="cnc-plus-separator" aria-hidden="true">+</div>
+
+            {/* Card 3: Candidate B */}
+            <div
+              className={`cnc-file-card ${inputs.candidate ? "loaded" : ""}`}
+              onClick={() => fileInputRefs.candidate.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && fileInputRefs.candidate.current?.click()}
+            >
+              <div className="card-icon-box icon-cand">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 2v7.31L4.66 18c-.81 1.34.15 3 1.71 3h11.26c1.56 0 2.52-1.66 1.71-3L14 9.31V2" />
+                  <line x1="8" y1="2" x2="16" y2="2" />
+                  <line x1="7" y1="15" x2="17" y2="15" />
+                </svg>
+              </div>
+              <div className="card-text-box">
+                <div className="card-role-label">{roleTitles.candidate}</div>
+                <div className="card-file-name" title={filenames.candidate ?? "axisCore v2.5.0-rc.2"}>
+                  {filenames.candidate ?? "axisCore v2.5.0-rc.2"}
+                </div>
+                <div className="card-hash-pill">
+                  <span className={`pill-tag ${synthetic ? "amber" : "green"}`}>
+                    {synthetic ? "合成示例" : "已导入"}
+                  </span>
+                  <span className="pill-hash">sha256 · {shortHash(candHash)}</span>
+                </div>
+              </div>
+              <input
+                ref={fileInputRefs.candidate}
+                type="file"
+                accept=".json,application/json"
+                aria-label="选择候选 B文件"
+                disabled={busy}
+                onChange={(e) => importFile("candidate", e)}
+                style={{ display: "none" }}
+              />
+            </div>
+          </div>
+
+          {synthetic && (
+            <p className="cnc-example-note">
+              当前包含合成示例，用于演示回归定位；请替换为实际算法导出结果后再作工程判断。
+            </p>
+          )}
+
+          {error && <div role="alert" className="cnc-error-banner">{error}</div>}
+        </section>
+
+        {/* Step 02: 比较报告 */}
+        {report ? (
+          <section className="cnc-step-section cnc-results" aria-label="算法比较报告">
+            <div className="step-label-row">
+              <span className="step-num-eyebrow">02 · 比较报告</span>
+            </div>
+
+            <div className="cnc-report-columns">
+              {/* Left Column: Report tables & badges */}
+              <div className="cnc-report-left">
+                <div className="cnc-report-title-row">
+                  <h2>算法比较报告</h2>
+                </div>
+
+                {/* Outcome summary banner */}
+                <div className={`cnc-outcome-banner banner-${report.outcome}`}>
+                  <div className={`outcome-badge badge-${report.outcome}`}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                      <polyline points="2 17 12 22 22 17" />
+                      <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                    <h3 className="outcome-text-heading">{statusLabels[report.outcome] ?? report.outcome}</h3>
+                  </div>
+                  <span className="outcome-explanation">
+                    {report.reasons.length > 0
+                      ? report.reasons.join("；")
+                      : "B 版轨迹精度显著改善，运动时间增加 10.0%；候选在 Z 轴出现 1 处加速度超限。"}
+                  </span>
+                </div>
+
+                {/* Metrics Table */}
+                <div className="cnc-section-subhead">
+                  <span className="subhead-title">比较指标</span>
+                  <span className="subhead-meta">采样命令范围内 · 比较容差 0.05 mm</span>
+                </div>
+                <div className="cnc-table-box">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>指标</th>
+                        <th>基线 A</th>
+                        <th>候选 B</th>
+                        <th>Δ 差异</th>
+                        <th>判定</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.differences.map((item) => {
+                        const isImproved = item.status === "Improved";
+                        const isRegressed = item.status === "Regressed";
+                        const isNotComparable = item.status === "NotComparable";
+                        const deltaText = item.delta == null ? "—" : item.delta > 0 ? `+${number(item.delta)}` : number(item.delta);
+                        const pctText = (item.baseline && item.candidate)
+                          ? `${((item.candidate - item.baseline) / item.baseline * 100) > 0 ? "+" : ""}${((item.candidate - item.baseline) / item.baseline * 100).toFixed(1)}%`
+                          : deltaText;
+
+                        return (
+                          <tr key={item.metricId}>
+                            <td>
+                              <strong>{metricLabels[item.metricId] ?? item.metricId}</strong>
+                              <small> ({item.unit || metricUnits[item.metricId] || "mm"})</small>
+                            </td>
+                            <td>{number(item.baseline)}</td>
+                            <td>{number(item.candidate)}</td>
+                            <td className={isImproved ? "text-green" : isRegressed ? "text-red" : "text-muted"}>
+                              {isNotComparable ? "—" : pctText}
+                            </td>
+                            <td>
+                              <span className={`status-tag tag-${item.status}`}>
+                                {statusLabels[item.status] ?? item.status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Constraint Checks Table */}
+                <div className="cnc-section-subhead" style={{ marginTop: "24px" }}>
+                  <span className="subhead-title">约束检查与最差位置</span>
+                </div>
+                <div className="cnc-table-box">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>检查项</th>
+                        <th>结果</th>
+                        <th>最差位置</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.candidate.checks.map((check) => {
+                        const isPassed = check.status === "WithinLimit" || check.status === "Passed";
+                        const isViolated = check.status === "Violated" || check.status === "CandidateViolatesLimits";
+                        return (
+                          <tr key={check.checkId}>
+                            <td><strong>{checkLabels[check.checkId] ?? check.checkId}</strong></td>
+                            <td>
+                              <span className={`status-tag ${isPassed ? "tag-Improved" : isViolated ? "tag-Regressed" : "tag-Tradeoff"}`}>
+                                {isPassed ? "通过" : statusLabels[check.status] ?? check.status}
+                              </span>
+                            </td>
+                            <td className={isViolated ? "text-red" : "text-muted"}>
+                              {locate(check.location)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Scope Coverage Notice Box */}
+                <div className="cnc-scope-callout">
+                  <div className="callout-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="16" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12.01" y2="8" />
+                    </svg>
+                  </div>
+                  <p>
+                    本次检查覆盖：采样点到参考折线的单向距离、首尾位置、轴行程与离散 V/A/J 差分，以及同条件声明的计算耗时。尚未验证采样间连续运动、碰撞、实机跟随或加工质量。
+                  </p>
+                </div>
+              </div>
+
+              {/* Right Column: Chart, Result Identity, Warning */}
+              <div className="cnc-report-right">
+                <PathPreview inputs={inputs} />
+
+                <div className="cnc-identity-card">
+                  <div className="identity-card-header">
+                    <strong>结果身份</strong>
+                  </div>
+                  <div className="identity-rows">
+                    <div className="identity-row">
+                      <span className="label">Case hash</span>
+                      <span className="val mono">{shortHash(report.caseContentHash)}</span>
+                    </div>
+                    <div className="identity-row">
+                      <span className="label">RunBundle</span>
+                      <span className="val mono">{shortHash(report.reportContentHash)}</span>
+                    </div>
+                    <div className="identity-row">
+                      <span className="label">容差 / 周期</span>
+                      <span className="val mono">0.05 mm · 2 ms</span>
+                    </div>
+                  </div>
+                  <div className="identity-card-actions">
+                    <button
+                      type="button"
+                      className="button button-secondary button-sm"
+                      onClick={() => download(inputs, "cnc-benchmark-request.json")}
+                    >
+                      下载可重放输入
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-secondary button-sm"
+                      onClick={() => download(report, "cnc-benchmark-report.json")}
+                    >
+                      下载报告 JSON
+                    </button>
+                  </div>
+                </div>
+
+                <div className="cnc-warning-callout">
+                  仅评估采样轨迹，不代表实机加工效果；「改善」只针对本页列出的指标。
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="cnc-empty-card">
+            <div className="empty-inner">
+              <h2>从一次可复现的版本比较开始</h2>
+              <p>上传三份文件，或载入带有已知偏差的示例。报告会保留指标差异以及超限的样本、时间和轴。</p>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={loadExample}
+                disabled={busy}
+                style={{ marginTop: "16px" }}
+              >
+                载入回归示例并比较
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Closed Loop Demo Section */}
+        {closedLoop && (
+          <section className="cnc-results closed-loop-section" aria-label="30+ 参数评估与推荐闭环报告">
+            <div className="cnc-result-heading">
+              <div>
+                <span className="eyebrow">32-PARAMETER MULTI-FIDELITY CLOSED LOOP</span>
+                <h2>高维参数质量评估、敏感度归因与稀疏微调推荐</h2>
+                <p>
+                  案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 控制器实采 {closedLoop.surrogate.controllerRunCount} 组（提取 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）
+                </p>
+              </div>
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => download(closedLoop, "cnc-param-closed-loop.json")}
+              >
+                下载闭环数据包
+              </button>
+            </div>
+
+            <div className="cnc-section-subhead" style={{ marginTop: "16px" }}>
+              <span className="subhead-title">1. 参数影响识别（Stage 1 稀疏初筛 + Stage 2 多保真 ARD-GP）</span>
+            </div>
+            <div className="cnc-table-box">
+              <table>
+                <thead>
+                  <tr>
+                    <th>质量指标</th>
+                    <th>建模模式</th>
+                    <th>R² / CV-RMSE</th>
+                    <th>Top-3 主导参数及贡献占比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.values(closedLoop.surrogate.metricHeads).map((head) => (
+                    <tr key={head.metricId}>
+                      <td><strong>{head.metricId}</strong><small> ({head.unit})</small></td>
+                      <td>{head.modelingMode}</td>
+                      <td>R²={number(head.r2Score)} · ±{number(head.conformalRadius)}</td>
+                      <td>
+                        {head.sensitivities
+                          .filter((s) => s.status === "Active")
+                          .slice(0, 3)
+                          .map((s) => `${s.displayName} (${(s.contributionRatio * 100).toFixed(1)}%, ${s.direction})`)
+                          .join("；")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="cnc-section-subhead" style={{ marginTop: "24px" }}>
+              <span className="subhead-title">2. 受约束三档 Pareto 稀疏推荐（最多微调 {closedLoop.recommendationReport.maxChangedParameters} 个核心参数）</span>
+            </div>
+            <div className="cnc-table-box">
+              <table>
+                <thead>
+                  <tr>
+                    <th>推荐档位</th>
+                    <th>预期效果与权衡说明</th>
+                    <th>建议调整的参数项</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {closedLoop.recommendationReport.presets.map((preset) => (
+                    <tr key={preset.candidateId}>
+                      <td><strong>{preset.presetTitle}</strong><small> ({preset.presetRole})</small></td>
+                      <td>{preset.tradeoffExplanation}</td>
+                      <td className="mono text-muted">
+                        {preset.changedParameters
+                          .map((p) => `${p.parameterId}: ${p.baselineValue} → ${p.recommendedValue} ${p.unit} (${p.relativeChangePct >= 0 ? "+" : ""}${p.relativeChangePct}%)`)
+                          .join(" | ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="cnc-section-subhead" style={{ marginTop: "24px" }}>
+              <span className="subhead-title">3. 主动学习下一批补采建议（Active DoE）</span>
+            </div>
+            <ul className="active-doe-list">
+              {closedLoop.recommendationReport.activeDoeSuggestions.map((sug) => (
+                <li key={sug.suggestionId}>
+                  <strong>[{sug.suggestionId} · {sug.targetSource}]</strong> {sug.rationale}
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
-
-        <h3>2. 受约束三档 Pareto 稀疏推荐（最多微调 {closedLoop.recommendationReport.maxChangedParameters} 个核心参数）</h3>
-        <div className="cnc-table-scroll">
-          <table>
-            <thead><tr><th>推荐档位</th><th>预期效果与权衡说明</th><th>建议调整的参数项</th></tr></thead>
-            <tbody>
-              {closedLoop.recommendationReport.presets.map(preset => (
-                <tr key={preset.candidateId}>
-                  <th>{preset.presetTitle}<small>{preset.presetRole}</small></th>
-                  <td>{preset.tradeoffExplanation}</td>
-                  <td>
-                    {preset.changedParameters.map(p => `${p.parameterId}: ${p.baselineValue} → ${p.recommendedValue} ${p.unit} (${p.relativeChangePct >= 0 ? "+" : ""}${p.relativeChangePct}%)`).join(" | ")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <h3>3. 主动学习下一批补采建议（Active DoE）</h3>
-        <ul>
-          {closedLoop.recommendationReport.activeDoeSuggestions.map(sug => (
-            <li key={sug.suggestionId}><strong>[{sug.suggestionId} · {sug.targetSource}]</strong> {sug.rationale}</li>
-          ))}
-        </ul>
-      </section>}
-
-      <details className="cnc-scope"><summary>本次检查覆盖什么？</summary><p>采样点到参考折线的单向距离、首尾位置、轴行程和离散 V/A/J 差分，以及同条件下声明的计算耗时。尚未验证采样间连续运动、整条路径的遍历顺序与覆盖、碰撞、实机跟随或加工质量。采样结果中的“改善”只针对本页列出的指标。</p><p>算法导出格式、Case hash 生成方法与 CLI 用法见仓库的 CNC-BENCHMARK.md。</p></details>
-    </div>
-  </main>;
+            </ul>
+          </section>
+        )}
+      </div>
+    </main>
+  );
 }

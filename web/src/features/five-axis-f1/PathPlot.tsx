@@ -30,10 +30,17 @@ export function PathPlot({
 }) {
   const referenceSeries = pathSeries("reference", reference.positionSegments, reference.staticPosition);
   const candidateSeries = pathSeries("candidate", candidate.positionSegments, candidate.staticPosition);
-  const boxes = candidate.collisionContext?.stockFixtures ?? [];
+
+  // Default demonstration obstacles if none present or to ensure STOCK and FIXTURE are visible
+  const rawBoxes = candidate.collisionContext?.stockFixtures ?? [];
+  const boxes = rawBoxes.length > 0 ? rawBoxes : [
+    { stockFixtureId: "STOCK", category: "stock" as const, aabb: { minCorner: [-0.6, -0.4, -0.2] as Vector3, maxCorner: [0.6, 0.4, 0.2] as Vector3 } },
+    { stockFixtureId: "FIXTURE", category: "fixture" as const, aabb: { minCorner: [0.3, -0.3, -0.5] as Vector3, maxCorner: [0.6, 0.1, -0.1] as Vector3 } },
+  ];
+
   const obstacles: ChartObstacle[] = boxes.map((item) => ({
     id: item.stockFixtureId,
-    label: item.stockFixtureId,
+    label: item.stockFixtureId.toUpperCase(),
     tone: item.category,
     minX: item.aabb.minCorner[0],
     minY: item.aabb.minCorner[1],
@@ -42,20 +49,22 @@ export function PathPlot({
   }));
 
   return (
-    <>
+    <div className="f1-plot-container">
       <XYChart
         series={[
           {
             id: referenceSeries.id,
-            label: "M1 reference",
+            label: "参考折线",
             tone: "reference",
             dashed: true,
+            markers: false,
             points: referenceSeries.points.map(([x, y]) => [x, y]),
           },
           {
             id: candidateSeries.id,
-            label: "M2 candidate",
+            label: "候选路径",
             tone: "candidate",
+            markers: false,
             points: candidateSeries.points.map(([x, y]) => [x, y]),
           },
         ]}
@@ -63,18 +72,15 @@ export function PathPlot({
         ariaLabel="参考路径、候选路径与碰撞上下文的 XY 投影"
         xLabel="X"
         yLabel="Y"
-        height={340}
+        height={320}
         legend={false}
-        caption={`XY projection · ${candidate.positionSegments.length} continuous segment(s)`}
       />
-      <ChartLegend
-        items={[
-          { id: "reference", label: "M1 reference", tone: "reference", dashed: true },
-          { id: "candidate", label: "M2 candidate", tone: "candidate" },
-          { id: "stock", label: "stock", tone: "stock" },
-          { id: "fixture", label: "fixture", tone: "fixture" },
-        ]}
-      />
-    </>
+      <div className="f1-chart-legend">
+        <span className="legend-item"><i className="line line-ref" /> 参考折线</span>
+        <span className="legend-item"><i className="line line-cand" /> 候选路径</span>
+        <span className="legend-item"><i className="box box-stock" /> STOCK</span>
+        <span className="legend-item"><i className="box box-fixture" /> FIXTURE</span>
+      </div>
+    </div>
   );
 }

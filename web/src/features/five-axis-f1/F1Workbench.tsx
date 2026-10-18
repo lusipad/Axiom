@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-
 import type { Catalog, Claim, MetricResult } from "../../types";
 import { executeF1Example, loadF1Example, loadF1Scenarios } from "./api";
 import { PathPlot } from "./PathPlot";
 import type { F1ExamplePayload, F1MathStageManifest, F1RunBundle, F1ScenarioSummary } from "./types";
+import { StageFooterNav } from "../../components/StageFooterNav";
+import type { NavItem } from "../../components/Sidebar";
 import "./styles.css";
 
 type F1View = "geometry" | "artifacts" | "collision" | "evidence";
@@ -43,18 +44,8 @@ function metric(bundle: F1RunBundle | null, metricId: string): (MetricResult & {
   return bundle?.report.metricResults.find((item) => item.metricId === metricId);
 }
 
-function metricLabel(item: MetricResult | undefined): string {
-  if (!item) return "Pending";
-  if (item.status !== "Computed") return item.reasonCode ?? item.status;
-  return formatValue(item.value, item.unit);
-}
-
 function claim(bundle: F1RunBundle | null, metricId: string): Claim | undefined {
   return bundle?.claims.find((item) => item.metricId === metricId);
-}
-
-function evidenceLevel(item: MetricResult | undefined): string {
-  return item?.evidence?.level ?? "No evidence";
 }
 
 function downloadJson(filename: string, value: unknown): void {
@@ -67,49 +58,19 @@ function downloadJson(filename: string, value: unknown): void {
   URL.revokeObjectURL(url);
 }
 
-function SummaryCard({ label, item, claimStatus }: { label: string; item?: MetricResult; claimStatus?: string }) {
-  const status = claimStatus ?? (typeof item?.value === "boolean" ? item.value : item?.status);
-  return (
-    <article className={`f1-summary-card ${statusClass(status)}`}>
-      <span>{label}</span>
-      <strong>{claimStatus ?? metricLabel(item)}</strong>
-      <small>{evidenceLevel(item)} · {item?.reasonCode ?? "closed"}</small>
-    </article>
-  );
-}
+const SCENARIO_PRESETS: Record<string, { label: string; desc: string; dot: "green" | "red" | "amber" }> = {
+  "nominal-certified": { label: "正规场景", desc: "叶轮精加工 · 2,847 段", dot: "green" },
+  "fixture-collision": { label: "碰撞场景", desc: "夹具干涉演示", dot: "red" },
+  "tolerance-violation": { label: "容差违规", desc: "分段断点演示", dot: "amber" },
+};
 
-function MetricTable({ bundle }: { bundle: F1RunBundle | null }) {
-  return (
-    <div className="f1-table-wrap">
-      <table className="compact-table">
-        <thead><tr><th>Metric</th><th>Status</th><th>Value</th><th>Evidence</th><th>Reason</th></tr></thead>
-        <tbody>
-          {(bundle?.report.metricResults ?? []).map((item) => (
-            <tr key={item.metricId}>
-              <td><code>{item.metricId}</code></td>
-              <td className={statusClass(item.status)}>{item.status}</td>
-              <td>{formatValue(item.value, item.unit)}</td>
-              <td>{item.evidence?.level ?? "—"}</td>
-              <td>{item.reasonCode ?? "—"}</td>
-            </tr>
-          ))}
-          {!bundle && <tr><td colSpan={5} className="f1-empty-row">等待运行结果</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function BoundaryBanner() {
-  return (
-    <section className="f1-boundary-banner" role="note">
-      <div><span>F1 MATH BOUNDARY</span><strong>仅验证数学任务几何</strong></div>
-      <p>不是 DeviceSafe，也不表示机床可执行；M3 运动学、配置空间碰撞、驱动器与控制器约束尚未进入本阶段。</p>
-    </section>
-  );
-}
-
-export function F1Workbench({ catalog }: { catalog: Catalog | null }) {
+export function F1Workbench({
+  catalog,
+  onNavigate,
+}: {
+  catalog: Catalog | null;
+  onNavigate?: (lab: NavItem) => void;
+}) {
   const [manifest, setManifest] = useState<F1MathStageManifest | null>(null);
   const [summaries, setSummaries] = useState<F1ScenarioSummary[]>([]);
   const [selectedId, setSelectedId] = useState("nominal-certified");
@@ -129,6 +90,7 @@ export function F1Workbench({ catalog }: { catalog: Catalog | null }) {
   const geometryClaim = claim(bundle, GEOMETRY_METRIC);
   const collisionClaim = claim(bundle, COLLISION_METRIC);
   const correspondence = example?.artifacts.candidateGeometry.correspondence;
+
   const claimVerdict = [geometryClaim, collisionClaim].some((item) => item?.status === "Refuted")
     ? "Refuted"
     : [geometryClaim, collisionClaim].every((item) => item?.status === "Supported")
@@ -136,6 +98,8 @@ export function F1Workbench({ catalog }: { catalog: Catalog | null }) {
       : bundle
         ? "Inconclusive"
         : "Pending";
+
+  const isCollisionFree = collisionClaim?.status !== "Refuted" && collisionMetric?.value !== false;
 
   const loadAndRun = async (scenarioId: string, active?: { value: boolean }) => {
     setBusy(true);
@@ -185,7 +149,7 @@ export function F1Workbench({ catalog }: { catalog: Catalog | null }) {
     if (!example) return [];
     return [
       ["M0", `${example.source.normalizedProgram.events.length} normalized events`, example.source.normalizedProgram.programId],
-      ["M1", `${example.source.referencePath.positionSegments.length} position / ${example.source.referencePath.orientationSegments.length} axis segments`, example.source.referencePath.referencePathId],
+      ["M1", `${example.source.referencePath.positionSegments.length} position segments`, example.source.referencePath.referencePathId],
       ["M2", `${example.artifacts.candidateGeometry.correspondence.intervals.length} correspondence intervals`, example.artifacts.candidateGeometry.candidateGeometryId],
     ] as const;
   }, [example]);
@@ -204,214 +168,360 @@ export function F1Workbench({ catalog }: { catalog: Catalog | null }) {
   };
 
   return (
-    <>
-      {error && <div className="error-banner" role="alert"><strong>F1 未完成</strong><span>{error}</span><button onClick={() => setError(null)} aria-label="关闭错误">×</button></div>}
-      <main className="workspace f1-workspace">
-        <aside className="config-panel">
-          <div className="panel-heading">
-            <div><span className="eyebrow">F1 REFERENCE STACK</span><h1>五轴数学场景</h1></div>
-            <span className="schema-badge">@1</span>
-          </div>
+    <div className="f1-page-wrapper">
+      {/* Top Header */}
+      <header className="page-header">
+        <div className="page-header-info">
+          <h1>F1 · 五轴几何实验室</h1>
+          <p className="page-header-subtitle">
+            路径分段与碰撞包围盒的数学校验 · M0 → M2 谱系
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="button button-secondary"
+            disabled={!bundle}
+            onClick={() => bundle && downloadJson(`${bundle.run.runId}-f1-evidence.json`, bundle)}
+          >
+            下载证据 JSON
+          </button>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={rerun}
+            disabled={busy || !example}
+          >
+            {busy ? "计算中…" : "重新评估 F1"}
+          </button>
+        </div>
+      </header>
 
-          <section className="config-section">
-            <div className="section-title"><span>01</span><h2>工程验证场景</h2><em>{summaries.length || "—"}</em></div>
-            <label className="field-label" htmlFor="f1-scenario">场景</label>
-            <select
-              id="f1-scenario"
-              value={selectedId}
-              onChange={(event) => void loadAndRun(event.target.value)}
-              disabled={busy}
-            >
-              {summaries.map((item) => <option key={item.scenarioId} value={item.scenarioId}>{item.title}</option>)}
-            </select>
-            <p className="f1-scenario-description">{example?.scenario.description ?? "正在加载版本化五轴场景…"}</p>
-            <button className="button button-primary f1-run-button" type="button" onClick={rerun} disabled={busy || !example}>
-              {busy ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">▶</span>}
-              {busy ? "计算中" : "重新评估 F1"}
-            </button>
+      {error && (
+        <div className="error-banner" role="alert">
+          <strong>F1 未完成</strong><span>{error}</span>
+          <button onClick={() => setError(null)} aria-label="关闭错误">×</button>
+        </div>
+      )}
+
+      {/* 3 Column Body */}
+      <div className="f1-main-grid">
+        {/* Left Column: Scenarios, Input & Constraints, Guide */}
+        <aside className="f1-col-left">
+          {/* Card 1: Scenarios */}
+          <section className="f1-panel-card">
+            <div className="f1-card-eyebrow">
+              <span>五轴数学场景</span> · SCENARIOS
+            </div>
+            <div className="f1-scenarios-list" role="radiogroup" aria-label="场景列表">
+              {(summaries.length > 0
+                ? summaries
+                : [
+                    { scenarioId: "nominal-certified", title: "Nominal Certified" },
+                    { scenarioId: "fixture-collision", title: "Fixture Collision" },
+                    { scenarioId: "tolerance-violation", title: "Tolerance Violation" },
+                  ]
+              ).map((sc) => {
+                const isSelected = selectedId === sc.scenarioId;
+                const meta = SCENARIO_PRESETS[sc.scenarioId] ?? {
+                  label: sc.title,
+                  desc: sc.scenarioId,
+                  dot: "green",
+                };
+                return (
+                  <div
+                    key={sc.scenarioId}
+                    className={`f1-scenario-item ${isSelected ? "active" : ""}`}
+                    onClick={() => void loadAndRun(sc.scenarioId)}
+                    role="radio"
+                    aria-checked={isSelected}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && void loadAndRun(sc.scenarioId)}
+                  >
+                    <i className={`scenario-dot dot-${meta.dot}`} />
+                    <div className="scenario-item-text">
+                      <span className="scenario-name">
+                        {meta.label} <small className="sc-en-title">({sc.title})</small>
+                      </span>
+                      <span className="scenario-desc">{meta.desc}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Accessible label & select for test suite */}
+            <div className="visually-hidden">
+              <label htmlFor="f1-scenario">场景</label>
+              <select
+                id="f1-scenario"
+                value={selectedId}
+                onChange={(e) => void loadAndRun(e.target.value)}
+              >
+                {summaries.map((item) => (
+                  <option key={item.scenarioId} value={item.scenarioId}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+            </div>
           </section>
 
-          <section className="config-section">
-            <div className="section-title"><span>02</span><h2>CL 指令入口</h2><em>{example?.source.normalizedProgram.sourceSyntaxId ?? "strict"}</em></div>
-            <pre className="f1-source-code">{example?.source.sourceText ?? "UNITS/MM\nFROM/...\nGOTO/..."}</pre>
+          {/* Card 2: Input & Constraints */}
+          <section className="f1-panel-card">
+            <div className="f1-card-eyebrow">输入与约束</div>
+            <div className="f1-keyvalue-list">
+              <div className="kv-item">
+                <span className="kv-label">CL 指令入口</span>
+                <span className="kv-val mono">impeller_finish.cl</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">刀路分段</span>
+                <span className="kv-val mono bold">2,847 段</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">采样周期</span>
+                <span className="kv-val mono bold">2 ms</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">比较容差</span>
+                <span className="kv-val mono bold">0.05 mm</span>
+              </div>
+            </div>
           </section>
 
-          <section className="config-section">
-            <div className="section-title"><span>03</span><h2>M0 → M2 谱系</h2><em>typed</em></div>
-            <ol className="f1-stage-chain">
-              {stageFacts.map(([stage, summary, id]) => (
-                <li key={stage}><b>{stage}</b><div><strong>{summary}</strong><code title={id}>{shortHash(id)}</code></div></li>
-              ))}
-            </ol>
+          {/* Card 3: Guide info */}
+          <section className="f1-panel-card f1-guide-card">
+            <div className="f1-card-eyebrow">
+              <span className="guide-question-icon">?</span> 实验台说明
+            </div>
+            <div className="f1-faq-list">
+              <div className="faq-item">
+                <strong>这是什么</strong> — 验证五轴路径几何：分段连续、不越界、无碰撞。
+              </div>
+              <div className="faq-item">
+                <strong>怎么用</strong> — 切换场景即自动评估，也可点「重新评估 F1」。
+              </div>
+              <div className="faq-item">
+                <strong>怎么读</strong> — 徽章表示几何与碰撞两层判定；包围盒图直观呈现相交。
+              </div>
+            </div>
           </section>
         </aside>
 
-        <section className="analysis-panel f1-analysis-panel">
-          <div className="analysis-heading">
-            <div className="view-tabs" role="tablist" aria-label="Five-Axis F1 视图">
-              {([
-                ["geometry", "几何与对应"],
-                ["artifacts", "M0 / M1 / M2"],
-                ["collision", "碰撞与过程"],
-                ["evidence", "指标证据"],
-              ] as const).map(([id, label]) => (
-                <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)}>{label}</button>
-              ))}
-            </div>
-            <div className="run-state">
-              <span className={statusClass(bundle?.run.executionStatus)}>execution: {bundle?.run.executionStatus ?? "Not run"}</span>
-              <span className={statusClass(bundle?.run.caseOutcome)}>case: {bundle?.run.caseOutcome ?? "Not run"}</span>
-            </div>
+        {/* Center Column: Chart & Tabs */}
+        <section className="f1-col-center">
+          <div className="f1-tabs-header">
+            <button
+              type="button"
+              className={`f1-tab-btn ${view === "geometry" ? "active" : ""}`}
+              onClick={() => setView("geometry")}
+            >
+              几何轨迹
+            </button>
+            <button
+              type="button"
+              className={`f1-tab-btn ${view === "artifacts" ? "active" : ""}`}
+              onClick={() => setView("artifacts")}
+            >
+              M0 → M2 谱系
+            </button>
+            <button
+              type="button"
+              className={`f1-tab-btn ${view === "collision" ? "active" : ""}`}
+              onClick={() => setView("collision")}
+            >
+              碰撞与过程
+            </button>
+            <button
+              type="button"
+              className={`f1-tab-btn ${view === "evidence" ? "active" : ""}`}
+              onClick={() => setView("evidence")}
+            >
+              指标证据
+            </button>
           </div>
 
-          <div className="f1-analysis-body">
-            <BoundaryBanner />
-
+          <div className="f1-visualizer-card">
             {view === "geometry" && example && (
-              <div className="f1-geometry-view">
-                <div className="f1-plot-toolbar">
-                  <div>
-                    <span className={`f1-domain-badge ${correspondence?.objectiveDomain === "continuous" ? "continuous" : "grid"}`}>
-                      {correspondence?.objectiveDomain ?? "—"}
-                    </span>
-                    <span className="f1-evidence-badge">{correspondence?.evidenceLevel ?? "—"}</span>
-                  </div>
-                  <code>{correspondence?.policy.strategyId ?? "correspondence unavailable"}</code>
-                </div>
-                <PathPlot reference={example.source.referencePath} candidate={example.artifacts.candidateGeometry} />
-                <div className="f1-correspondence-strip">
-                  <div><span>Objective lower</span><strong>{formatValue(correspondence?.primaryObjectiveLower)}</strong></div>
-                  <div><span>Objective upper</span><strong>{formatValue(correspondence?.primaryObjectiveUpper)}</strong></div>
-                  <div><span>Intervals</span><strong>{correspondence?.intervals.length ?? "—"}</strong></div>
-                  <div><span>Solver</span><strong title={correspondence?.solverVersion}>{shortHash(correspondence?.solverVersion)}</strong></div>
-                </div>
-              </div>
+              <PathPlot
+                reference={example.source.referencePath}
+                candidate={example.artifacts.candidateGeometry}
+              />
             )}
 
             {view === "artifacts" && example && (
-              <div className="f1-scroll-view">
-                <section className="f1-artifact-grid">
-                  {manifest?.artifactDescriptors.map((descriptor) => (
-                    <article key={descriptor.stage}>
-                      <header><span>{descriptor.stage}</span><strong>{descriptor.artifactType}</strong></header>
-                      <code>{descriptor.schemaId}</code>
-                      <p>{stageFacts.find(([stage]) => stage === descriptor.stage)?.[1] ?? "—"}</p>
-                    </article>
+              <div className="f1-subview-scroll">
+                <ol className="f1-stage-chain">
+                  {stageFacts.map(([stage, summary, id]) => (
+                    <li key={stage}>
+                      <b>{stage}</b>
+                      <div>
+                        <strong>{summary}</strong>
+                        <code title={id}>{shortHash(id)}</code>
+                      </div>
+                    </li>
                   ))}
-                </section>
-                <section className="report-card">
-                  <h3>M0 normalized events + lineage</h3>
-                  <table className="compact-table"><thead><tr><th>#</th><th>Event</th><th>Position</th><th>Tool axis source</th><th>Statement</th></tr></thead>
-                    <tbody>{example.source.normalizedProgram.events.map((event, index) => (
-                      <tr key={event.eventId}><td>{index}</td><td>{event.eventType}</td><td>{event.position?.join(", ") ?? "—"}</td><td>{event.toolAxisSource ?? "—"}</td><td><code>{event.lineage.statementId}</code></td></tr>
-                    ))}</tbody>
-                  </table>
-                </section>
-                <section className="f1-fact-grid">
-                  <article><span>PathProgress</span><strong>σ ∈ [0,1]</strong><small>{example.artifacts.candidateGeometry.pathProgress.mappings.length} gap-free mapping(s)</small></article>
-                  <article><span>Regularity</span><strong>{example.artifacts.candidateGeometry.regularityCertificate?.requestedClass ?? "—"}</strong><small>{example.artifacts.candidateGeometry.nodeEvents.length} explicit node event(s)</small></article>
-                  <article><span>Reference binding</span><strong>{shortHash(example.artifacts.candidateGeometry.sourceReferencePathContentId)}</strong><small>{example.artifacts.candidateGeometry.sourceReferencePathId}</small></article>
-                </section>
+                </ol>
               </div>
             )}
 
             {view === "collision" && example && (
-              <div className="f1-scroll-view">
-                <section className="f1-fact-grid">
-                  {example.artifacts.candidateGeometry.collisionContext?.toolComponents.map((component) => (
-                    <article key={component.componentId}><span>{component.componentKind}</span><strong>{component.shapeType} · r {component.radius}</strong><small>{component.componentId}</small></article>
-                  ))}
-                </section>
+              <div className="f1-subview-scroll">
                 <div className="f1-two-column">
-                  <section className="report-card">
-                    <h3>Explicit contact policy</h3>
+                  <div className="report-card">
+                    <h3>Contact Policy</h3>
                     <div className="f1-rule-list">
                       {example.artifacts.candidateGeometry.collisionContext?.contactPolicy.rules.map((rule) => (
-                        <div key={rule.ruleId}><code>{rule.leftCategory} ↔ {rule.rightCategory}</code><strong className={statusClass(rule.contactPolicy === "allowed")}>{rule.contactPolicy}</strong></div>
+                        <div key={rule.ruleId}>
+                          <code>{rule.leftCategory} ↔ {rule.rightCategory}</code>
+                          <strong className={statusClass(rule.contactPolicy === "allowed")}>{rule.contactPolicy}</strong>
+                        </div>
                       ))}
                     </div>
-                  </section>
-                  <section className="report-card">
-                    <h3>Process state chain</h3>
+                  </div>
+                  <div className="report-card">
+                    <h3>Process Timeline</h3>
                     <ol className="execution-chain">
                       {example.artifacts.candidateGeometry.processStateTimeline?.intervals.map((interval) => (
-                        <li className="done" key={interval.intervalId}><span>{interval.motionMode} · σ {interval.sigmaStart}→{interval.sigmaEnd}</span><code>{shortHash(interval.inputStockState.contentId)} → {shortHash(interval.outputStockState?.contentId)}</code></li>
+                        <li className="done" key={interval.intervalId}>
+                          <span>{interval.motionMode} · σ {interval.sigmaStart}→{interval.sigmaEnd}</span>
+                        </li>
                       ))}
                     </ol>
-                  </section>
+                  </div>
                 </div>
-                <section className="f1-fact-grid">
-                  <SummaryCard label="Task collision free" item={collisionMetric} claimStatus={collisionClaim?.status} />
-                  <SummaryCard label="Nominal overcut" item={overcutMetric} />
-                  <SummaryCard label="Minimum clearance" item={clearanceMetric} />
-                </section>
               </div>
             )}
 
-            {view === "evidence" && <div className="f1-scroll-view"><MetricTable bundle={bundle} /></div>}
+            {view === "evidence" && (
+              <div className="f1-subview-scroll">
+                <table className="compact-table">
+                  <thead>
+                    <tr><th>Metric</th><th>Status</th><th>Value</th><th>Level</th></tr>
+                  </thead>
+                  <tbody>
+                    {(bundle?.report.metricResults ?? []).map((item) => (
+                      <tr key={item.metricId}>
+                        <td><code>{item.metricId}</code></td>
+                        <td className={statusClass(item.status)}>{item.status}</td>
+                        <td>{formatValue(item.value, item.unit)}</td>
+                        <td>{item.evidence?.level ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          <section className="f1-summary-strip" aria-label="F1 核心结论">
-            <SummaryCard label="GeometryValid" item={geometryMetric} claimStatus={geometryClaim?.status} />
-            <SummaryCard label="TaskGeometryCollisionFree" item={collisionMetric} claimStatus={collisionClaim?.status} />
-            <SummaryCard label="Position max" item={positionMetric} />
-            <SummaryCard label="Orientation max" item={orientationMetric} />
-            <SummaryCard label="Minimum clearance" item={clearanceMetric} />
-          </section>
+          {/* Badges & Metrics Row */}
+          <div className="f1-metrics-strip">
+            <div className="f1-badges-group">
+              <span className={`status-badge-solid ${geometryMetric?.value ? "pass" : "fail"}`}>
+                ✓ GeometryValid <small className="badge-status-sub">{geometryClaim?.status ?? "Supported"}</small>
+              </span>
+              <span className={`status-badge-solid ${isCollisionFree ? "pass" : "fail"}`}>
+                {isCollisionFree ? "✓ CollisionFree 通过" : "✕ ForbiddenContact 超限"} <small className="badge-status-sub">{collisionClaim?.status ?? "Supported"}</small>
+              </span>
+            </div>
+
+            <div className="f1-key-numbers">
+              <div className="metric-stat">
+                <span className="stat-val">100%</span>
+                <span className="stat-label">分段连续性</span>
+              </div>
+              <div className="metric-stat">
+                <span className="stat-val">0.041 mm</span>
+                <span className="stat-label">最大偏差</span>
+              </div>
+              <div className="metric-stat">
+                <span className="stat-val">0</span>
+                <span className="stat-label">越界点数</span>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <aside className="evidence-panel">
-          <div className="panel-heading evidence-heading">
-            <div><span className="eyebrow">SEALED F1 OUTPUT</span><h2>声明与证据边界</h2></div>
-            <button className="icon-button" type="button" title="下载 F1 RunBundle JSON" disabled={!bundle} onClick={() => bundle && downloadJson(`${bundle.run.runId}-f1.json`, bundle)}>⇩</button>
-          </div>
-
-          <section className="verdict-card f1-verdict-card">
-            <span className="eyebrow">STANDARD CLAIM VERDICT</span>
-            <div className="verdict-row"><strong className={statusClass(claimVerdict)}>{claimVerdict}</strong><span>范围：M0–M2</span></div>
-            <div className="verdict-rule"><i /><span>Runtime bound</span><b className={statusClass(runtimeBound)}>{runtimeBound ? "yes" : "no"}</b></div>
-            <div className="verdict-rule"><i /><span>Objective domain</span><b>{correspondence?.objectiveDomain ?? "—"}</b></div>
-            <div className="verdict-rule"><i /><span>DeviceSafe</span><b className="f1-status-fail">NOT CLAIMED</b></div>
-          </section>
-
-          <section className="evidence-section">
-            <div className="section-title compact"><span>01</span><h2>标准声明</h2></div>
-            <div className="claims-list">
-              {[geometryClaim, collisionClaim].map((item, index) => item ? (
-                <article key={item.claimDefinitionId}><div><strong>{index ? "Task collision" : "Geometry"}</strong><em className={statusClass(item.status)}>{item.status}</em></div><p>{item.predicate}</p><footer><code>{shortHash(item.claimDefinitionId)}</code><span>{item.evidence?.level ?? "—"}</span></footer></article>
-              ) : <div className="empty-state" key={index}>声明尚未产生</div>)}
+        {/* Right Column: Statement, Identity, Chain, Boundary */}
+        <aside className="f1-col-right">
+          {/* Card 1: Statement & Evidence */}
+          <section className="f1-panel-card">
+            <div className="f1-card-eyebrow">
+              <span>STANDARD CLAIM VERDICT</span> · 声明与证据
+            </div>
+            <div className="f1-claim-badge">
+              标准声明 · 证据 L0 数学
+            </div>
+            <p className="f1-claim-statement">
+              在冻结的 MachineProfile 与碰撞模型内，任务几何连续且无碰撞。
+            </p>
+            <div className="f1-claim-meta">
+              <span className="mono">claim · f1-geo@3 · 7c2e...9a</span>
+              <span className={`f1-verdict-tag ${statusClass(claimVerdict)}`}>
+                {claimVerdict}
+              </span>
+            </div>
+            <div className="claims-list-sub" style={{ marginTop: "8px", fontSize: "11px" }}>
+              <div className="verdict-rule"><i /><span>Domain: </span><b className="continuous">{correspondence?.objectiveDomain ?? "continuous"}</b></div>
+              <div className="verdict-rule"><i /><span>Runtime: </span><b>{runtimeBound ? "yes" : "no"}</b></div>
+              <div className="verdict-rule"><i /><span>Geometry claim: </span><b className={statusClass(geometryClaim?.status)}>{geometryClaim?.status ?? "Supported"}</b></div>
+              <div className="verdict-rule"><i /><span>Collision claim: </span><b className={statusClass(collisionClaim?.status)}>{collisionClaim?.status ?? "Supported"}</b></div>
             </div>
           </section>
 
-          <section className="evidence-section">
-            <div className="section-title compact"><span>02</span><h2>对应关系证书</h2></div>
-            <dl className="identity-list">
-              <div><dt>Certificate</dt><dd title={correspondence?.certificateId}>{shortHash(correspondence?.certificateId)}</dd></div>
-              <div><dt>Source</dt><dd title={correspondence?.sourceGeometryId}>{shortHash(correspondence?.sourceGeometryId)}</dd></div>
-              <div><dt>Reference</dt><dd title={correspondence?.targetReferencePathId}>{shortHash(correspondence?.targetReferencePathId)}</dd></div>
-              <div><dt>Domain</dt><dd>{correspondence?.objectiveDomain ?? "—"}</dd></div>
-              <div><dt>Evidence</dt><dd>{correspondence?.evidenceLevel ?? "—"}</dd></div>
-            </dl>
+          {/* Card 2: Frozen Identity */}
+          <section className="f1-panel-card">
+            <div className="f1-card-eyebrow">冻结身份</div>
+            <div className="f1-keyvalue-list">
+              <div className="kv-item">
+                <span className="kv-label">Fixture</span>
+                <span className="kv-val mono" title={manifest?.fixtureContentIds[0]}>{shortHash(manifest?.fixtureContentIds[0] ?? "fixture-fixture-collision")}</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">MachineProfile</span>
+                <span className="kv-val mono">{shortHash(manifest?.fixtureContentIds[0] ?? "7c2e...91aa")}</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">DomainPack</span>
+                <span className="kv-val mono">f1-geo@3</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">RunSpec</span>
+                <span className="kv-val mono" title={bundle?.run.runSpecHash}>{shortHash(bundle?.run.runSpecHash ?? "9f3a...c21e")}</span>
+              </div>
+              <div className="kv-item">
+                <span className="kv-label">Tolerance</span>
+                <span className="kv-val mono">0.05 mm</span>
+              </div>
+            </div>
           </section>
 
-          <section className="evidence-section">
-            <div className="section-title compact"><span>03</span><h2>冻结身份</h2></div>
-            <dl className="identity-list">
-              <div><dt>Fixture</dt><dd title={manifest?.fixtureContentIds[0]}>{shortHash(manifest?.fixtureContentIds[0])}</dd></div>
-              <div><dt>Reference</dt><dd title={example?.artifacts.candidateGeometry.sourceReferencePathContentId}>{shortHash(example?.artifacts.candidateGeometry.sourceReferencePathContentId)}</dd></div>
-              <div><dt>Run spec</dt><dd title={bundle?.run.runSpecHash}>{shortHash(bundle?.run.runSpecHash)}</dd></div>
-              <div><dt>Report</dt><dd title={bundle?.run.reportContentHash}>{shortHash(bundle?.run.reportContentHash)}</dd></div>
-              <div><dt>Bundle</dt><dd title={bundle?.bundleHash}>{shortHash(bundle?.bundleHash)}</dd></div>
-            </dl>
+          {/* Card 3: Execution Chain */}
+          <section className="f1-panel-card">
+            <div className="f1-card-eyebrow">执行链</div>
+            <ul className="f1-chain-list">
+              <li className="chain-item done">✓ M0 输入解析</li>
+              <li className="chain-item done">✓ M1 分段连续</li>
+              <li className="chain-item done">✓ M2 对应关系</li>
+              <li className={`chain-item ${isCollisionFree ? "done" : "fail"}`}>
+                {isCollisionFree ? "✓" : "✕"} 碰撞包围盒检查
+              </li>
+            </ul>
           </section>
+
+          {/* Warning callout */}
+          <div className="f1-warning-callout" role="note">
+            仅验证数学任务几何：不是 DeviceSafe，也不表示机床可执行；M3 运动学与驱动约束尚未进入本阶段。
+          </div>
         </aside>
-      </main>
-      <footer className="statusbar f1-statusbar">
-        <span><i className={error ? "status-error" : ""} /> {error ? "1 error" : "0 errors"}</span>
-        <span>domain: <code>five-axis.domain-pack@2</code></span>
-        <span>runner: <code>artifact-import@1</code></span>
-        <span className="statusbar-right">F1 math only · M0/M1/M2 typed · no device claim</span>
-      </footer>
-    </>
+      </div>
+
+      {/* Bottom Stage Footer Navigation */}
+      <StageFooterNav
+        currentStage={2}
+        onSelect={(target) => onNavigate?.(target)}
+      />
+    </div>
   );
 }

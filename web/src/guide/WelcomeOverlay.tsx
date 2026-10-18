@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { readStorage, writeStorage } from "./storage";
 
 const SLIDES = [
@@ -18,22 +18,42 @@ const SLIDES = [
 
 const STORAGE_KEY = "axiom-welcomed";
 
-export function WelcomeOverlay() {
-  const [visible, setVisible] = useState(() => readStorage(STORAGE_KEY) !== "1");
+export function WelcomeOverlay({
+  forceOpen,
+  onClose,
+}: {
+  forceOpen?: boolean;
+  onClose?: () => void;
+} = {}) {
+  const [visible, setVisible] = useState(() => forceOpen ?? (readStorage(STORAGE_KEY) !== "1"));
   const [slide, setSlide] = useState(0);
+
+  useEffect(() => {
+    if (forceOpen) {
+      setVisible(true);
+      setSlide(0);
+    }
+  }, [forceOpen]);
 
   if (!visible) return null;
 
   const finish = () => {
     writeStorage(STORAGE_KEY, "1");
     setVisible(false);
+    onClose?.();
   };
 
   const current = SLIDES[slide]!;
 
   return (
-    <div className="guide-overlay" role="presentation">
-      <div className="guide-welcome" role="dialog" aria-modal="true" aria-label="使用引导">
+    <div className="guide-overlay" role="presentation" onClick={finish}>
+      <div
+        className="guide-welcome"
+        role="dialog"
+        aria-modal="true"
+        aria-label="使用引导"
+        onClick={(e) => e.stopPropagation()}
+      >
         <span className="guide-stage">使用引导 · {slide + 1}/{SLIDES.length}</span>
         <h2>{current.title}</h2>
         <p>{current.body}</p>

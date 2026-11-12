@@ -27,6 +27,13 @@ from .controller_profile import (
     list_controller_profiles,
 )
 from .parameter_diagnoser import CncSingleRunDiagnosticReport, diagnose_single_run
+from .prediction_ledger import (
+    PredictionVerificationLedger,
+    append_prediction_verification_entry,
+    build_prediction_verification_ledger,
+    record_prediction_verification,
+)
+from .machine.models import MachineTelemetryTrace
 from .parameter_learner import (
     LearnedParameterSurrogate,
     ParameterLearningRequest,
@@ -985,6 +992,36 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         return build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed, multi_case_calibration=multiCase)
 
 
+    @app.post("/api/v1/benchmarks/cnc/param-ledger", response_model=PredictionVerificationLedger, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_ledger_post(payload: dict[str, Any]) -> PredictionVerificationLedger:
+        case_obj = CncBenchmarkCase.model_validate(payload["case"])
+        sur_obj = LearnedParameterSurrogate.model_validate(payload["surrogate"])
+        rec_obj = ParameterRecommendationReport.model_validate(payload["recommendationReport"]) if payload.get("recommendationReport") else None
+        raw_trace = payload["verificationTrace"]
+        if isinstance(raw_trace, dict) and raw_trace.get("artifactType") == "machine.telemetry-trace":
+            ver_trace: CncAlgorithmExport | MachineTelemetryTrace = MachineTelemetryTrace.model_validate(raw_trace)
+        else:
+            ver_trace = CncAlgorithmExport.model_validate(raw_trace)
+        base_exp = CncAlgorithmExport.model_validate(payload["baselineExport"]) if payload.get("baselineExport") else None
+        entry = record_prediction_verification(
+            case_obj,
+            sur_obj,
+            ver_trace,
+            recommendation_report=rec_obj,
+            candidate_id=payload.get("candidateId"),
+            applied_parameters=payload.get("appliedParameters"),
+            baseline_trace_or_report=base_exp,
+            entry_id=str(payload.get("entryId", "verify.001")),
+        )
+        if payload.get("existingLedger") is not None:
+            existing = PredictionVerificationLedger.model_validate(payload["existingLedger"])
+            return append_prediction_verification_entry(existing, entry)
+        return build_prediction_verification_ledger(
+            (entry,),
+            surrogate=sur_obj,
+            ledger_id=str(payload.get("ledgerId", "cnc.prediction-ledger@1")),
+        )
+
     @app.get("/api/v1/benchmarks/cnc/param-governance", response_model=CncGovernanceAssessmentReport, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_parameter_governance(offlineCount: int = 14, controllerCount: int = 8, seed: int = 42, multiCase: bool = True) -> CncGovernanceAssessmentReport:
         demo = build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed, multi_case_calibration=multiCase)
@@ -992,15 +1029,27 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
 
     @app.post("/api/v1/benchmarks/cnc/param-governance", response_model=CncGovernanceAssessmentReport, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_parameter_governance_post(payload: dict[str, Any]) -> CncGovernanceAssessmentReport:
+        ledger_obj = (
+            PredictionVerificationLedger.model_validate(payload["verificationLedger"])
+            if payload.get("verificationLedger") is not None
+            else None
+        )
         if "case" in payload and "surrogate" in payload and "recommendationReport" in payload:
-            demo = CncParameterClosedLoopDemo.model_validate(payload)
-            return assess_cnc_greybox_governance(demo)
+            demo_payload = dict(payload)
+            demo_payload.pop("verificationLedger", None)
+            demo = CncParameterClosedLoopDemo.model_validate(demo_payload)
+            return assess_cnc_greybox_governance(demo, verification_ledger=ledger_obj)
         case_obj = CncBenchmarkCase.model_validate(payload["benchmarkCase"])
-        from .benchmark import CncAlgorithmExport
         exp_obj = CncAlgorithmExport.model_validate(payload["export"])
         sur_obj = LearnedParameterSurrogate.model_validate(payload["surrogate"]) if payload.get("surrogate") else None
         rec_obj = ParameterRecommendationReport.model_validate(payload["recommendationReport"]) if payload.get("recommendationReport") else None
-        return assess_cnc_greybox_governance(case_obj, export=exp_obj, surrogate=sur_obj, recommendation_report=rec_obj)
+        return assess_cnc_greybox_governance(
+            case_obj,
+            export=exp_obj,
+            surrogate=sur_obj,
+            recommendation_report=rec_obj,
+            verification_ledger=ledger_obj,
+        )
 
     @app.post(
         "/api/v1/experiments/run",

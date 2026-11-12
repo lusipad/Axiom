@@ -27,6 +27,14 @@ from .controller_profile import (
     list_controller_profiles,
 )
 from .parameter_diagnoser import diagnose_single_run, render_diagnostic_table
+from .prediction_ledger import (
+    PredictionVerificationLedger,
+    append_prediction_verification_entry,
+    build_prediction_verification_ledger,
+    record_prediction_verification,
+    render_prediction_ledger_table,
+)
+from .machine.models import MachineTelemetryTrace
 from .parameter_learner import (
     LearnedParameterSurrogate,
     learn_parameter_surrogate,
@@ -111,6 +119,8 @@ def _benchmark_command(args: argparse.Namespace) -> int:
             return _param_recommend_cli(args)
         if args.command == "param-demo":
             return _param_demo_cli(args)
+        if args.command == "param-ledger":
+            return _param_ledger_cli(args)
         if args.command == "param-governance":
             return _param_governance_cli(args)
         paths = (args.case, args.baseline, args.candidate)
@@ -377,7 +387,54 @@ def _param_demo_cli(args: argparse.Namespace) -> int:
 
 
 
+def _param_ledger_cli(args: argparse.Namespace) -> int:
+    case_obj = CncBenchmarkCase.model_validate(_benchmark_json(args.case))
+    sur_obj = LearnedParameterSurrogate.model_validate(_benchmark_json(args.model))
+    rec_obj = (
+        ParameterRecommendationReport.model_validate(_benchmark_json(args.recommendation))
+        if args.recommendation is not None
+        else None
+    )
+    app_params = _parse_cli_params(args.params, None)
+    raw_trace = _benchmark_json(args.trace)
+    if isinstance(raw_trace, dict) and raw_trace.get("artifactType") == "machine.telemetry-trace":
+        ver_trace: CncAlgorithmExport | MachineTelemetryTrace = MachineTelemetryTrace.model_validate(raw_trace)
+    else:
+        ver_trace = CncAlgorithmExport.model_validate(raw_trace)
+    base_exp = CncAlgorithmExport.model_validate(_benchmark_json(args.baseline_export)) if args.baseline_export is not None else None
+    entry = record_prediction_verification(
+        case_obj,
+        sur_obj,
+        ver_trace,
+        recommendation_report=rec_obj,
+        candidate_id=args.candidate_id,
+        applied_parameters=app_params,
+        baseline_trace_or_report=base_exp,
+        entry_id=args.entry_id,
+    )
+    if args.ledger_in is not None and args.ledger_in.is_file():
+        existing = PredictionVerificationLedger.model_validate(_benchmark_json(args.ledger_in))
+        ledger = append_prediction_verification_entry(existing, entry)
+    else:
+        ledger = build_prediction_verification_ledger((entry,), surrogate=sur_obj, ledger_id=args.ledger_id)
+    if args.out is not None:
+        args.out.write_text(
+            ledger.model_dump_json(indent=2, by_alias=True, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
+    if args.format == "table":
+        print(render_prediction_ledger_table(ledger), end="")
+    else:
+        print(ledger.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+    return 0
+
+
 def _param_governance_cli(args: argparse.Namespace) -> int:
+    ledger_obj = (
+        PredictionVerificationLedger.model_validate(_benchmark_json(args.ledger))
+        if args.ledger is not None
+        else None
+    )
     if args.case is not None or args.export is not None:
         if args.case is None or args.export is None:
             print("param-governance 文件模式必须同时提供 --case 与 --export", file=sys.stderr)
@@ -399,6 +456,7 @@ def _param_governance_cli(args: argparse.Namespace) -> int:
             export=exp_obj,
             surrogate=sur_obj,
             recommendation_report=rec_obj,
+            verification_ledger=ledger_obj,
         )
     else:
         demo = build_cnc_parameter_closed_loop_demo(
@@ -407,7 +465,7 @@ def _param_governance_cli(args: argparse.Namespace) -> int:
             seed=args.seed,
             multi_case_calibration=args.multi_case,
         )
-        gov_report = assess_cnc_greybox_governance(demo)
+        gov_report = assess_cnc_greybox_governance(demo, verification_ledger=ledger_obj)
     print(gov_report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
     return 0 if gov_report.run_bundle.report.case_outcome.value == "Passed" else 1
 
@@ -754,11 +812,25 @@ def _parser() -> argparse.ArgumentParser:
     demo_cmd.add_argument("--seed", type=int, default=42)
     demo_cmd.add_argument("--multi-case", action="store_true")
     demo_cmd.add_argument("--format", choices=("json", "table"), default="table")
+    led_cmd = commands.add_parser("param-ledger", help="record or append a post-cut verification trace to a prediction-vs-actual ledger")
+    led_cmd.add_argument("--case", type=Path, required=True)
+    led_cmd.add_argument("--model", type=Path, required=True)
+    led_cmd.add_argument("--trace", type=Path, required=True, help="CncAlgorithmExport or R3 MachineTelemetryTrace JSON file")
+    led_cmd.add_argument("--recommendation", type=Path, help="optional ParameterRecommendationReport JSON file")
+    led_cmd.add_argument("--candidate-id", help="optional candidate ID in recommendation report")
+    led_cmd.add_argument("--params", type=Path, help="optional applied parameter dict JSON file")
+    led_cmd.add_argument("--baseline-export", type=Path, help="optional pre-change baseline export JSON file")
+    led_cmd.add_argument("--entry-id", default="verify.001")
+    led_cmd.add_argument("--ledger-id", default="cnc.prediction-ledger@1")
+    led_cmd.add_argument("--ledger-in", type=Path, help="existing ledger JSON file to append to")
+    led_cmd.add_argument("--out", type=Path, help="optional output path for sealed ledger JSON")
+    led_cmd.add_argument("--format", choices=("json", "table"), default="table")
     gov_cmd = commands.add_parser("param-governance", help="run R0-R7 governance verification on the 3-layer CNC grey-box advisor")
     gov_cmd.add_argument("--case", type=Path, help="benchmark case JSON file for file-mode governance")
     gov_cmd.add_argument("--export", type=Path, help="CNC algorithm export JSON file for file-mode governance")
     gov_cmd.add_argument("--model", type=Path, help="optional learned parameter surrogate JSON file")
     gov_cmd.add_argument("--recommendation", type=Path, help="optional parameter recommendation report JSON file")
+    gov_cmd.add_argument("--ledger", type=Path, help="optional PredictionVerificationLedger JSON file for R4/R5 holdout claims")
     gov_cmd.add_argument("--offline-count", type=int, default=14)
     gov_cmd.add_argument("--controller-count", type=int, default=8)
     gov_cmd.add_argument("--seed", type=int, default=42)
@@ -788,6 +860,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "param-learn",
         "param-recommend",
         "param-demo",
+        "param-ledger",
         "param-governance",
     }:
         return _benchmark_command(args)

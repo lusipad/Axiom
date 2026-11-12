@@ -73,8 +73,18 @@ from .parameter_recommender import (
     ParameterRecommendationReport,
     build_cnc_parameter_closed_loop_demo,
 )
+from .prediction_ledger import (
+    PredictionVerificationLedger,
+    summarize_prediction_entries,
+    verify_prediction_ledger_integrity,
+)
 from .run import RunBundle, evaluate_run
 from .runtime import DomainRuntimeBinding, register_domain_runtime_binding
+
+MIN_REAL_HOLDOUT_RUNS = 3
+MAX_HOLDOUT_DURATION_MAPE_PCT = 8.0
+MAX_HOLDOUT_ACTUAL_DEVIATION_RMSE_MM = 0.015
+MIN_HOLDOUT_EMPIRICAL_COVERAGE = 0.80
 
 CNC_GREYBOX_DOMAIN_PACK_ID = "cnc-greybox.domain-pack@1"
 CNC_GREYBOX_EVALUATOR_ID = "cnc-greybox-evaluator@1"
@@ -117,6 +127,9 @@ class CncGreyboxDomainArtifact(AxiomModel):
     recommendation_report: ParameterRecommendationReport | None = Field(
         default=None, alias="recommendationReport"
     )
+    verification_ledger: PredictionVerificationLedger | None = Field(
+        default=None, alias="verificationLedger"
+    )
 
 
 class CncGreyboxEvaluationCase(AxiomModel):
@@ -152,6 +165,7 @@ class CncGovernanceAssessmentReport(AxiomModel):
     case_content_hash: str = Field(alias="caseContentHash")
     surrogate_model_hash: str | None = Field(default=None, alias="surrogateModelHash")
     recommendation_report_hash: str | None = Field(default=None, alias="recommendationReportHash")
+    verification_ledger_hash: str | None = Field(default=None, alias="verificationLedgerHash")
     permission_ceiling: Literal["OfflineAdvisory"] = Field(
         default="OfflineAdvisory", alias="permissionCeiling"
     )
@@ -449,30 +463,33 @@ def _evaluate_cnc_greybox_request(req: CncGreyboxEvaluationRequest) -> Evaluatio
             details=details,
         )
 
+    ledger = art.verification_ledger
+    ledger_hash_ok = True
+    if ledger is not None:
+        try:
+            verify_prediction_ledger_integrity(
+                ledger,
+                expected_surrogate_hash=sur.model_content_hash if sur is not None else None,
+            )
+        except ValueError:
+            ledger_hash_ok = False
+
     integrity_details = {
         "surrogateHashVerified": sur_hash_ok,
         "recommendationHashVerified": rec_hash_ok,
         "recommendationBoundToSurrogate": rec_bound,
+        "verificationLedgerHashVerified": ledger_hash_ok,
     }
-
-    def _model_claim(metric_id: str, details: dict[str, Any]) -> MetricResult:
-        # Reality claims about the model need predictions checked against real-machine
-        # verification runs (holdout). This pipeline does not ingest such evidence yet, so
-        # the claim stays Inconclusive no matter how well the model fits synthetic data.
-        if not (sur_hash_ok and rec_hash_ok and rec_bound):
-            return _unavailable(metric_id, "InvalidObservation", "ContentHashMismatch", {**details, **integrity_details})
-        if sur is None:
-            return _unavailable(metric_id, "InsufficientContext", "SurrogateMissing", details)
-        return _unavailable(
-            metric_id,
-            "InsufficientContext",
-            "RealMachineHoldoutRequired",
-            {**details, **integrity_details, "evidenceSource": "supplied-runs-only"},
-        )
+    ev_validated = Evidence(level="Validated", method="cnc-prediction-ledger-holdout@1")
 
     gb = sur.greybox_constants if sur is not None else None
+    kernel_id = (
+        sur.controller_profile.profile_id
+        if (sur is not None and sur.controller_profile is not None)
+        else "generic-fir-biquad@1"
+    )
     r4_details: dict[str, Any] = {
-        "kernel": "generic-fir-biquad@1",
+        "kernel": kernel_id,
         "calibratedCaseCount": len(sur.calibrated_case_ids) if sur else 0,
         "meanLooR2": mean_loo_r2,
         "residualEnabledHeads": sorted(m for m, h in sur.metric_heads.items() if h.residual_enabled) if sur else [],
@@ -486,6 +503,99 @@ def _evaluate_cnc_greybox_request(req: CncGreyboxEvaluationRequest) -> Evaluatio
         "uncertaintyMethod": "loo-residual-quantile",
         "empiricalCoverage": None,
     }
+
+    def _evaluate_reality_claim(metric_id: str, base_details: dict[str, Any]) -> MetricResult:
+        if not (sur_hash_ok and rec_hash_ok and rec_bound and ledger_hash_ok):
+            return _unavailable(
+                metric_id,
+                "InvalidObservation",
+                "ContentHashMismatch",
+                {**base_details, **integrity_details},
+            )
+        if sur is None:
+            return _unavailable(metric_id, "InsufficientContext", "SurrogateMissing", base_details)
+        if ledger is None or ledger.summary.total_entry_count == 0:
+            return _unavailable(
+                metric_id,
+                "InsufficientContext",
+                "RealMachineHoldoutRequired",
+                {**base_details, **integrity_details, "evidenceSource": "supplied-runs-only"},
+            )
+
+        r3_entries = [e for e in ledger.entries if e.evidence_origin == "real-machine-r3-telemetry"]
+        r3_sum = summarize_prediction_entries(r3_entries)
+        holdout_meta = {
+            "ledgerId": ledger.ledger_id,
+            "totalLedgerEntries": ledger.summary.total_entry_count,
+            "realR3Entries": r3_sum.real_r3_entry_count,
+            "distinctRealR3Traces": r3_sum.distinct_real_r3_trace_count,
+            "externalTraceEntries": ledger.summary.external_trace_entry_count,
+            "syntheticEntries": ledger.summary.synthetic_entry_count,
+            "requiredMinRealHoldoutRuns": MIN_REAL_HOLDOUT_RUNS,
+        }
+        if r3_sum.real_r3_entry_count == 0:
+            reason_c = (
+                "SyntheticHoldoutNotAccepted"
+                if (ledger.summary.synthetic_entry_count > 0 and ledger.summary.external_trace_entry_count == 0)
+                else "UnattestedHoldoutReceiptRequired"
+            )
+            return _unavailable(
+                metric_id,
+                "InsufficientContext",
+                reason_c,
+                {**base_details, **integrity_details, **holdout_meta},
+            )
+        if r3_sum.distinct_real_r3_trace_count < MIN_REAL_HOLDOUT_RUNS:
+            return _unavailable(
+                metric_id,
+                "InsufficientContext",
+                "InsufficientHoldoutSamples",
+                {**base_details, **integrity_details, **holdout_meta},
+            )
+
+        if metric_id == CNC_R4_CALIBRATION_METRIC_ID:
+            dur_ok = (
+                r3_sum.duration_mape_pct is not None
+                and r3_sum.duration_mape_pct <= MAX_HOLDOUT_DURATION_MAPE_PCT
+            )
+            act_ok = (
+                r3_sum.actual_deviation_rmse_mm is not None
+                and r3_sum.actual_deviation_rmse_mm <= MAX_HOLDOUT_ACTUAL_DEVIATION_RMSE_MM
+            )
+            r4_ok = bool(dur_ok and act_ok)
+            return _computed(
+                metric_id,
+                r4_ok,
+                ev_validated,
+                {
+                    **base_details,
+                    **integrity_details,
+                    **holdout_meta,
+                    "holdoutDurationMapePct": r3_sum.duration_mape_pct,
+                    "maxHoldoutDurationMapePct": MAX_HOLDOUT_DURATION_MAPE_PCT,
+                    "holdoutActualDeviationRmseMm": r3_sum.actual_deviation_rmse_mm,
+                    "maxHoldoutActualDeviationRmseMm": MAX_HOLDOUT_ACTUAL_DEVIATION_RMSE_MM,
+                },
+            )
+
+        cov_ok = (
+            r3_sum.empirical_coverage_rate is not None
+            and r3_sum.empirical_coverage_rate >= MIN_HOLDOUT_EMPIRICAL_COVERAGE
+        )
+        r5_ok = bool(r3_sum.all_in_domain and cov_ok)
+        return _computed(
+            metric_id,
+            r5_ok,
+            ev_validated,
+            {
+                **base_details,
+                **integrity_details,
+                **holdout_meta,
+                "empiricalCoverage": r3_sum.empirical_coverage_rate,
+                "minHoldoutEmpiricalCoverage": MIN_HOLDOUT_EMPIRICAL_COVERAGE,
+                "allHoldoutInDomain": r3_sum.all_in_domain,
+            },
+        )
     r7_ok = rec is None or (
         rec.permission_level == "OfflineAdvisory"
         and rec.device_write_allowed is False
@@ -510,8 +620,8 @@ def _evaluate_cnc_greybox_request(req: CncGreyboxEvaluationRequest) -> Evaluatio
                 "note": "R3 trace integrity is enforced by adapt_r3_telemetry_to_cnc_export, not re-verified here",
             },
         ),
-        CNC_R4_CALIBRATION_METRIC_ID: _model_claim(CNC_R4_CALIBRATION_METRIC_ID, r4_details),
-        CNC_R5_EPISTEMIC_METRIC_ID: _model_claim(CNC_R5_EPISTEMIC_METRIC_ID, r5_details),
+        CNC_R4_CALIBRATION_METRIC_ID: _evaluate_reality_claim(CNC_R4_CALIBRATION_METRIC_ID, r4_details),
+        CNC_R5_EPISTEMIC_METRIC_ID: _evaluate_reality_claim(CNC_R5_EPISTEMIC_METRIC_ID, r5_details),
         CNC_R7_SAFETY_GATE_METRIC_ID: _computed(
             CNC_R7_SAFETY_GATE_METRIC_ID,
             r7_ok,
@@ -557,6 +667,8 @@ def _evaluate_cnc_greybox_request(req: CncGreyboxEvaluationRequest) -> Evaluatio
         ctx_hashes["surrogateModel"] = sur.model_content_hash
     if rec is not None:
         ctx_hashes["recommendationReport"] = rec.report_content_hash
+    if ledger is not None:
+        ctx_hashes["verificationLedger"] = ledger.ledger_content_hash
 
     prov = Provenance(
         requestHash=req_payload_hash,
@@ -602,6 +714,7 @@ def build_cnc_greybox_run_spec(
     *,
     surrogate: LearnedParameterSurrogate | None = None,
     recommendation_report: ParameterRecommendationReport | None = None,
+    verification_ledger: PredictionVerificationLedger | None = None,
     subject_id: str = "cnc.three-layer-greybox-advisor@1",
 ) -> dict[str, Any]:
     """Build a canonical `RunSpec` dictionary ready for `axiom.evaluate_run(...)`."""
@@ -622,6 +735,9 @@ def build_cnc_greybox_run_spec(
                 else None,
                 "recommendationReport": recommendation_report.model_dump(mode="json", by_alias=True, exclude_none=True)
                 if recommendation_report is not None
+                else None,
+                "verificationLedger": verification_ledger.model_dump(mode="json", by_alias=True, exclude_none=True)
+                if verification_ledger is not None
                 else None,
             },
             "case": {
@@ -661,6 +777,7 @@ def assess_cnc_greybox_governance(
     export: CncAlgorithmExport | None = None,
     surrogate: LearnedParameterSurrogate | None = None,
     recommendation_report: ParameterRecommendationReport | None = None,
+    verification_ledger: PredictionVerificationLedger | None = None,
     multi_case_calibration: bool = True,
 ) -> CncGovernanceAssessmentReport:
     """Execute the full R0-R7 governance gate over a CNC Grey-Box closed-loop run and return a sealed RunBundle."""
@@ -682,6 +799,7 @@ def assess_cnc_greybox_governance(
             best_params,
             source_kind="controller-trace",
             registry=sur_obj.registry,
+            controller_profile=sur_obj.controller_profile,
             algorithm_version="governance-verified-preset",
         )
     elif isinstance(demo_or_case, CncParameterClosedLoopDemo):
@@ -695,6 +813,7 @@ def assess_cnc_greybox_governance(
             _verification_parameters(rec_obj, sur_obj),
             source_kind="controller-trace",
             registry=sur_obj.registry,
+            controller_profile=sur_obj.controller_profile,
             algorithm_version="governance-verified-preset",
         )
     else:
@@ -710,6 +829,7 @@ def assess_cnc_greybox_governance(
         exp_obj,
         surrogate=sur_obj,
         recommendation_report=rec_obj,
+        verification_ledger=verification_ledger,
     )
     bundle = evaluate_run(run_spec)
     return CncGovernanceAssessmentReport(
@@ -717,5 +837,6 @@ def assess_cnc_greybox_governance(
         caseContentHash=benchmark_case_hash(case_obj),
         surrogateModelHash=sur_obj.model_content_hash if sur_obj is not None else None,
         recommendationReportHash=rec_obj.report_content_hash if rec_obj is not None else None,
+        verificationLedgerHash=verification_ledger.ledger_content_hash if verification_ledger is not None else None,
         runBundle=bundle,
     )

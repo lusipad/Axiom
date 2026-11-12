@@ -228,7 +228,7 @@ class BenchmarkLocation(AxiomModel):
 
 
 class BenchmarkMetric(AxiomModel):
-    value: float | None
+    value: float | None = None
     unit: str
     location: BenchmarkLocation | None = None
 
@@ -236,7 +236,7 @@ class BenchmarkMetric(AxiomModel):
 class BenchmarkCheck(AxiomModel):
     check_id: str = Field(alias="checkId")
     status: Literal["WithinLimit", "Violated", "InsufficientSamples"]
-    value: float | None
+    value: float | None = None
     limit: float
     unit: str
     location: BenchmarkLocation | None = None

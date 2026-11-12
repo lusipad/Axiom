@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased — Multi-vendor controller profiles, zero-DoE diagnoser, holdout ledger & adversarial verification
+## 0.23.0 - 2026-11-13
 
+- **现代桌面工作台重构与全中文化（无英文技术代号残留）**（`web/src/features/param-tuning/`、`web/src/features/benchmark/`）：重构现场调参与单刀快诊工作台和 CNC 算法 A/B 对比工作台为现代分栏应用布局；消除所有英文输出结论、检查项代号、控制量符号与治理声明残留。
+- **纯前端 CNC 轨迹对比与单刀机理快诊引擎**（`web/src/demo/localCncEngine.ts`、`web/src/demo/installDemoFetch.ts`）：支持在 GitHub Pages (`github.io`) 及免安装离线演示包中直接上传自定义 JSON 文件进行三维路径偏差、离散 V/A/J 硬约束、频谱谐振与厂商原生参数处方计算；并提供 Windows 免安装双击一键启动发布包（`axiom-workbench-v0.23.0-oneclick-win-x64.zip`）与 `axiom serve --open` 自动拉起浏览器支持。
 - **多厂商控制器画像与物理核解耦**（`src/axiom/controller_profile.py`）：将灰盒机理方程与厂商参数表解耦，基于 `CanonicalControlQuantities` 与 `ControllerCapabilities` 组合评估；内置 `generic-fir-biquad@1`（32 参数）、`beckhoff-twincat-nc@1`（倍福 TwinCAT NC + AX5000，含 `1/(2π·T_pt2)` 倒数变换与 `nc-tunable`/`drive-side`/`read-only` 分权）及 `siemens-sinumerik-840d@1`（西门子 840D sl，关闭独立指令二阶低通），未知或越权参数直接报错。
 - **零实验单次试切物理诊断顾问**（`src/axiom/parameter_diagnoser.py`）：新增 `diagnose_single_run`、CLI `param-diagnose` 与 `POST /api/v1/benchmarks/cnc/param-diagnose`，无需预先采集 16 组 DoE，仅凭单次试切轨迹直接定位谐振峰、过象限突起、XY 增益失配或滤波圆弧内缩，输出 ≤ 2 项带置信度（`High`/`Medium`/`TrendOnly`）的厂商原生参数微调建议。
 - **预测-实测对账单与 R3 实机 Holdout 治理闭环**（`src/axiom/prediction_ledger.py`、`src/axiom/cnc_governance.py`）：新增 `PredictionVerificationLedger`、CLI `param-ledger` 与 `POST /api/v1/benchmarks/cnc/param-ledger`，严格区分 `synthetic-simulation`、`external-controller-trace` 与 `real-machine-r3-telemetry` 三级溯源并阻止重复报送；仅当不少于 3 条独立 R3 只读实机轨迹完成对账且误差与覆盖率达标时，`cnc-greybox` R4/R5 声明才晋升为 `Supported`（超界失配则判为 `Refuted`）。

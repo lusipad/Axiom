@@ -841,6 +841,7 @@ def _parser() -> argparse.ArgumentParser:
     serve_command = commands.add_parser("serve", help="serve the local Axiom web workbench")
     serve_command.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     serve_command.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
+    serve_command.add_argument("--open", action="store_true", help="open the workbench in the default browser")
     return parser
 
 
@@ -865,10 +866,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     }:
         return _benchmark_command(args)
     if args.command == "serve":
+        import threading
+        import webbrowser
         import uvicorn
 
         from .web import create_app
 
+        if getattr(args, "open", False):
+            browse_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host
+            url = f"http://{browse_host}:{args.port}"
+            threading.Timer(0.8, lambda: webbrowser.open(url)).start()
         uvicorn.run(create_app(), host=args.host, port=args.port)
         return 0
 

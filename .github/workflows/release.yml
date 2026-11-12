@@ -106,6 +106,7 @@ jobs:
             -Path dist/opcua-shadow-win-x64/* `
             -DestinationPath "dist/axiom-opcua-shadow-$env:GITHUB_REF_NAME-win-x64.zip"
           Remove-Item -Recurse -Force dist/opcua-shadow-win-x64
+          python scripts/build_oneclick_release.py --tag $env:GITHUB_REF_NAME
 
       - name: Verify bundled workbench
         shell: python
@@ -141,8 +142,8 @@ jobs:
               if not any(name == entry or name.startswith(entry) for name in names):
                   raise SystemExit(f"release wheel is missing {entry}")
           web_assets = [name for name in names if name.startswith("axiom/web_dist/assets/")]
-          if len(web_assets) != 2:
-              raise SystemExit(f"release wheel must contain exactly one current JS/CSS pair: {web_assets}")
+          if not (2 <= len(web_assets) <= 3):
+              raise SystemExit(f"release wheel must contain current JS/CSS assets: {web_assets}")
 
       - name: Smoke test installed wheel
         run: |
@@ -726,11 +727,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          $artifacts = Get-ChildItem -Path dist -File | Select-Object -ExpandProperty FullName
+          $artifacts = Get-ChildItem -Path dist -File | Where-Object { $_.Name -ne "release-notes.md" } | Select-Object -ExpandProperty FullName
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $artifacts --clobber
+            gh release edit $tag --notes-file dist/release-notes.md --title "Axiom $tag"
           } else {
-            gh release create $tag $artifacts --verify-tag --generate-notes --title "Axiom $tag"
+            gh release create $tag $artifacts --verify-tag --notes-file dist/release-notes.md --title "Axiom $tag"
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

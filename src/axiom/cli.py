@@ -25,6 +25,7 @@ from .parameter_learner import (
     learn_parameter_surrogate,
     render_parameter_impact_table,
 )
+from .cnc_governance import assess_cnc_greybox_governance
 from .parameter_recommender import (
     ParameterRecommendationRequest,
     build_cnc_parameter_closed_loop_demo,
@@ -98,6 +99,8 @@ def _benchmark_command(args: argparse.Namespace) -> int:
             return _param_recommend_cli(args)
         if args.command == "param-demo":
             return _param_demo_cli(args)
+        if args.command == "param-governance":
+            return _param_governance_cli(args)
         paths = (args.case, args.baseline, args.candidate)
         if args.request is not None:
             if any(path is not None for path in paths):
@@ -224,6 +227,7 @@ def _param_doe_cli(args: argparse.Namespace) -> int:
         offline_count=args.offline_count,
         controller_count=args.controller_count,
         seed=args.seed,
+        mode=args.mode,
     )
     text = plan.model_dump_json(indent=2, by_alias=True, exclude_none=True) + "\n"
     if args.out is not None:
@@ -237,15 +241,16 @@ def _param_learn_cli(args: argparse.Namespace) -> int:
     if args.request is not None:
         surrogate = learn_parameter_surrogate(_benchmark_json(args.request))
     else:
-        if args.case is None or not args.exports:
-            raise ValueError("--case and at least 4 --export files are required")
+        if not args.cases or not args.exports:
+            raise ValueError("at least one --case and 4 --export files are required")
         reg = (
             CncParameterRegistry.model_validate(_benchmark_json(args.registry))
             if args.registry is not None
             else None
         )
+        case_objs = [_benchmark_json(cp) for cp in args.cases]
         surrogate = learn_parameter_surrogate(
-            _benchmark_json(args.case),
+            case_objs[0] if len(case_objs) == 1 else case_objs,
             [_benchmark_json(p) for p in args.exports],
             registry=reg,
             max_active_parameters_per_metric=args.max_active,
@@ -265,7 +270,9 @@ def _param_learn_cli(args: argparse.Namespace) -> int:
 def _param_recommend_cli(args: argparse.Namespace) -> int:
     surrogate = LearnedParameterSurrogate.model_validate(_benchmark_json(args.model))
     base_params = _parse_cli_params(args.baseline, None)
+    tgt_case = CncBenchmarkCase.model_validate(_benchmark_json(args.target_case)) if args.target_case is not None else None
     req = ParameterRecommendationRequest(
+        targetCase=tgt_case,
         baselineParameters=base_params,
         maxChangedParameters=args.max_changed_params,
         maximumPathDeviationMm=args.max_path_deviation_mm,
@@ -286,6 +293,7 @@ def _param_demo_cli(args: argparse.Namespace) -> int:
         offline_count=args.offline_count,
         controller_count=args.controller_count,
         seed=args.seed,
+        multi_case_calibration=args.multi_case,
     )
     if args.format == "table":
         print(render_quality_report_table(demo.sample_quality_report))
@@ -294,6 +302,20 @@ def _param_demo_cli(args: argparse.Namespace) -> int:
     else:
         print(demo.model_dump_json(indent=2, by_alias=True, exclude_none=True))
     return 0
+
+
+
+
+def _param_governance_cli(args: argparse.Namespace) -> int:
+    demo = build_cnc_parameter_closed_loop_demo(
+        offline_count=args.offline_count,
+        controller_count=args.controller_count,
+        seed=args.seed,
+        multi_case_calibration=args.multi_case,
+    )
+    gov_report = assess_cnc_greybox_governance(demo)
+    print(gov_report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+    return 0 if gov_report.run_bundle.report.case_outcome.value == "Passed" else 1
 
 
 def _validation_path(exc: ValidationError) -> str | None:
@@ -598,10 +620,11 @@ def _parser() -> argparse.ArgumentParser:
     doe_cmd.add_argument("--offline-count", type=int, default=36)
     doe_cmd.add_argument("--controller-count", type=int, default=12)
     doe_cmd.add_argument("--seed", type=int, default=42)
+    doe_cmd.add_argument("--mode", choices=("orthogonal-greybox", "lhs"), default="orthogonal-greybox")
     doe_cmd.add_argument("--out", type=Path)
     learn_cmd = commands.add_parser("param-learn", help="learn a high-dimensional parameter-to-quality surrogate and attribution report")
     learn_cmd.add_argument("request", nargs="?", type=Path)
-    learn_cmd.add_argument("--case", type=Path)
+    learn_cmd.add_argument("--case", action="append", dest="cases", type=Path)
     learn_cmd.add_argument("--registry", type=Path)
     learn_cmd.add_argument("--export", action="append", dest="exports", type=Path)
     learn_cmd.add_argument("--max-active", type=int, default=6)
@@ -609,6 +632,7 @@ def _parser() -> argparse.ArgumentParser:
     learn_cmd.add_argument("--format", choices=("json", "table"), default="json")
     rec_cmd = commands.add_parser("param-recommend", help="recommend constrained Top-K sparse parameter adjustments")
     rec_cmd.add_argument("--model", type=Path, required=True)
+    rec_cmd.add_argument("--target-case", type=Path)
     rec_cmd.add_argument("--baseline", type=Path)
     rec_cmd.add_argument("--max-changed-params", type=int, default=4)
     rec_cmd.add_argument("--max-path-deviation-mm", type=float, default=0.035)
@@ -620,7 +644,13 @@ def _parser() -> argparse.ArgumentParser:
     demo_cmd.add_argument("--offline-count", type=int, default=24)
     demo_cmd.add_argument("--controller-count", type=int, default=10)
     demo_cmd.add_argument("--seed", type=int, default=42)
+    demo_cmd.add_argument("--multi-case", action="store_true")
     demo_cmd.add_argument("--format", choices=("json", "table"), default="table")
+    gov_cmd = commands.add_parser("param-governance", help="run R0-R7 governance verification on the 3-layer CNC grey-box advisor")
+    gov_cmd.add_argument("--offline-count", type=int, default=14)
+    gov_cmd.add_argument("--controller-count", type=int, default=8)
+    gov_cmd.add_argument("--seed", type=int, default=42)
+    gov_cmd.add_argument("--multi-case", action="store_true")
     hash_command = commands.add_parser("benchmark-case-hash", help="print the canonical case hash to bind algorithm exports")
     hash_command.add_argument("case", type=Path)
     commands.add_parser("benchmark-example", help="print an explicitly synthetic CNC comparison request")
@@ -644,6 +674,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "param-learn",
         "param-recommend",
         "param-demo",
+        "param-governance",
     }:
         return _benchmark_command(args)
     if args.command == "serve":

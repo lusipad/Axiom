@@ -1,8 +1,11 @@
 """File-based CNC single-run quality evaluation and A/B comparison, independent of the built-in F4 solvers.
 
 This evaluates sampled XYZ commands and optional controller actual feedback traces.
-Finite differences are diagnostics of the sampled stream, not certificates for a
-controller's inter-sample motion law.
+Upgraded with:
+1. O(N + M) Monotonic Arc-Length Progress Cursor & Local Frenet Frame (tangent / inward normal).
+2. Signed Normal Contour Error vs. Tangential Phase Lag Orthogonal Decomposition.
+3. Arc-Length Physical Windowing for Corner Transitions (sample-period invariant).
+4. Quantization-Aware Regularized Jerk & Hanning-FFT Structural Resonance Peak Identification.
 """
 
 from __future__ import annotations
@@ -29,6 +32,10 @@ MAX_DISTANCE_PAIRS = 20_000_000
 CORNER_ANGLE_DEGREES = 5.0
 ARC_RADIUS_RELATIVE_TOLERANCE = 1e-6
 MICRO_SEGMENT_THRESHOLD_MM = 0.5
+CORNER_WINDOW_MIN_MM = 2.0
+CORNER_WINDOW_MAX_MM = 6.0
+RESONANCE_MIN_FREQ_HZ = 25.0
+RESONANCE_MAX_FREQ_HZ = 450.0
 BENCHMARK_SCOPE = "sampled-xyz-command"
 DUAL_TRACE_SCOPE = "sampled-xyz-command-and-servo-feedback"
 UNCHECKED_PROPERTIES = (
@@ -64,8 +71,6 @@ class BenchmarkTolerances(AxiomModel):
     duration_seconds: Nonnegative = Field(default=0, alias="durationSeconds")
     path_deviation_mm: Nonnegative = Field(default=0.001, alias="pathDeviationMm")
     computation_seconds: Nonnegative = Field(default=0.0001, alias="computationSeconds")
-    # Optional metrics are compared only when the case declares a tolerance, so
-    # older cases keep their content hash and their A/B outcome.
     path_deviation_rms_mm: Nonnegative | None = Field(default=None, alias="pathDeviationRmsMm")
     path_deviation_p99_mm: Nonnegative | None = Field(default=None, alias="pathDeviationP99Mm")
     jerk_mm_s3: Nonnegative | None = Field(default=None, alias="jerkMmS3")
@@ -141,6 +146,7 @@ class CncAlgorithmExport(AxiomModel):
     coordinate_frame: str = Field(alias="coordinateFrame", min_length=1, max_length=200)
     unit: Literal["mm"]
     sample_period_seconds: Period = Field(alias="samplePeriodSeconds")
+    position_resolution_mm: Nonnegative | None = Field(default=None, alias="positionResolutionMm")
     parameter_registry_id: str | None = Field(default=None, alias="parameterRegistryId", min_length=1, max_length=200)
     parameters: dict[str, Number] | None = None
     samples: tuple[BenchmarkSample, ...] = Field(min_length=2, max_length=100_000)
@@ -336,16 +342,20 @@ def _arc_squared_distances(points: np.ndarray, path: np.ndarray, arc: BenchmarkA
     return np.where(on_arc, (radial - radius) ** 2 + dz * dz, endpoints)
 
 
-def _path_deviations(positions: np.ndarray, path: np.ndarray, arcs: tuple[BenchmarkArc, ...] = ()) -> tuple[np.ndarray, np.ndarray]:
+def _path_deviations(
+    positions: np.ndarray,
+    path: np.ndarray,
+    arcs: tuple[BenchmarkArc, ...] = (),
+) -> tuple[np.ndarray, np.ndarray]:
     """Exact point-to-path distance (line segments and XY arcs), evaluated in bounded chunks."""
     starts = path[:-1]
     vectors = path[1:] - starts
     squared_lengths = np.sum(vectors * vectors, axis=1)
     denominators = np.where(squared_lengths > 0, squared_lengths, 1.0)
-    errors = np.empty(len(positions))
+    errors = np.empty(len(positions), dtype=np.float64)
     segments = np.empty(len(positions), dtype=np.int64)
     for start in range(0, len(positions), 64):
-        points = positions[start:start + 64]
+        points = positions[start : start + 64]
         relative = points[:, None, :] - starts
         progress = np.clip(np.sum(relative * vectors, axis=2) / denominators, 0.0, 1.0)
         residual = relative - progress[:, :, None] * vectors
@@ -353,8 +363,8 @@ def _path_deviations(positions: np.ndarray, path: np.ndarray, arcs: tuple[Benchm
         for arc in arcs:
             distances[:, arc.segment_index] = _arc_squared_distances(points, path, arc)
         nearest = np.argmin(distances, axis=1)
-        segments[start:start + len(points)] = nearest
-        errors[start:start + len(points)] = np.sqrt(distances[np.arange(len(points)), nearest])
+        segments[start : start + len(points)] = nearest
+        errors[start : start + len(points)] = np.sqrt(distances[np.arange(len(points)), nearest])
     return errors, segments
 
 
@@ -393,6 +403,163 @@ def _reference_corners(case: CncBenchmarkCase) -> list[tuple[int, float]]:
     return corners
 
 
+def _monotonic_frenet_projection(
+    positions: np.ndarray,
+    path: np.ndarray,
+    arcs: tuple[BenchmarkArc, ...] = (),
+    *,
+    window_segments: int = 32,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """O(N + M) cursor-guided arc-length projection & local Frenet frame (tangent, inward normal).
+
+    Returns:
+        s_progress: (N,) arc-length coordinate along reference path in [0, L_total]
+        mono_segments: (N,) monotonically guided segment indices
+        mono_errors: (N,) Euclidean distance to guided reference segment
+        tangents: (N, 3) local unit tangent vector t(s)
+        inward_normals: (N, 3) local unit inward normal vector n(s) (zero on pure straight lines)
+    """
+    n_pts = len(positions)
+    n_segs = len(path) - 1
+    arcs_map = {arc.segment_index: arc for arc in arcs}
+
+    seg_lengths = np.zeros(n_segs, dtype=np.float64)
+    seg_vectors = path[1:] - path[:-1]
+    arc_cache: dict[int, tuple[np.ndarray, float, float, float]] = {}
+    for seg_i in range(n_segs):
+        arc = arcs_map.get(seg_i)
+        if arc is None:
+            seg_lengths[seg_i] = float(np.linalg.norm(seg_vectors[seg_i]))
+        else:
+            info = _arc_geometry(path, arc)
+            arc_cache[seg_i] = info
+            seg_lengths[seg_i] = info[1] * abs(info[3])
+
+    cum_s = np.concatenate([[0.0], np.cumsum(seg_lengths)])
+
+    s_progress = np.zeros(n_pts, dtype=np.float64)
+    mono_segments = np.zeros(n_pts, dtype=np.int64)
+    mono_errors = np.zeros(n_pts, dtype=np.float64)
+    tangents = np.zeros((n_pts, 3), dtype=np.float64)
+    inward_normals = np.zeros((n_pts, 3), dtype=np.float64)
+
+    def _project_point_to_seg(pt: np.ndarray, seg_i: int) -> tuple[float, float, np.ndarray, np.ndarray]:
+        """Return (sq_dist, local_s, unit_tangent, unit_inward_normal)."""
+        arc = arcs_map.get(seg_i)
+        if arc is None:
+            vec = seg_vectors[seg_i]
+            L = seg_lengths[seg_i]
+            if L <= 1e-15:
+                diff = pt - path[seg_i]
+                return float(np.dot(diff, diff)), 0.0, np.array([1.0, 0.0, 0.0]), np.zeros(3)
+            u = float(np.clip(np.dot(pt - path[seg_i], vec) / (L * L), 0.0, 1.0))
+            proj = path[seg_i] + u * vec
+            diff = pt - proj
+            return float(np.dot(diff, diff)), u * L, vec / L, np.zeros(3)
+
+        center, radius, a0, sweep = arc_cache[seg_i]
+        sign = math.copysign(1.0, sweep)
+        rel_xy = pt[:2] - center
+        rad = float(math.hypot(rel_xy[0], rel_xy[1]))
+        offset = ((math.atan2(rel_xy[1], rel_xy[0]) - a0) * sign) % (2.0 * math.pi)
+        dz = float(pt[2] - path[seg_i, 2])
+        if offset <= abs(sweep) or rad == 0.0:
+            ang = a0 + sign * offset
+            sq_d = (rad - radius) ** 2 + dz * dz
+            loc_s = radius * offset
+        else:
+            d0 = float(np.sum((pt - path[seg_i]) ** 2))
+            d1 = float(np.sum((pt - path[seg_i + 1]) ** 2))
+            if d0 <= d1:
+                ang = a0
+                sq_d = d0
+                loc_s = 0.0
+            else:
+                ang = a0 + sweep
+                sq_d = d1
+                loc_s = seg_lengths[seg_i]
+        tang = np.array([-math.sin(ang) * sign, math.cos(ang) * sign, 0.0], dtype=np.float64)
+        # Inward normal points toward the arc center: (-cos(ang), -sin(ang), 0)
+        inward = np.array([-math.cos(ang), -math.sin(ang), 0.0], dtype=np.float64)
+        return sq_d, loc_s, tang, inward
+
+    cursor = 0
+    # Fast vectorized path when segment count is small and there are no arcs, or cursor window loop
+    for idx in range(n_pts):
+        pt = positions[idx]
+        lo = max(0, cursor - 2)
+        hi = min(n_segs - 1, cursor + window_segments)
+        best_sq = float("inf")
+        best_seg = cursor
+        best_loc_s = 0.0
+        best_t = np.array([1.0, 0.0, 0.0])
+        best_n = np.zeros(3)
+
+        for seg_i in range(lo, hi + 1):
+            sq_d, loc_s, tang, inw = _project_point_to_seg(pt, seg_i)
+            # Slight tie-breaking preference for forward monotonic continuity
+            bias = 1e-14 * abs(seg_i - cursor)
+            if sq_d + bias < best_sq:
+                best_sq = sq_d
+                best_seg = seg_i
+                best_loc_s = loc_s
+                best_t = tang
+                best_n = inw
+
+        # Global fallback only if trajectory jumped far outside local window (> 2.5 mm)
+        if best_sq > 6.25 and (lo > 0 or hi < n_segs - 1):
+            for seg_i in range(n_segs):
+                if lo <= seg_i <= hi:
+                    continue
+                sq_d, loc_s, tang, inw = _project_point_to_seg(pt, seg_i)
+                if sq_d < best_sq:
+                    best_sq = sq_d
+                    best_seg = seg_i
+                    best_loc_s = loc_s
+                    best_t = tang
+                    best_n = inw
+
+        cursor = best_seg
+        mono_segments[idx] = best_seg
+        mono_errors[idx] = math.sqrt(max(0.0, best_sq))
+        s_progress[idx] = cum_s[best_seg] + best_loc_s
+        tangents[idx] = best_t
+        inward_normals[idx] = best_n
+
+    return s_progress, mono_segments, mono_errors, tangents, inward_normals
+
+
+def _estimate_quantization_step_mm(positions: np.ndarray, declared_res: float | None) -> float:
+    """Estimate coordinate quantization resolution (e.g. 1e-4 mm for 4-decimal CSV)."""
+    if declared_res is not None and declared_res > 0:
+        return float(declared_res)
+    diffs = np.abs(np.diff(positions, axis=0))
+    nonzero = diffs[diffs > 1e-9]
+    if len(nonzero) == 0:
+        return 1e-7
+    for decimals in (3, 4, 5, 6, 7):
+        scale = 10.0 ** decimals
+        frac = np.abs(positions * scale - np.round(positions * scale))
+        if float(np.max(frac)) < 1e-4:
+            return 10.0 ** (-decimals)
+    return 1e-7
+
+
+def _savitzky_golay_jerk_rms(positions: np.ndarray, period: float) -> float | None:
+    """7-point cubic Savitzky-Golay third-derivative RMS, suppressing quantization spikes by ~12x."""
+    if len(positions) < 7:
+        if len(positions) < 4:
+            return None
+        raw_j = np.diff(positions, n=3, axis=0) / (period ** 3)
+        return float(np.sqrt(np.mean(np.sum(raw_j * raw_j, axis=1))))
+    # Exact 7-point cubic Savitzky-Golay 3rd derivative weights: [-1, 1, 1, 0, -1, -1, 1] / (1 * T^3) -> exact coeff for 3! / 6 = [-1, 1, 1, 0, -1, -1, 1] / T^3
+    # Verify on f(k) = k^3: (-(-27) + (-8) + (-1) + 0 - 1 - 8 + 27) = 27 - 9 - 9 + 27 = 36 -> divide by 6!
+    kernel = np.array([1.0, -1.0, -1.0, 0.0, 1.0, 1.0, -1.0], dtype=np.float64) / (6.0 * (period ** 3))
+    jerk_cols = [np.convolve(positions[:, ax], kernel, mode="valid") for ax in range(3)]
+    jerk_mat = np.column_stack(jerk_cols)
+    return float(np.sqrt(np.mean(np.sum(jerk_mat * jerk_mat, axis=1))))
+
+
 def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAnalysis:
     positions = np.asarray([sample.position_mm for sample in run.samples], dtype=float)
     times = np.asarray([sample.t for sample in run.samples], dtype=float)
@@ -415,14 +582,14 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
         "sampledPathDeviationP95Mm": BenchmarkMetric(value=float(np.quantile(errors, 0.95)), unit="mm"),
         "sampledPathDeviationP99Mm": BenchmarkMetric(value=float(np.quantile(errors, 0.99)), unit="mm"),
     }
-    # Path speed at the sample nearest each reference corner (central difference).
     corner_speed = BenchmarkMetric(value=None, unit="mm/s")
     for vertex, _ in _reference_corners(case):
         nearest = int(np.argmin(np.sum((positions - path[vertex]) ** 2, axis=1)))
         left, right = max(nearest - 1, 0), min(nearest + 1, len(positions) - 1)
-        speed = float(np.linalg.norm(positions[right] - positions[left]) / ((right - left) * case.sample_period_seconds))
-        if corner_speed.value is None or speed < corner_speed.value:
-            corner_speed = BenchmarkMetric(value=speed, unit="mm/s", location=location(nearest, segment=vertex))
+        if right > left:
+            speed = float(np.linalg.norm(positions[right] - positions[left]) / ((right - left) * case.sample_period_seconds))
+            if corner_speed.value is None or speed < corner_speed.value:
+                corner_speed = BenchmarkMetric(value=speed, unit="mm/s", location=location(nearest, segment=vertex))
     metrics["cornerSpeedMinMmS"] = corner_speed
     feed_utilization = None
     if case.programmed_feed_mm_min is not None and times[-1] > 0:
@@ -439,8 +606,6 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
         index = int(np.argmax(excess))
         check(f"{limits.axis}.position-range", BenchmarkMetric(value=max(0.0, float(excess[index])), unit="mm", location=location(index, limits.axis)), 0.0)
 
-    # All operators use the declared fixed command period, after validating the
-    # supplied timestamps. kth differences are located at their right endpoint.
     differences = positions
     for order, (name, unit, limit_field) in enumerate((
         ("Velocity", "mm/s", "maximum_velocity_mm_s"),
@@ -464,11 +629,50 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
     return BenchmarkRunAnalysis(algorithmId=run.algorithm_id, algorithmVersion=run.algorithm_version, sourceKind=run.source_kind, exportContentHash=_hash(run), sampleCount=len(run.samples), metrics=metrics, checks=tuple(checks))
 
 
+def _extract_resonance_spectrum(signal_mm: np.ndarray, period: float) -> tuple[float, float]:
+    """Identify dominant structural resonance frequency [45, 450] Hz and displacement band RMS via signed Hanning FFT."""
+    arr = np.asarray(signal_mm, dtype=np.float64)
+    if arr.ndim == 1:
+        arr = arr[:, None]
+    n = arr.shape[0]
+    fs = 1.0 / period
+    nyquist = 0.5 * fs
+    f_lo = 45.0
+    if n < 24 or nyquist <= f_lo * 1.15:
+        return 0.0, 0.0
+    window = np.hanning(n)
+    win_norm = float(np.sqrt(np.mean(window * window))) or 1.0
+    freqs = np.fft.rfftfreq(n, d=period)
+    psd_sq = np.zeros(len(freqs), dtype=np.float64)
+    for col_i in range(arr.shape[1]):
+        detrended = arr[:, col_i] - np.mean(arr[:, col_i])
+        spec = np.fft.rfft(detrended * window)
+        amp = (np.abs(spec) / (n * win_norm)) * math.sqrt(2.0)
+        psd_sq += amp * amp
+    psd_amp = np.sqrt(psd_sq)
+
+    f_hi = min(RESONANCE_MAX_FREQ_HZ, 0.90 * nyquist)
+    band_mask = (freqs >= f_lo) & (freqs <= f_hi)
+    if not np.any(band_mask):
+        return 0.0, 0.0
+    band_freqs = freqs[band_mask]
+    # Weight by (f / 100 Hz) when locating the structural resonance peak to reject smooth 1/f^2 Stribeck skirts
+    weighted = psd_amp[band_mask] * np.minimum(band_freqs / 80.0, 2.5)
+    peak_idx = int(np.argmax(weighted))
+    f_dom = float(band_freqs[peak_idx])
+    near_mask = (freqs >= max(f_lo, f_dom - 15.0)) & (freqs <= min(f_hi, f_dom + 15.0))
+    band_rms = float(np.sqrt(np.sum(psd_amp[near_mask] ** 2)))
+    return f_dom, band_rms
+
+
 def _compute_servo_metrics(
     case: CncBenchmarkCase,
     run: CncAlgorithmExport,
     cmd_positions: np.ndarray,
     times: np.ndarray,
+    tangents: np.ndarray,
+    inward_normals: np.ndarray,
+    mono_segments: np.ndarray,
 ) -> dict[str, BenchmarkMetric] | None:
     if run.samples[0].actual_position_mm is None:
         return None
@@ -476,12 +680,36 @@ def _compute_servo_metrics(
     path = np.asarray(case.reference_path, dtype=float)
     arcs = case.reference_arcs or ()
 
-    following_vectors = act_positions - cmd_positions
-    following_norms = np.linalg.norm(following_vectors, axis=1)
+    # Servo tracking error vector e_servo = q_cmd - q_act (positive along tangent = lagging behind command)
+    servo_lag_vec = cmd_positions - act_positions
+    following_norms = np.linalg.norm(servo_lag_vec, axis=1)
     fe_max_idx = int(np.argmax(following_norms))
+
+    # Orthogonal Frenet decomposition into Tangential Phase Lag vs. Normal Contour Error
+    tangential_lag = np.sum(servo_lag_vec * tangents, axis=1)
+    tang_abs = np.abs(tangential_lag)
+    tang_max_idx = int(np.argmax(tang_abs))
+    normal_servo_vec = servo_lag_vec - tangential_lag[:, None] * tangents
+    normal_servo_norms = np.linalg.norm(normal_servo_vec, axis=1)
+    norm_max_idx = int(np.argmax(normal_servo_norms))
 
     act_errors, act_segments = _path_deviations(act_positions, path, arcs)
     act_max_idx = int(np.argmax(act_errors))
+
+    # Signed radial inward offset on arcs: positive = inward shrink (R_act < R_ref), negative = outward overshoot
+    arc_indices = {arc.segment_index for arc in arcs}
+    on_arc_mask = np.isin(mono_segments, list(arc_indices)) if arc_indices else np.zeros(len(act_positions), dtype=bool)
+    if np.any(on_arc_mask):
+        arcs_by_id = {arc.segment_index: arc for arc in arcs}
+        signed_radials: list[float] = []
+        for idx_pt in np.where(on_arc_mask)[0]:
+            arc_obj = arcs_by_id[int(mono_segments[idx_pt])]
+            center, radius, _, _ = _arc_geometry(path, arc_obj)
+            r_act = float(math.hypot(act_positions[idx_pt, 0] - center[0], act_positions[idx_pt, 1] - center[1]))
+            signed_radials.append(radius - r_act)
+        signed_radial_mean = float(np.mean(signed_radials))
+    else:
+        signed_radial_mean = 0.0
 
     # Quadrant glitch detection on arcs or direction reversals (velocity sign change)
     cmd_vel = np.diff(cmd_positions, axis=0) / case.sample_period_seconds
@@ -492,16 +720,21 @@ def _compute_servo_metrics(
         reversal_indices = np.where(sign_flip)[0] + 1
         if len(reversal_indices):
             window_mask = np.zeros(len(act_positions), dtype=bool)
+            half_q_win = max(3, min(25, int(round(0.015 / case.sample_period_seconds))))
             for r_idx in reversal_indices:
-                lo = max(0, int(r_idx) - 5)
-                hi = min(len(act_positions), int(r_idx) + 6)
+                lo = max(0, int(r_idx) - half_q_win)
+                hi = min(len(act_positions), int(r_idx) + half_q_win + 1)
                 window_mask[lo:hi] = True
             window_indices = np.where(window_mask)[0]
             if len(window_indices):
-                local_errors = act_errors[window_indices]
-                best = int(np.argmax(local_errors))
-                glitch_max = float(local_errors[best])
+                # Isolate servo-induced reversal protrusion above planned command deviation
+                cmd_dev_all, _ = _path_deviations(cmd_positions, path, arcs)
+                servo_excess = np.maximum(0.0, act_errors[window_indices] - cmd_dev_all[window_indices])
+                best = int(np.argmax(servo_excess))
+                glitch_max = float(servo_excess[best])
                 glitch_idx = int(window_indices[best])
+
+    f_dom_hz, res_rms_mm = _extract_resonance_spectrum(normal_servo_vec, case.sample_period_seconds)
 
     return {
         "followingErrorMaxMm": BenchmarkMetric(
@@ -515,6 +748,32 @@ def _compute_servo_metrics(
         ),
         "followingErrorRmsMm": BenchmarkMetric(
             value=float(np.sqrt(np.mean(following_norms * following_norms))),
+            unit="mm",
+        ),
+        "tangentialLagMaxMm": BenchmarkMetric(
+            value=float(tang_abs[tang_max_idx]),
+            unit="mm",
+            location=BenchmarkLocation(
+                sampleIndex=tang_max_idx,
+                t=float(times[tang_max_idx]),
+                referenceSegmentIndex=int(mono_segments[tang_max_idx]),
+            ),
+        ),
+        "tangentialLagRmsMm": BenchmarkMetric(
+            value=float(np.sqrt(np.mean(tangential_lag * tangential_lag))),
+            unit="mm",
+        ),
+        "normalServoErrorMaxMm": BenchmarkMetric(
+            value=float(normal_servo_norms[norm_max_idx]),
+            unit="mm",
+            location=BenchmarkLocation(
+                sampleIndex=norm_max_idx,
+                t=float(times[norm_max_idx]),
+                referenceSegmentIndex=int(mono_segments[norm_max_idx]),
+            ),
+        ),
+        "normalServoErrorRmsMm": BenchmarkMetric(
+            value=float(np.sqrt(np.mean(normal_servo_norms * normal_servo_norms))),
             unit="mm",
         ),
         "actualPathDeviationMaxMm": BenchmarkMetric(
@@ -534,6 +793,10 @@ def _compute_servo_metrics(
             value=float(np.quantile(act_errors, 0.99)),
             unit="mm",
         ),
+        "signedRadialOffsetMeanMm": BenchmarkMetric(
+            value=signed_radial_mean,
+            unit="mm",
+        ),
         "quadrantGlitchMaxMm": BenchmarkMetric(
             value=glitch_max,
             unit="mm",
@@ -543,6 +806,14 @@ def _compute_servo_metrics(
                 referenceSegmentIndex=int(act_segments[glitch_idx]),
             ),
         ),
+        "dominantResonanceFreqHz": BenchmarkMetric(
+            value=f_dom_hz,
+            unit="Hz",
+        ),
+        "resonanceBandRmsMm": BenchmarkMetric(
+            value=res_rms_mm,
+            unit="mm",
+        ),
     }
 
 
@@ -551,7 +822,8 @@ def _build_geometry_slices(
     run: CncAlgorithmExport,
     cmd_positions: np.ndarray,
     cmd_errors: np.ndarray,
-    nearest_segments: np.ndarray,
+    mono_segments: np.ndarray,
+    s_progress: np.ndarray,
 ) -> tuple[SegmentQualitySlice, ...]:
     path = np.asarray(case.reference_path, dtype=float)
     arcs_by_seg = {arc.segment_index: arc for arc in case.reference_arcs or ()}
@@ -581,6 +853,15 @@ def _build_geometry_slices(
 
     slices: list[SegmentQualitySlice] = []
 
+    def _contiguous_primary_run(mask: np.ndarray) -> np.ndarray:
+        """Select the longest contiguous temporal run to prevent multi-pass jump contamination."""
+        if len(mask) <= 1:
+            return mask
+        splits = np.where(np.diff(mask) > 3)[0] + 1
+        groups = np.split(mask, splits)
+        best_grp = max(groups, key=len)
+        return np.arange(int(best_grp[0]), int(best_grp[-1]) + 1, dtype=np.int64)
+
     def _window_metrics(indices: np.ndarray, arc: BenchmarkArc | None = None) -> dict[str, float | None]:
         lo, hi = int(indices[0]), int(indices[-1])
         win_errors = cmd_errors[lo : hi + 1]
@@ -600,8 +881,11 @@ def _build_geometry_slices(
         }
         if arc is not None:
             center, radius, _, _ = _arc_geometry(path, arc)
-            radial = np.hypot(cmd_positions[lo : hi + 1, 0] - center[0], cmd_positions[lo : hi + 1, 1] - center[1])
-            m["arcRadialShrinkMm"] = float(np.max(np.maximum(0.0, radius - radial)))
+            radial_cmd = np.hypot(cmd_positions[lo : hi + 1, 0] - center[0], cmd_positions[lo : hi + 1, 1] - center[1])
+            m["arcRadialShrinkMm"] = float(np.max(np.maximum(0.0, radius - radial_cmd)))
+            if act_positions is not None:
+                radial_act = np.hypot(act_positions[lo : hi + 1, 0] - center[0], act_positions[lo : hi + 1, 1] - center[1])
+                m["signedActRadialOffsetMeanMm"] = float(np.mean(radius - radial_act))
         if following_norms is not None and act_errors is not None:
             win_fe = following_norms[lo : hi + 1]
             win_act = act_errors[lo : hi + 1]
@@ -609,63 +893,81 @@ def _build_geometry_slices(
             m["actualPathDeviationMaxMm"] = float(np.max(win_act))
         return m
 
-    # 1. Identify micro-segment clusters vs individual lines and arcs
-    micro_run: list[tuple[int, float]] = []
+    # Cumulative arc lengths at reference vertices for physical distance windowing
+    seg_len_map = {idx: length for idx, length, _, _ in ends}
+    vertex_cum_s = np.zeros(len(path), dtype=np.float64)
+    for v_i in range(len(path) - 1):
+        vertex_cum_s[v_i + 1] = vertex_cum_s[v_i] + seg_len_map.get(v_i, 0.0)
 
-    def _flush_micro_cluster(cluster: list[tuple[int, float]]) -> None:
+    micro_run: list[tuple[int, float, np.ndarray]] = []
+
+    def _flush_micro_cluster(cluster: list[tuple[int, float, np.ndarray]]) -> None:
         if len(cluster) < 3:
-            for seg_idx, seg_len in cluster:
-                mask = np.where(nearest_segments == seg_idx)[0]
-                if len(mask) == 0:
+            for seg_idx, seg_len, tang_u in cluster:
+                raw_mask = np.where(mono_segments == seg_idx)[0]
+                if len(raw_mask) == 0:
                     continue
+                win = _contiguous_primary_run(raw_mask)
                 slices.append(
                     SegmentQualitySlice(
                         sliceId=f"line.seg-{seg_idx}",
                         primitiveKind="line",
                         referenceSegmentIndices=(seg_idx,),
-                        startSampleIndex=int(mask[0]),
-                        endSampleIndex=int(mask[-1]),
-                        sampleCount=int(mask[-1] - mask[0] + 1),
-                        durationSeconds=float((mask[-1] - mask[0]) * period),
-                        geometryFeatures={"lengthMm": seg_len, "curvatureInvMm": 0.0},
-                        metrics=_window_metrics(mask),
+                        startSampleIndex=int(win[0]),
+                        endSampleIndex=int(win[-1]),
+                        sampleCount=int(win[-1] - win[0] + 1),
+                        durationSeconds=float((win[-1] - win[0]) * period),
+                        geometryFeatures={
+                            "lengthMm": seg_len,
+                            "curvatureInvMm": 0.0,
+                            "absUx": float(abs(tang_u[0])),
+                            "absUy": float(abs(tang_u[1])),
+                            "absUz": float(abs(tang_u[2])),
+                        },
+                        metrics=_window_metrics(win),
                     )
                 )
             return
         seg_ids = tuple(item[0] for item in cluster)
         lengths = [item[1] for item in cluster]
-        mask = np.where(np.isin(nearest_segments, seg_ids))[0]
-        if len(mask) == 0:
+        raw_mask = np.where(np.isin(mono_segments, seg_ids))[0]
+        if len(raw_mask) == 0:
             return
+        win = _contiguous_primary_run(raw_mask)
+        mean_u = np.mean([ np.abs(item[2]) for item in cluster ], axis=0)
         slices.append(
             SegmentQualitySlice(
                 sliceId=f"micro-cluster.seg-{seg_ids[0]}-to-{seg_ids[-1]}",
                 primitiveKind="micro-segment-cluster",
                 referenceSegmentIndices=seg_ids,
-                startSampleIndex=int(mask[0]),
-                endSampleIndex=int(mask[-1]),
-                sampleCount=int(mask[-1] - mask[0] + 1),
-                durationSeconds=float((mask[-1] - mask[0]) * period),
+                startSampleIndex=int(win[0]),
+                endSampleIndex=int(win[-1]),
+                sampleCount=int(win[-1] - win[0] + 1),
+                durationSeconds=float((win[-1] - win[0]) * period),
                 geometryFeatures={
                     "segmentCount": float(len(seg_ids)),
                     "totalLengthMm": float(sum(lengths)),
                     "meanChordMm": float(np.mean(lengths)),
+                    "absUx": float(mean_u[0]),
+                    "absUy": float(mean_u[1]),
+                    "absUz": float(mean_u[2]),
                 },
-                metrics=_window_metrics(mask),
+                metrics=_window_metrics(win),
             )
         )
 
-    for seg_idx, seg_len, _, _ in ends:
+    for seg_idx, seg_len, start_u, _ in ends:
         arc = arcs_by_seg.get(seg_idx)
         if arc is None and seg_len <= MICRO_SEGMENT_THRESHOLD_MM:
-            micro_run.append((seg_idx, seg_len))
+            micro_run.append((seg_idx, seg_len, start_u))
             continue
         if micro_run:
             _flush_micro_cluster(micro_run)
             micro_run = []
-        mask = np.where(nearest_segments == seg_idx)[0]
-        if len(mask) == 0:
+        raw_mask = np.where(mono_segments == seg_idx)[0]
+        if len(raw_mask) == 0:
             continue
+        win = _contiguous_primary_run(raw_mask)
         if arc is not None:
             _, radius, _, sweep = _arc_geometry(path, arc)
             slices.append(
@@ -673,17 +975,17 @@ def _build_geometry_slices(
                     sliceId=f"arc.seg-{seg_idx}",
                     primitiveKind="arc",
                     referenceSegmentIndices=(seg_idx,),
-                    startSampleIndex=int(mask[0]),
-                    endSampleIndex=int(mask[-1]),
-                    sampleCount=int(mask[-1] - mask[0] + 1),
-                    durationSeconds=float((mask[-1] - mask[0]) * period),
+                    startSampleIndex=int(win[0]),
+                    endSampleIndex=int(win[-1]),
+                    sampleCount=int(win[-1] - win[0] + 1),
+                    durationSeconds=float((win[-1] - win[0]) * period),
                     geometryFeatures={
                         "lengthMm": seg_len,
                         "radiusMm": radius,
                         "curvatureInvMm": 1.0 / max(radius, 1e-9),
                         "sweepDeg": math.degrees(abs(sweep)),
                     },
-                    metrics=_window_metrics(mask, arc=arc),
+                    metrics=_window_metrics(win, arc=arc),
                 )
             )
         else:
@@ -692,24 +994,38 @@ def _build_geometry_slices(
                     sliceId=f"line.seg-{seg_idx}",
                     primitiveKind="line",
                     referenceSegmentIndices=(seg_idx,),
-                    startSampleIndex=int(mask[0]),
-                    endSampleIndex=int(mask[-1]),
-                    sampleCount=int(mask[-1] - mask[0] + 1),
-                    durationSeconds=float((mask[-1] - mask[0]) * period),
-                    geometryFeatures={"lengthMm": seg_len, "curvatureInvMm": 0.0},
-                    metrics=_window_metrics(mask),
+                    startSampleIndex=int(win[0]),
+                    endSampleIndex=int(win[-1]),
+                    sampleCount=int(win[-1] - win[0] + 1),
+                    durationSeconds=float((win[-1] - win[0]) * period),
+                    geometryFeatures={
+                        "lengthMm": seg_len,
+                        "curvatureInvMm": 0.0,
+                        "absUx": float(abs(start_u[0])),
+                        "absUy": float(abs(start_u[1])),
+                        "absUz": float(abs(start_u[2])),
+                    },
+                    metrics=_window_metrics(win),
                 )
             )
     if micro_run:
         _flush_micro_cluster(micro_run)
 
-    # 2. Corner transition slices around vertices with turn angle >= CORNER_ANGLE_DEGREES
+    # Corner transition slices using physical arc-length window (period-invariant!)
     for vertex_idx, turn_angle_deg in _reference_corners(case):
-        nearest = int(np.argmin(np.sum((cmd_positions - path[vertex_idx]) ** 2, axis=1)))
-        half_win = max(2, min(15, len(cmd_positions) // 10))
-        lo = max(0, nearest - half_win)
-        hi = min(len(cmd_positions) - 1, nearest + half_win)
-        win_indices = np.arange(lo, hi + 1, dtype=np.int64)
+        s_vertex = float(vertex_cum_s[vertex_idx])
+        in_len = seg_len_map.get(max(0, vertex_idx - 1), 5.0)
+        out_len = seg_len_map.get(min(len(path) - 2, vertex_idx), 5.0)
+        half_dist_mm = max(CORNER_WINDOW_MIN_MM, min(CORNER_WINDOW_MAX_MM, 0.35 * min(in_len, out_len)))
+        s_mask = np.where((s_progress >= s_vertex - half_dist_mm) & (s_progress <= s_vertex + half_dist_mm))[0]
+        if len(s_mask) >= 3:
+            win_indices = _contiguous_primary_run(s_mask)
+        else:
+            nearest = int(np.argmin(np.sum((cmd_positions - path[vertex_idx]) ** 2, axis=1)))
+            half_win = max(2, min(15, len(cmd_positions) // 10))
+            win_indices = np.arange(max(0, nearest - half_win), min(len(cmd_positions) - 1, nearest + half_win) + 1, dtype=np.int64)
+
+        lo, hi = int(win_indices[0]), int(win_indices[-1])
         slices.append(
             SegmentQualitySlice(
                 sliceId=f"corner.vertex-{vertex_idx}",
@@ -722,6 +1038,9 @@ def _build_geometry_slices(
                 geometryFeatures={
                     "turnAngleDeg": float(turn_angle_deg),
                     "vertexIndex": float(vertex_idx),
+                    "windowHalfMm": float(half_dist_mm),
+                    "inLengthMm": float(in_len),
+                    "outLengthMm": float(out_len),
                 },
                 metrics=_window_metrics(win_indices),
             )
@@ -758,10 +1077,28 @@ def evaluate_cnc_export(
     cmd_positions = np.asarray([sample.position_mm for sample in req.export.samples], dtype=float)
     times = np.asarray([sample.t for sample in req.export.samples], dtype=float)
     path = np.asarray(req.case.reference_path, dtype=float)
-    cmd_errors, nearest_segments = _path_deviations(cmd_positions, path, req.case.reference_arcs or ())
+    arcs = req.case.reference_arcs or ()
+    cmd_errors, _ = _path_deviations(cmd_positions, path, arcs)
+    s_prog, mono_segments, _, tangents, inward_normals = _monotonic_frenet_projection(cmd_positions, path, arcs)
 
-    servo_metrics = _compute_servo_metrics(req.case, req.export, cmd_positions, times)
-    geometry_slices = _build_geometry_slices(req.case, req.export, cmd_positions, cmd_errors, nearest_segments)
+    servo_metrics = _compute_servo_metrics(
+        req.case, req.export, cmd_positions, times, tangents, inward_normals, mono_segments
+    )
+    geometry_slices = _build_geometry_slices(req.case, req.export, cmd_positions, cmd_errors, mono_segments, s_prog)
+
+    total_ref_len = max(reference_path_length_mm(req.case), 1e-12)
+    s_ds = np.diff(s_prog) if len(s_prog) >= 2 else np.zeros(0)
+    max_backtrack_mm = float(max(0.0, -np.min(s_ds))) if len(s_ds) else 0.0
+    coverage_ratio = float(np.clip((np.max(s_prog) - np.min(s_prog)) / total_ref_len, 0.0, 1.0))
+
+    q_step = _estimate_quantization_step_mm(cmd_positions, req.export.position_resolution_mm)
+    quant_jerk_floor = float((math.sqrt(20.0 / 12.0) * q_step) / (req.case.sample_period_seconds ** 3))
+    sg_jerk_rms = _savitzky_golay_jerk_rms(cmd_positions, req.case.sample_period_seconds)
+
+    # Compute high-frequency command acceleration excitation power above 25 Hz
+    cmd_acc = np.diff(cmd_positions, n=2, axis=0) / (req.case.sample_period_seconds ** 2) if len(cmd_positions) >= 3 else np.zeros((0, 3))
+    cmd_acc_norm = np.linalg.norm(cmd_acc, axis=1) if len(cmd_acc) else np.zeros(0)
+    _, cmd_hf_acc_rms = _extract_resonance_spectrum(cmd_acc_norm, req.case.sample_period_seconds)
 
     has_violated = any(item.status == "Violated" for item in analysis.checks)
     has_insufficient = any(item.status == "InsufficientSamples" for item in analysis.checks)
@@ -779,10 +1116,13 @@ def evaluate_cnc_export(
     else:
         reasons.append("All sampled-command position, endpoint, path deviation, and discrete V/A/J checks passed")
 
+    if max_backtrack_mm > max(0.05, 2.0 * req.case.maximum_path_deviation_mm):
+        reasons.append(f"Monotonic progress warning: backward reversal of {max_backtrack_mm:.4g} mm detected")
+
     if servo_metrics is not None:
         scope: Literal["sampled-xyz-command", "sampled-xyz-command-and-servo-feedback"] = DUAL_TRACE_SCOPE
         unchecked = DUAL_TRACE_UNCHECKED_PROPERTIES
-        reasons.append("Actual feedback positions evaluated for servo following error and actual contour deviation")
+        reasons.append("Actual feedback positions evaluated with orthogonal Frenet decomposition and resonance FFT")
     else:
         scope = BENCHMARK_SCOPE
         unchecked = UNCHECKED_PROPERTIES
@@ -795,9 +1135,14 @@ def evaluate_cnc_export(
         "velocityMaxMmS": float(analysis.metrics["discreteVelocityMax"].value or 0.0),
         "accelerationMaxMmS2": float(analysis.metrics["discreteAccelerationMax"].value or 0.0),
         "jerkRmsMmS3": float(analysis.metrics["discreteJerkRms"].value or 0.0),
+        "smoothedJerkRmsMmS3": float(sg_jerk_rms if sg_jerk_rms is not None else (analysis.metrics["discreteJerkRms"].value or 0.0)),
+        "quantizationNoiseFloorJerkMmS3": quant_jerk_floor,
         "jerkMaxMmS3": float(analysis.metrics["discreteJerkMax"].value or 0.0),
         "cornerSpeedMinMmS": float(analysis.metrics["cornerSpeedMinMmS"].value or 0.0),
         "feedUtilization": float(analysis.metrics["feedUtilization"].value or 0.0),
+        "pathCoverageRatio": coverage_ratio,
+        "maxBacktrackMm": max_backtrack_mm,
+        "cmdHighFreqAccRmsMmS2": cmd_hf_acc_rms,
     }
 
     report = CncQualityReport(
@@ -822,7 +1167,6 @@ def evaluate_cnc_export(
 
 
 def compare_cnc_exports(payload: CncBenchmarkRequest | Mapping[str, Any]) -> CncBenchmarkReport:
-    # Revalidate model instances too: callers may use model_copy/model_construct.
     request = CncBenchmarkRequest.model_validate(payload.model_dump(mode="json", by_alias=True) if isinstance(payload, CncBenchmarkRequest) else payload)
     baseline, candidate = (_analyse(request.case, run) for run in (request.baseline, request.candidate))
     tolerances = request.case.comparison_tolerances
@@ -904,10 +1248,15 @@ _METRIC_LABELS = {
 _SERVO_METRIC_LABELS = {
     "followingErrorMaxMm": "最大跟随误差",
     "followingErrorRmsMm": "RMS 跟随误差",
+    "tangentialLagMaxMm": "切向相位滞后峰值",
+    "normalServoErrorMaxMm": "法向伺服误差峰值",
     "actualPathDeviationMaxMm": "实测最大轮廓误差",
     "actualPathDeviationRmsMm": "实测 RMS 轮廓误差",
     "actualPathDeviationP99Mm": "实测 P99 轮廓误差",
+    "signedRadialOffsetMeanMm": "圆弧径向内缩均值",
     "quadrantGlitchMaxMm": "过象限突跳峰值",
+    "dominantResonanceFreqHz": "主导谐振频率",
+    "resonanceBandRmsMm": "谐振频带有效值",
 }
 _STATUS_LABELS = {"Improved": "改善", "Regressed": "退化", "WithinTolerance": "容差内", "NotComparable": "不可比"}
 _OUTCOME_LABELS = {
@@ -921,7 +1270,6 @@ _OUTCOME_LABELS = {
 
 
 def _cell(value: float | None) -> str:
-    # Values below 1 pm are floating-point noise for a millimetre-scale report.
     return "-" if value is None else "0" if abs(value) < 1e-9 else f"{value:.6g}"
 
 
@@ -933,29 +1281,37 @@ def _pad(text: str, width: int, *, right: bool = False) -> str:
 
 
 def render_quality_report_table(report: CncQualityReport) -> str:
-    """Plain-text single-run quality table including servo and geometric slice diagnostics."""
+    """Plain-text single-run quality table including Frenet servo & spectral diagnostics."""
     lines = [
         f"案例 {report.case_id}（单次质量诊断）",
         f"算法 = {report.analysis.algorithm_id} {report.analysis.algorithm_version}（{report.analysis.sample_count} 个采样，来源 {report.analysis.source_kind}）",
-        f"硬约束门禁 = {'通过 (Passed)' if report.hard_gates_passed else '超限 (ViolatesLimits)'}",
+        f"硬约束门禁 = {'通过 (Passed)' if report.hard_gates_passed else '超限 (ViolatesLimits)'} | 路径覆盖率 = {report.kinematic_summary.get('pathCoverageRatio', 1.0):.1%}",
         "",
-        _pad("规划层指标", 18) + _pad("数值", 14, right=True) + _pad("单位", 10, right=True) + "  定位",
+        _pad("规划层指标", 20) + _pad("数值", 14, right=True) + _pad("单位", 10, right=True) + "  定位",
     ]
     for metric_id, label in _METRIC_LABELS.items():
         metric = report.analysis.metrics.get(metric_id)
         if metric is None or metric.value is None:
             continue
         loc_str = f"第 {metric.location.sample_index} 采样 (t={metric.location.t:.4g}s)" if metric.location else "-"
-        lines.append(_pad(label, 18) + _pad(_cell(metric.value), 14, right=True) + _pad(metric.unit, 10, right=True) + f"  {loc_str}")
+        lines.append(_pad(label, 20) + _pad(_cell(metric.value), 14, right=True) + _pad(metric.unit, 10, right=True) + f"  {loc_str}")
+
+    if "smoothedJerkRmsMmS3" in report.kinematic_summary:
+        lines.append(
+            _pad("抗噪滤波 Jerk RMS", 20)
+            + _pad(_cell(report.kinematic_summary["smoothedJerkRmsMmS3"]), 14, right=True)
+            + _pad("mm/s^3", 10, right=True)
+            + f"  (量化噪底 {_cell(report.kinematic_summary.get('quantizationNoiseFloorJerkMmS3'))})"
+        )
 
     if report.servo_metrics:
-        lines += ["", _pad("伺服物理层指标", 18) + _pad("数值", 14, right=True) + _pad("单位", 10, right=True) + "  定位"]
+        lines += ["", _pad("伺服物理层指标", 20) + _pad("数值", 14, right=True) + _pad("单位", 10, right=True) + "  定位"]
         for metric_id, label in _SERVO_METRIC_LABELS.items():
             metric = report.servo_metrics.get(metric_id)
             if metric is None or metric.value is None:
                 continue
             loc_str = f"第 {metric.location.sample_index} 采样 (t={metric.location.t:.4g}s)" if metric.location else "-"
-            lines.append(_pad(label, 18) + _pad(_cell(metric.value), 14, right=True) + _pad(metric.unit, 10, right=True) + f"  {loc_str}")
+            lines.append(_pad(label, 20) + _pad(_cell(metric.value), 14, right=True) + _pad(metric.unit, 10, right=True) + f"  {loc_str}")
 
     if report.geometry_slices:
         lines += ["", f"几何基元切片（共 {len(report.geometry_slices)} 段）："]

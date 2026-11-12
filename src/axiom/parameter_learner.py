@@ -1,18 +1,21 @@
-"""Two-Stage High-Dimensional CNC Parameter Learner & Multi-Fidelity Surrogate Engine.
+"""Grey-Box Physics + Low-Dimensional MLE ARD-GP Residual CNC Parameter Learner.
 
-Solves the 30+ parameter learning and attribution problem via:
-1. Stage 1 (Causal Masking + Sparse Active Subspace Screening):
-   - Applies physical group causal masks (G3 servo parameters masked to 0 on planning metrics).
-   - Fits coordinate-descent ElasticNet (L1 + L2) on normalized linear + pure quadratic main effects,
-     combined with Spearman rank correlation to isolate the Top-K Active Parameters per metric.
-2. Stage 2 (Active Subspace Quadratic Response Surface + ARD Matérn-5/2 GP + Multi-Fidelity Residual Fusion):
-   - Fits a second-order response surface (including pairwise interactions) plus an anisotropic
-     Matérn-5/2 Gaussian Process on the active subspace.
-   - When both offline exports and controller traces are supplied, fuses them by learning the
-     servo residual delta_servo(z_kin, theta_G3) on top of the offline planning surrogate.
-   - Calibrates Split Conformal / LOO-CV prediction intervals and FeatureEnvelope OOD bounds.
-3. Parameter Impact & Attribution Report:
-   - Ranked main-effect sensitivity matrix, pairwise interaction discovery, and 1D marginal knee points.
+Upgrades the legacy black-box ElasticNet polynomial learner to a three-layer grey-box architecture:
+1. Layer 1 (White-Box Analytical Physics Backbone):
+   - Evaluates exact piecewise `min(...)` speed envelopes (programmed feed, 3D axis projection,
+     arc/helical centripetal, corner-rounding curvature, and micro-segment lookahead braking distance),
+     post-filter corner valley speed convolution, FIR sinc + Butterworth radial shrink, cascade P-PI
+     servo tracking lag, and second-order signed Frenet normal curvature-delay superposition across
+     arbitrary `CncBenchmarkCase` geometries.
+2. Layer 2 (Constrained Grey-Box Mechanism Calibration):
+   - Identifies physical constants (spline curvature factors, lookahead safety margin, corner valley
+     smoothing, servo velocity-loop bandwidth ratios, Stribeck stiction breakaway, and FFT structural
+     resonance Hz) via `scipy.optimize.lsq_linear` and bounded Trust-Region Reflective (`least_squares`).
+3. Layer 3 (Compact Physics-Feature L-BFGS-B MLE ARD Matérn-5/2 GP Residual + Split Conformal + LOCO Audit):
+   - Strips the calibrated grey-box prediction `r = y_obs - y_greybox` and fits a low-dimensional
+     (3D-6D) ARD Matérn-5/2 GP via Marginal Log-Likelihood optimization, eliminating high-dimensional
+     underdetermined hallucinations and plateau parabolic bend-back while providing automatic
+     Leave-One-Case-Out (LOCO) cross-toolpath zero-shot validation (`CrossToolpathValidationSummary`).
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ import unicodedata
 from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .benchmark import (
     CncAlgorithmExport,
@@ -33,11 +36,21 @@ from .benchmark import (
     benchmark_case_hash,
     evaluate_cnc_export,
 )
+from .greybox_model import (
+    CaseGeometryProfile,
+    GreyBoxPhysicalConstants,
+    calibrate_greybox_constants,
+    evaluate_greybox_backbone,
+    extract_case_geometry_profile,
+    fit_mle_ard_matern52_gp,
+    matern52_kernel,
+)
 from .models import AxiomModel
 from .parameter_space import (
     PLANNING_METRIC_IDS,
     SERVO_METRIC_IDS,
     CncParameterRegistry,
+    DerivedFeatureDefinition,
     ParameterDefinition,
     ParameterGroup,
     causal_mask_for_metric,
@@ -55,6 +68,21 @@ DEFAULT_TARGET_METRICS = (
     "cornerSpeedMinMmS",
     "followingErrorMaxMm",
     "actualPathDeviationMaxMm",
+    "quadrantGlitchMaxMm",
+)
+EXTENDED_TARGET_METRICS = (
+    "durationSeconds",
+    "sampledPathDeviationMaxMm",
+    "discreteJerkRms",
+    "smoothedJerkRmsMmS3",
+    "cornerSpeedMinMmS",
+    "feedUtilizationRatio",
+    "followingErrorMaxMm",
+    "tangentialLagMaxMm",
+    "normalServoErrorMaxMm",
+    "actualPathDeviationMaxMm",
+    "quadrantGlitchMaxMm",
+    "resonanceBandRmsMm",
 )
 KINEMATIC_BRIDGE_FEATURES = (
     "velocityMaxMmS",
@@ -63,7 +91,7 @@ KINEMATIC_BRIDGE_FEATURES = (
     "cornerSpeedMinMmS",
 )
 CONFORMAL_ALPHA = 0.10
-OOD_MARGIN_FRACTION = 0.20
+OOD_MARGIN_FRACTION = 0.25
 
 
 def _canonical_hash(payload: AxiomModel | Mapping[str, Any]) -> str:
@@ -123,19 +151,23 @@ class ParameterFeatureEnvelope(AxiomModel):
 class MetricSurrogateHead(AxiomModel):
     metric_id: str = Field(alias="metricId")
     unit: str
-    modeling_mode: Literal["single-fidelity-surrogate", "multi-fidelity-residual-fusion"] = Field(
-        alias="modelingMode"
-    )
+    modeling_mode: Literal[
+        "greybox-physics-gp",
+        "multi-fidelity-residual-fusion",
+        "single-fidelity-surrogate",
+    ] = Field(alias="modelingMode")
     base_metric_id: str | None = Field(default=None, alias="baseMetricId")
+    uses_greybox_backbone: bool = Field(default=True, alias="usesGreyboxBackbone")
     active_feature_ids: tuple[str, ...] = Field(alias="activeFeatureIds")
-    interaction_pairs: tuple[tuple[int, int], ...] = Field(alias="interactionPairs")
-    poly_weights: tuple[float, ...] = Field(alias="polyWeights")
+    interaction_pairs: tuple[tuple[int, int], ...] = Field(default=(), alias="interactionPairs")
+    poly_weights: tuple[float, ...] = Field(default=(), alias="polyWeights")
     gp_length_scales: tuple[float, ...] = Field(alias="gpLengthScales")
     gp_train_x: tuple[tuple[float, ...], ...] = Field(alias="gpTrainX")
     gp_alpha: tuple[float, ...] = Field(alias="gpAlpha")
     gp_signal_variance: float = Field(alias="gpSignalVariance")
     gp_noise_variance: float = Field(alias="gpNoiseVariance")
     conformal_radius: float = Field(alias="conformalRadius")
+    greybox_only_rmse: float = Field(default=0.0, alias="greyboxOnlyRmse")
     train_rmse: float = Field(alias="trainRmse")
     cv_rmse: float = Field(alias="cvRmse")
     r2_score: float = Field(alias="r2Score")
@@ -145,12 +177,43 @@ class MetricSurrogateHead(AxiomModel):
     marginal_knees: tuple[ParameterMarginalKnee, ...] = Field(alias="marginalKnees")
 
 
+class CrossToolpathValidationItem(AxiomModel):
+    held_out_case_id: str = Field(alias="heldOutCaseId")
+    sample_count: int = Field(alias="sampleCount")
+    duration_zero_shot_rmse_s: float = Field(alias="durationZeroShotRmseS")
+    duration_zero_shot_mape_pct: float = Field(alias="durationZeroShotMapePct")
+    command_deviation_zero_shot_rmse_mm: float = Field(alias="commandDeviationZeroShotRmseMm")
+    actual_deviation_zero_shot_rmse_mm: float | None = Field(
+        default=None, alias="actualDeviationZeroShotRmseMm"
+    )
+
+
+class CrossToolpathValidationSummary(AxiomModel):
+    evaluated_case_count: int = Field(alias="evaluatedCaseCount")
+    mean_duration_mape_pct: float = Field(alias="meanDurationMapePct")
+    mean_command_deviation_rmse_mm: float = Field(alias="meanCommandDeviationRmseMm")
+    mean_actual_deviation_rmse_mm: float | None = Field(
+        default=None, alias="meanActualDeviationRmseMm"
+    )
+    items: tuple[CrossToolpathValidationItem, ...]
+
+
 class LearnedParameterSurrogate(AxiomModel):
     schema_id: Literal["axiom.cnc-parameter-surrogate@1"] = Field(
         default="axiom.cnc-parameter-surrogate@1", alias="schemaId"
     )
+    engine_mode: Literal["greybox-physics-gp", "blackbox-poly-gp"] = Field(
+        default="greybox-physics-gp", alias="engineMode"
+    )
     case_id: str = Field(alias="caseId")
     case_content_hash: str = Field(alias="caseContentHash")
+    calibrated_case_ids: tuple[str, ...] = Field(default=(), alias="calibratedCaseIds")
+    default_case: CncBenchmarkCase | None = Field(default=None, alias="defaultCase")
+    greybox_constants: GreyBoxPhysicalConstants | None = Field(default=None, alias="greyboxConstants")
+    physical_diagnostics: tuple[str, ...] = Field(default=(), alias="physicalDiagnostics")
+    cross_toolpath_validation: CrossToolpathValidationSummary | None = Field(
+        default=None, alias="crossToolpathValidation"
+    )
     registry: CncParameterRegistry
     offline_run_count: int = Field(alias="offlineRunCount")
     controller_run_count: int = Field(alias="controllerRunCount")
@@ -163,11 +226,18 @@ class LearnedParameterSurrogate(AxiomModel):
 
 
 class ParameterLearningRequest(AxiomModel):
-    case: CncBenchmarkCase
+    case: CncBenchmarkCase | None = None
+    cases: tuple[CncBenchmarkCase, ...] | None = None
     registry: CncParameterRegistry | None = None
     exports: tuple[CncAlgorithmExport, ...] = Field(min_length=4, max_length=2000)
     target_metrics: tuple[str, ...] = Field(default=DEFAULT_TARGET_METRICS, alias="targetMetrics")
     max_active_parameters_per_metric: int = Field(default=6, ge=2, le=15, alias="maxActiveParametersPerMetric")
+
+    @model_validator(mode="after")
+    def require_at_least_one_case(self) -> ParameterLearningRequest:
+        if self.case is None and not self.cases:
+            raise ValueError("either `case` or non-empty `cases` must be provided")
+        return self
 
 
 def _rank_array(x: np.ndarray) -> np.ndarray:
@@ -186,268 +256,225 @@ def _spearman_corr(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.dot(rx, ry) / denom) if denom > 1e-12 else 0.0
 
 
-def _elastic_net_fit(
-    X: np.ndarray,
-    y: np.ndarray,
-    *,
-    l1_ratio: float = 0.65,
-    alpha: float = 0.03,
-    max_iter: int = 250,
-) -> tuple[float, np.ndarray]:
-    """Deterministic coordinate-descent ElasticNet solver on standardized columns."""
-    n_samples, n_features = X.shape
-    if n_samples == 0 or n_features == 0:
-        return float(np.mean(y)) if len(y) else 0.0, np.zeros(n_features, dtype=np.float64)
-    y_mean = float(np.mean(y))
-    y_centered = y - y_mean
-    y_scale = float(np.std(y_centered))
-    if y_scale < 1e-12:
-        return y_mean, np.zeros(n_features, dtype=np.float64)
-    y_norm = y_centered / y_scale
-
-    col_means = np.mean(X, axis=0)
-    col_stds = np.std(X, axis=0)
-    active_cols = col_stds > 1e-10
-    X_std = np.zeros_like(X, dtype=np.float64)
-    X_std[:, active_cols] = (X[:, active_cols] - col_means[active_cols]) / col_stds[active_cols]
-
-    w = np.zeros(n_features, dtype=np.float64)
-    l1_pen = alpha * l1_ratio
-    l2_pen = alpha * (1.0 - l1_ratio)
-    residual = y_norm.copy()
-
-    for _ in range(max_iter):
-        max_delta = 0.0
-        for j in range(n_features):
-            if not active_cols[j]:
-                continue
-            xj = X_std[:, j]
-            old_wj = w[j]
-            rho = float(np.dot(xj, residual + xj * old_wj) / n_samples)
-            if rho > l1_pen:
-                new_wj = (rho - l1_pen) / (1.0 + l2_pen)
-            elif rho < -l1_pen:
-                new_wj = (rho + l1_pen) / (1.0 + l2_pen)
-            else:
-                new_wj = 0.0
-            if new_wj != old_wj:
-                residual -= xj * (new_wj - old_wj)
-                w[j] = new_wj
-                max_delta = max(max_delta, abs(new_wj - old_wj))
-        if max_delta < 1e-6:
-            break
-
-    # Rescale weights back to original X units
-    w_unscaled = np.zeros(n_features, dtype=np.float64)
-    w_unscaled[active_cols] = w[active_cols] * (y_scale / col_stds[active_cols])
-    intercept = y_mean - float(np.dot(col_means, w_unscaled))
-    return intercept, w_unscaled
-
-
-def _poly2_basis(X: np.ndarray, pairs: Sequence[tuple[int, int]]) -> np.ndarray:
-    """Construct [1, x_1..x_k, x_1^2..x_k^2, x_i * x_j] design matrix."""
-    n = X.shape[0]
-    cols = [np.ones((n, 1), dtype=np.float64), X, X * X]
-    for i, j in pairs:
-        cols.append((X[:, i] * X[:, j])[:, None])
-    return np.hstack(cols)
-
-
-def _matern52_kernel(X1: np.ndarray, X2: np.ndarray, length_scales: np.ndarray, signal_var: float) -> np.ndarray:
-    ls = np.maximum(length_scales, 1e-3)
-    diff = (X1[:, None, :] - X2[None, :, :]) / ls[None, None, :]
-    r = np.sqrt(np.sum(diff * diff, axis=2))
-    sqrt5_r = math.sqrt(5.0) * r
-    return signal_var * (1.0 + sqrt5_r + (5.0 / 3.0) * (r * r)) * np.exp(-sqrt5_r)
-
-
 def _extract_feature_value(
-    feature_id: str,
+    fid: str,
     params: Mapping[str, float],
     param_map: Mapping[str, ParameterDefinition],
-    derived_map: Mapping[str, Any],
-    kinematic_context: Mapping[str, float] | None = None,
+    derived_map: Mapping[str, DerivedFeatureDefinition],
+    gb_pred: Mapping[str, float] | None = None,
 ) -> float:
-    if feature_id in param_map:
-        p_def = param_map[feature_id]
-        raw = float(params.get(feature_id, p_def.default_value))
-        return normalize_parameter_value(p_def, raw)
-    if feature_id in derived_map:
-        return compute_derived_feature_value(derived_map[feature_id], params, param_map)
-    if kinematic_context is not None and feature_id in kinematic_context:
-        return float(kinematic_context[feature_id])
+    if fid in param_map:
+        p_def = param_map[fid]
+        return normalize_parameter_value(p_def, float(params.get(fid, p_def.default_value)))
+    if fid in derived_map:
+        return compute_derived_feature_value(derived_map[fid], params, param_map)
+    if fid.startswith("phys.") and gb_pred is not None:
+        key = fid.split("phys.", 1)[1]
+        if key == "firResonanceGain":
+            return float(np.clip(2.0 * gb_pred.get("firResonanceGain", 0.5) - 1.0, -1.0, 1.0))
+        if key == "notchSuppression":
+            return float(np.clip(2.0 * gb_pred.get("notchSuppressionFactor", 1.0) - 1.0, -1.0, 1.0))
+        if key == "revAccNorm":
+            return float(np.clip(gb_pred.get("accelerationMaxMmS2", 2500.0) / 6000.0 - 1.0, -1.0, 1.5))
     return 0.0
 
 
-def predict_head(
-    head: MetricSurrogateHead,
-    feature_vector: Sequence[float] | np.ndarray,
-) -> tuple[float, float, bool]:
-    """Predict (mean, uncertainty_radius, is_ood) for a normalized active feature vector."""
-    x = np.asarray(feature_vector, dtype=np.float64).reshape(1, -1)
+def _residual_feature_ids_for_metric(
+    metric_id: str,
+    active_param_ids: Sequence[str],
+    has_controller_traces: bool,
+) -> list[str]:
+    """Select compact, physically grounded 3D-6D feature subspace for the residual ARD-GP."""
+    if metric_id == "quadrantGlitchMaxMm":
+        return ["g3.friction_comp_amp_x", "g3.friction_comp_amp_y", "g3.servo_kp_x", "phys.revAccNorm"]
+    if metric_id == "resonanceBandRmsMm":
+        return ["g3.notch_filter_freq_hz", "g2.fir_moving_avg_time_ms", "phys.firResonanceGain", "phys.notchSuppression"]
+    if metric_id in ("actualPathDeviationMaxMm", "normalServoErrorMaxMm") and has_controller_traces:
+        chosen = list(active_param_ids[:4])
+        for extra in ("derived.kp_xy_mismatch", "phys.firResonanceGain", "phys.notchSuppression"):
+            if extra not in chosen and len(chosen) < 6:
+                chosen.append(extra)
+        return chosen
+    if metric_id == "cornerSpeedMinMmS":
+        chosen = list(active_param_ids[:4])
+        for extra in ("g2.fir_moving_avg_time_ms", "g2.biquad_lowpass_freq_hz"):
+            if extra not in chosen and len(chosen) < 5:
+                chosen.append(extra)
+        return chosen
+    return list(active_param_ids[:5])
+
+
+def _predict_residual_gp(head: MetricSurrogateHead, z_vec: Sequence[float] | np.ndarray) -> tuple[float, float, bool]:
+    """Evaluate residual mean (linear intercept + GP), conformal uncertainty radius, and OOD status."""
+    z = np.asarray(z_vec, dtype=np.float64).reshape(1, -1)
+    k_dim = z.shape[1]
     mins = np.asarray(head.envelope.minimums, dtype=np.float64)
     maxs = np.asarray(head.envelope.maximums, dtype=np.float64)
-    spans = np.maximum(maxs - mins, 0.20)
+    spans = np.maximum(maxs - mins, 0.25)
     margin = head.envelope.margin_fraction * spans
-    is_ood = bool(np.any(x[0] < mins - margin) or np.any(x[0] > maxs + margin))
+    in_dom = bool(np.all(z[0] >= (mins - margin)) and np.all(z[0] <= (maxs + margin)))
 
-    phi = _poly2_basis(x, head.interaction_pairs)
-    beta = np.asarray(head.poly_weights, dtype=np.float64)
-    trend = float((phi @ beta)[0])
+    intercept = float(head.poly_weights[0]) if len(head.poly_weights) >= 1 else 0.0
+    lin_part = 0.0
+    if len(head.poly_weights) >= 1 + k_dim:
+        lin_w = np.asarray(head.poly_weights[1 : 1 + k_dim], dtype=np.float64)
+        lin_part = float(np.dot(z[0], lin_w))
 
-    if len(head.gp_train_x) > 0:
-        X_train = np.asarray(head.gp_train_x, dtype=np.float64)
-        ls = np.asarray(head.gp_length_scales, dtype=np.float64)
-        alpha_vec = np.asarray(head.gp_alpha, dtype=np.float64)
-        k_star = _matern52_kernel(x, X_train, ls, head.gp_signal_variance)
-        gp_mean = float((k_star @ alpha_vec)[0])
-        K_train = _matern52_kernel(X_train, X_train, ls, head.gp_signal_variance) + head.gp_noise_variance * np.eye(
-            len(X_train)
-        )
-        try:
-            v = np.linalg.solve(K_train, k_star.T)
-            post_var = max(0.0, float(head.gp_signal_variance - (k_star @ v)[0, 0]))
-        except np.linalg.LinAlgError:
-            post_var = head.gp_signal_variance
-        gp_std = math.sqrt(post_var)
-    else:
-        gp_mean = 0.0
-        gp_std = 0.0
+    X_tr = np.asarray(head.gp_train_x, dtype=np.float64)
+    if len(X_tr) == 0:
+        return intercept + lin_part, head.conformal_radius, not in_dom
 
-    pred_mean = trend + gp_mean
-    radius = max(head.conformal_radius, 0.5 * head.conformal_radius + gp_std)
-    return float(pred_mean), float(radius), is_ood
+    ls = np.asarray(head.gp_length_scales, dtype=np.float64)
+    alpha = np.asarray(head.gp_alpha, dtype=np.float64)
+    k_star = matern52_kernel(z, X_tr, ls, head.gp_signal_variance)
+    gp_mean = float((k_star @ alpha)[0])
+
+    K_tr = matern52_kernel(X_tr, X_tr, ls, head.gp_signal_variance) + head.gp_noise_variance * np.eye(len(X_tr))
+    try:
+        v_vec = np.linalg.solve(K_tr, k_star.T)
+        post_var = max(0.0, head.gp_signal_variance - float((k_star @ v_vec)[0, 0]))
+        rel_std = math.sqrt(post_var / max(head.gp_signal_variance, 1e-12))
+    except np.linalg.LinAlgError:
+        rel_std = 1.0
+
+    radius = float(head.conformal_radius * (0.45 + 0.55 * rel_std))
+    if not in_dom:
+        radius *= 1.75
+    return intercept + lin_part + gp_mean, radius, (not in_dom)
 
 
 def predict_metric_for_parameters(
     surrogate: LearnedParameterSurrogate,
     metric_id: str,
     parameters: Mapping[str, float],
+    *,
+    target_case: CncBenchmarkCase | None = None,
 ) -> tuple[float, float, bool]:
-    """Predict (mean, uncertainty_radius, is_ood) for a full 30+ parameter dict."""
+    """Predict `(mean, uncertainty_radius, is_ood)` for `metric_id` on `target_case` (or `default_case`)."""
+    full_params = {**surrogate.baseline_parameters, **{k: float(v) for k, v in parameters.items()}}
+    active_case = target_case or surrogate.default_case
+
+    gb_pred: dict[str, float] = {}
+    if active_case is not None and surrogate.greybox_constants is not None:
+        prof = extract_case_geometry_profile(active_case)
+        gb_pred = evaluate_greybox_backbone(prof, full_params, surrogate.greybox_constants)
+
     if metric_id not in surrogate.metric_heads:
-        raise KeyError(f"Metric {metric_id!r} is not modeled in surrogate")
+        raw_gb = float(gb_pred.get(metric_id, 0.0))
+        if metric_id != "signedRadialOffsetMeanMm":
+            raw_gb = max(0.0, raw_gb)
+        return raw_gb, 0.0, False
+
     head = surrogate.metric_heads[metric_id]
     param_map = {p.parameter_id: p for p in surrogate.registry.parameters}
     derived_map = {d.feature_id: d for d in surrogate.registry.derived_features}
-
-    kin_ctx: dict[str, float] = {}
-    if head.modeling_mode == "multi-fidelity-residual-fusion":
-        for k_id, k_head in surrogate.kinematic_bridge_heads.items():
-            k_vec = [
-                _extract_feature_value(fid, parameters, param_map, derived_map)
-                for fid in k_head.active_feature_ids
-            ]
-            k_mean, _, _ = predict_head(k_head, k_vec)
-            kin_ctx[f"kin.{k_id}"] = k_mean
-
-    x_vec = [
-        _extract_feature_value(fid, parameters, param_map, derived_map, kin_ctx)
+    z_vec = [
+        _extract_feature_value(fid, full_params, param_map, derived_map, gb_pred)
         for fid in head.active_feature_ids
     ]
-    val, radius, is_ood = predict_head(head, x_vec)
-    if head.modeling_mode == "multi-fidelity-residual-fusion" and head.base_metric_id:
-        base_val, base_rad, base_ood = predict_metric_for_parameters(surrogate, head.base_metric_id, parameters)
-        return max(0.0, base_val + val), math.hypot(base_rad, radius), (is_ood or base_ood)
-    return max(0.0, val), radius, is_ood
+    res_mean, radius, is_ood = _predict_residual_gp(head, z_vec)
+
+    if head.uses_greybox_backbone and gb_pred:
+        base_phys = float(gb_pred.get(metric_id, 0.0))
+        if target_case is not None and surrogate.default_case is not None and target_case.case_id != surrogate.default_case.case_id:
+            if metric_id == "durationSeconds":
+                def_prof = extract_case_geometry_profile(surrogate.default_case)
+                tgt_prof = extract_case_geometry_profile(target_case)
+                scale_len = tgt_prof.total_length_mm / max(def_prof.total_length_mm, 1e-6)
+                res_mean *= min(2.5, max(0.25, scale_len))
+                radius *= min(2.5, max(0.5, scale_len))
+        ref_scale = max(head.greybox_only_rmse * 3.0, 1e-6)
+        mag_factor = min(1.05, max(0.18, abs(base_phys) / max(abs(base_phys) + ref_scale, 1e-6) + 0.15))
+        pred_total = base_phys + res_mean
+        if metric_id != "signedRadialOffsetMeanMm":
+            pred_total = max(0.0, pred_total)
+        return pred_total, radius * mag_factor, is_ood
+
+    return max(0.0, res_mean), radius, is_ood
 
 
-def _interaction_note(param_a: str, param_b: str, weight: float, metric_id: str) -> str:
-    direction = "协同放大" if weight > 0 else "相互制约/抵消"
-    return f"{param_a} 与 {param_b} 在 {metric_id} 上存在显著二阶耦合（{direction}，系数 {weight:+.4g}）"
-
-
-def _fit_single_head(
+def _compute_physics_sensitivities(
     metric_id: str,
-    unit: str,
-    y_values: np.ndarray,
-    exports_params: Sequence[Mapping[str, float]],
+    profiles: Sequence[CaseGeometryProfile],
+    consts: GreyBoxPhysicalConstants,
     registry: CncParameterRegistry,
+    baseline_params: Mapping[str, float],
+    observed_params: Sequence[Mapping[str, float]],
+    observed_y: np.ndarray,
     *,
     has_controller_traces: bool,
     max_active: int,
-    modeling_mode: Literal["single-fidelity-surrogate", "multi-fidelity-residual-fusion"] = "single-fidelity-surrogate",
-    base_metric_id: str | None = None,
-    extra_kinematic_columns: dict[str, np.ndarray] | None = None,
-) -> MetricSurrogateHead:
-    param_map = {p.parameter_id: p for p in registry.parameters}
-    derived_map = {d.feature_id: d for d in registry.derived_features}
+) -> tuple[list[str], tuple[ParameterSensitivityItem, ...], tuple[PairwiseParameterInteraction, ...]]:
+    """Compute exact variance-based physical sensitivity & bilinear coupling on active case geometries."""
     mask = causal_mask_for_metric(registry, metric_id, has_controller_traces=has_controller_traces)
+    param_map = {p.parameter_id: p for p in registry.parameters}
 
-    candidate_ids: list[str] = []
-    for p in registry.parameters:
-        if mask.get(p.parameter_id, False):
-            if modeling_mode == "multi-fidelity-residual-fusion" and p.group == "G1_GeometryLookahead":
-                # In multi-fidelity residual mode, G1 geometry effects are captured via base offline prediction + kinematic bridge
-                continue
-            candidate_ids.append(p.parameter_id)
-    for d in registry.derived_features:
-        if mask.get(d.feature_id, False):
-            candidate_ids.append(d.feature_id)
-
-    n_samples = len(y_values)
-    X_cand = np.zeros((n_samples, len(candidate_ids)), dtype=np.float64)
-    for i, p_dict in enumerate(exports_params):
-        for j, fid in enumerate(candidate_ids):
-            X_cand[i, j] = _extract_feature_value(fid, p_dict, param_map, derived_map)
-
-    # Stage 1: ElasticNet main-effect screening (linear + quadratic) + Spearman rank correlation
-    X_main = np.hstack([X_cand, X_cand * X_cand])
-    _, w_main = _elastic_net_fit(X_main, y_values, l1_ratio=0.65, alpha=0.025)
-    d_cand = len(candidate_ids)
-    w_lin = w_main[:d_cand]
-    w_quad = w_main[d_cand:]
-
+    grid_u = np.linspace(-0.85, 0.85, 7)
     raw_scores: dict[str, float] = {}
     slopes: dict[str, float] = {}
     curvatures: dict[str, float] = {}
     rank_corrs: dict[str, float] = {}
 
-    y_std = max(float(np.std(y_values)), 1e-9)
-    for j, fid in enumerate(candidate_ids):
-        col = X_cand[:, j]
-        col_std = float(np.std(col))
-        if col_std < 1e-8:
-            raw_scores[fid] = 0.0
-            slopes[fid] = 0.0
-            curvatures[fid] = 0.0
-            rank_corrs[fid] = 0.0
-            continue
-        rho = _spearman_corr(col, y_values)
-        lin_effect = abs(float(w_lin[j])) * col_std / y_std
-        quad_effect = abs(float(w_quad[j])) * float(np.std(col * col)) / y_std
-        score = 0.65 * (lin_effect + 0.75 * quad_effect) + 0.35 * abs(rho)
-        raw_scores[fid] = float(score)
-        slopes[fid] = float(w_lin[j])
-        curvatures[fid] = float(w_quad[j])
-        rank_corrs[fid] = float(rho)
+    y_obs_std = max(float(np.std(observed_y)), 1e-9)
 
-    total_score = sum(raw_scores.values()) or 1.0
-    ranked_cands = sorted(candidate_ids, key=lambda fid: raw_scores[fid], reverse=True)
-
-    active_param_ids: list[str] = []
-    cum_ratio = 0.0
-    for fid in ranked_cands:
-        ratio = raw_scores[fid] / total_score
-        if len(active_param_ids) < max_active and (len(active_param_ids) < 2 or (ratio >= 0.04 and cum_ratio < 0.92)):
-            active_param_ids.append(fid)
-            cum_ratio += ratio
-
-    if not active_param_ids:
-        active_param_ids = ranked_cands[: min(3, len(ranked_cands))]
-
-    # Build sensitivity list across all 32 registry parameters
-    sensitivities: list[ParameterSensitivityItem] = []
-    active_set = set(active_param_ids)
     for p in registry.parameters:
         pid = p.parameter_id
-        if not mask.get(pid, False) or pid not in raw_scores:
-            sensitivities.append(
+        if not mask.get(pid, False):
+            continue
+
+        sweep_vals: list[float] = []
+        for u_val in grid_u:
+            probe = dict(baseline_params)
+            probe[pid] = denormalize_parameter_value(p, float(u_val))
+            gb_across_cases = [
+                evaluate_greybox_backbone(prof, probe, consts).get(metric_id, 0.0)
+                for prof in profiles
+            ]
+            sweep_vals.append(float(np.mean(gb_across_cases)))
+
+        arr_s = np.asarray(sweep_vals, dtype=np.float64)
+        phys_span = float(np.max(arr_s) - np.min(arr_s))
+        quad_fit = np.polyfit(grid_u, arr_s, deg=2)
+        c2, c1, _ = float(quad_fit[0]), float(quad_fit[1]), float(quad_fit[2])
+
+        obs_col = np.asarray([normalize_parameter_value(p, float(pd.get(pid, p.default_value))) for pd in observed_params])
+        rho = _spearman_corr(obs_col, observed_y) if float(np.std(obs_col)) > 0.05 else 0.0
+
+        phys_rel = phys_span / max(y_obs_std * 2.5, phys_span, 1e-9)
+        if phys_span <= 1e-11:
+            score = 0.05 * max(0.0, abs(rho) - 0.55)
+        else:
+            score = 0.78 * phys_rel + 0.22 * abs(rho)
+
+        raw_scores[pid] = float(score)
+        slopes[pid] = c1
+        curvatures[pid] = c2
+        rank_corrs[pid] = rho
+
+    total_score = sum(raw_scores.values()) or 1.0
+    ranked_ids = sorted(raw_scores.keys(), key=lambda k: raw_scores[k], reverse=True)
+
+    active_ids: list[str] = []
+    cum = 0.0
+    for pid in ranked_ids:
+        ratio = raw_scores[pid] / total_score
+        if len(active_ids) < max_active and ((len(active_ids) < 2 and raw_scores[pid] > 1e-6) or (ratio >= 0.045 and cum < 0.94)):
+            active_ids.append(pid)
+            cum += ratio
+    if not active_ids and ranked_ids:
+        active_ids = ranked_ids[: min(2, len(ranked_ids))]
+
+    active_set = set(active_ids)
+    sens_items: list[ParameterSensitivityItem] = []
+    for p in registry.parameters:
+        pid = p.parameter_id
+        if not mask.get(pid, False):
+            sens_items.append(
                 ParameterSensitivityItem(
                     parameterId=pid,
                     displayName=p.display_name,
                     group=p.group,
-                    status="CausalMasked" if not mask.get(pid, False) else "Inert",
+                    status="CausalMasked",
                     contributionRatio=0.0,
                     direction="neutral",
                     linearSlope=0.0,
@@ -456,19 +483,22 @@ def _fit_single_head(
                 )
             )
             continue
-        c_ratio = round(float(raw_scores[pid] / total_score), 6)
-        slp = slopes[pid]
-        crv = curvatures[pid]
-        rc = rank_corrs[pid]
+        c_ratio = round(float(raw_scores.get(pid, 0.0) / total_score), 6)
+        slp = slopes.get(pid, 0.0)
+        crv = curvatures.get(pid, 0.0)
+        rc = rank_corrs.get(pid, 0.0)
         if pid not in active_set or c_ratio < 0.02:
             direction: Literal["positive", "negative", "nonlinear", "neutral"] = "neutral"
-        elif abs(crv) > 1.5 * abs(slp) and abs(rc) < 0.25:
+        elif abs(crv) > 1.35 * abs(slp) and abs(slp) < 1e-4:
             direction = "nonlinear"
-        elif slp > 0 or (abs(slp) <= 1e-9 and rc > 0):
+        elif slp > 1e-9 or (abs(slp) <= 1e-9 and rc > 0):
             direction = "positive"
-        else:
+        elif slp < -1e-9 or (abs(slp) <= 1e-9 and rc < 0):
             direction = "negative"
-        sensitivities.append(
+        else:
+            direction = "neutral"
+
+        sens_items.append(
             ParameterSensitivityItem(
                 parameterId=pid,
                 displayName=p.display_name,
@@ -481,145 +511,203 @@ def _fit_single_head(
                 rankCorrelation=round(rc, 6),
             )
         )
-    sensitivities.sort(key=lambda item: (item.status == "Active", item.contribution_ratio), reverse=True)
+    sens_items.sort(key=lambda item: (item.status == "Active", item.contribution_ratio), reverse=True)
 
-    # Stage 2: Active subspace design matrix (include kinematic bridge features if multi-fidelity)
-    active_feature_ids = list(active_param_ids)
-    kin_cols_list: list[np.ndarray] = []
-    if extra_kinematic_columns:
-        for k_name, k_arr in extra_kinematic_columns.items():
-            active_feature_ids.append(f"kin.{k_name}")
-            kin_cols_list.append(k_arr.reshape(-1, 1))
-
-    X_act_params = np.column_stack([X_cand[:, candidate_ids.index(fid)] for fid in active_param_ids])
-    X_act = np.hstack([X_act_params] + kin_cols_list) if kin_cols_list else X_act_params
-    k_dim = X_act.shape[1]
-
-    interaction_pairs = [(i, j) for i in range(len(active_param_ids)) for j in range(i + 1, len(active_param_ids))]
-    Phi2 = _poly2_basis(X_act, interaction_pairs)
-    reg_diag = np.full(Phi2.shape[1], 0.05, dtype=np.float64)
-    reg_diag[0] = 1e-8
-    beta = np.linalg.solve(Phi2.T @ Phi2 + np.diag(reg_diag), Phi2.T @ y_values)
-
-    trend_pred = Phi2 @ beta
-    trend_res = y_values - trend_pred
-
-    # ARD length scales inversely weighted by importance
-    length_scales = np.ones(k_dim, dtype=np.float64)
-    for idx_f, fid in enumerate(active_feature_ids):
-        imp = raw_scores.get(fid, 0.15) / total_score
-        length_scales[idx_f] = float(np.clip(0.85 / math.sqrt(max(imp, 0.04)), 0.45, 3.0))
-
-    signal_var = max(float(np.var(trend_res)), 1e-8 * (y_std ** 2))
-    noise_var = max(0.08 * signal_var, 1e-10)
-    K_mat = _matern52_kernel(X_act, X_act, length_scales, signal_var) + noise_var * np.eye(n_samples)
-    gp_alpha = np.linalg.solve(K_mat, trend_res)
-
-    # Leave-One-Out / Split Conformal residual calibration
-    loo_errors: list[float] = []
-    for i in range(n_samples):
-        mask_idx = [idx for idx in range(n_samples) if idx != i]
-        Phi_tr = Phi2[mask_idx]
-        y_tr = y_values[mask_idx]
-        try:
-            beta_i = np.linalg.solve(Phi_tr.T @ Phi_tr + np.diag(reg_diag), Phi_tr.T @ y_tr)
-            res_tr = y_tr - Phi_tr @ beta_i
-            K_tr = _matern52_kernel(X_act[mask_idx], X_act[mask_idx], length_scales, signal_var) + noise_var * np.eye(
-                len(mask_idx)
-            )
-            alpha_i = np.linalg.solve(K_tr, res_tr)
-            k_s = _matern52_kernel(X_act[i : i + 1], X_act[mask_idx], length_scales, signal_var)
-            pred_i = float((Phi2[i : i + 1] @ beta_i)[0] + (k_s @ alpha_i)[0])
-        except np.linalg.LinAlgError:
-            pred_i = float(trend_pred[i])
-        loo_errors.append(abs(float(y_values[i]) - pred_i))
-
-    sorted_abs = sorted(loo_errors)
-    rank_idx = min(len(sorted_abs) - 1, max(0, math.ceil((len(sorted_abs) + 1) * (1.0 - CONFORMAL_ALPHA)) - 1))
-    conformal_radius = float(sorted_abs[rank_idx]) if sorted_abs else 0.0
-
-    full_pred = trend_pred + (_matern52_kernel(X_act, X_act, length_scales, signal_var) @ gp_alpha)
-    train_rmse = float(math.sqrt(np.mean((y_values - full_pred) ** 2)))
-    cv_rmse = float(math.sqrt(np.mean(np.square(loo_errors)))) if loo_errors else train_rmse
-    ss_tot = float(np.sum((y_values - np.mean(y_values)) ** 2))
-    ss_res = float(np.sum((y_values - full_pred) ** 2))
-    r2 = float(max(0.0, 1.0 - ss_res / ss_tot)) if ss_tot > 1e-12 else 1.0
-
-    envelope = ParameterFeatureEnvelope(
-        featureIds=tuple(active_feature_ids),
-        minimums=tuple(round(float(np.min(X_act[:, j])), 6) for j in range(k_dim)),
-        maximums=tuple(round(float(np.max(X_act[:, j])), 6) for j in range(k_dim)),
-        marginFraction=OOD_MARGIN_FRACTION,
-    )
-
-    # Extract top pairwise interactions
     interactions: list[PairwiseParameterInteraction] = []
-    offset_inter = 1 + 2 * k_dim
-    inter_weights = [abs(float(beta[offset_inter + idx])) for idx in range(len(interaction_pairs))]
-    max_inter = max(inter_weights, default=0.0) or 1.0
-    for idx_pair, (i_a, i_b) in enumerate(interaction_pairs):
-        w_val = float(beta[offset_inter + idx_pair])
-        if abs(w_val) < 1e-9:
-            continue
-        pa, pb = active_feature_ids[i_a], active_feature_ids[i_b]
+    probe_ids = active_ids[:5]
+    raw_inters: list[tuple[str, str, float]] = []
+    delta_u = 0.75
+    for idx_a in range(len(probe_ids)):
+        for idx_b in range(idx_a + 1, len(probe_ids)):
+            pa, pb = probe_ids[idx_a], probe_ids[idx_b]
+            da, db = param_map[pa], param_map[pb]
+
+            def _eval_pair(ua: float, ub: float) -> float:
+                pr = dict(baseline_params)
+                pr[pa] = denormalize_parameter_value(da, ua)
+                pr[pb] = denormalize_parameter_value(db, ub)
+                return float(np.mean([evaluate_greybox_backbone(prof, pr, consts).get(metric_id, 0.0) for prof in profiles]))
+
+            f_pp = _eval_pair(+delta_u, +delta_u)
+            f_pm = _eval_pair(+delta_u, -delta_u)
+            f_mp = _eval_pair(-delta_u, +delta_u)
+            f_mm = _eval_pair(-delta_u, -delta_u)
+            cross = (f_pp - f_pm - f_mp + f_mm) / (4.0 * delta_u * delta_u)
+            if abs(cross) > 1e-8:
+                raw_inters.append((pa, pb, cross))
+
+    max_w = max((abs(x[2]) for x in raw_inters), default=1.0) or 1.0
+    for pa, pb, w_val in sorted(raw_inters, key=lambda x: abs(x[2]), reverse=True)[:5]:
+        note_dir = "物理瓶颈耦合（木桶联动/协同放大）" if w_val > 0 else "物理相互制约/反向补偿"
         interactions.append(
             PairwiseParameterInteraction(
                 parameterA=pa,
                 parameterB=pb,
                 interactionWeight=round(w_val, 8),
-                relativeStrength=round(abs(w_val) / max_inter, 4),
-                engineeringNote=_interaction_note(pa, pb, w_val, metric_id),
+                relativeStrength=round(abs(w_val) / max_w, 4),
+                engineeringNote=f"{pa} × {pb} 在 {metric_id} 上存在{note_dir}（交叉敏感度 {w_val:+.4g}）",
             )
         )
-    interactions.sort(key=lambda item: abs(item.interaction_weight), reverse=True)
-    interactions = interactions[:5]
 
-    provisional_head = MetricSurrogateHead(
+    return active_ids, tuple(sens_items), tuple(interactions)
+
+
+def _fit_greybox_residual_head(
+    metric_id: str,
+    unit: str,
+    y_obs: np.ndarray,
+    records_subset: Sequence[tuple[CaseGeometryProfile, dict[str, float]]],
+    all_profiles: Sequence[CaseGeometryProfile],
+    consts: GreyBoxPhysicalConstants,
+    registry: CncParameterRegistry,
+    baseline_params: Mapping[str, float],
+    *,
+    has_controller_traces: bool,
+    max_active: int,
+    modeling_mode: Literal["greybox-physics-gp", "multi-fidelity-residual-fusion"] = "greybox-physics-gp",
+    base_metric_id: str | None = None,
+) -> MetricSurrogateHead:
+    param_map = {p.parameter_id: p for p in registry.parameters}
+    derived_map = {d.feature_id: d for d in registry.derived_features}
+
+    obs_params = [r[1] for r in records_subset]
+    gb_preds_list = [evaluate_greybox_backbone(prof, p_dict, consts) for prof, p_dict in records_subset]
+    y_gb = np.asarray([g.get(metric_id, 0.0) for g in gb_preds_list], dtype=np.float64)
+    residuals = y_obs - y_gb
+    gb_rmse = float(math.sqrt(np.mean(residuals ** 2)))
+
+    active_param_ids, sensitivities, interactions = _compute_physics_sensitivities(
+        metric_id,
+        all_profiles,
+        consts,
+        registry,
+        baseline_params,
+        obs_params,
+        y_obs,
+        has_controller_traces=has_controller_traces,
+        max_active=max_active,
+    )
+
+    feat_ids = _residual_feature_ids_for_metric(metric_id, active_param_ids, has_controller_traces)
+    if not feat_ids:
+        feat_ids = [registry.parameters[0].parameter_id]
+
+    n_samples = len(y_obs)
+    k_dim = len(feat_ids)
+    Z_mat = np.zeros((n_samples, k_dim), dtype=np.float64)
+    for i, (p_dict, gb_p) in enumerate(zip(obs_params, gb_preds_list)):
+        for j, fid in enumerate(feat_ids):
+            Z_mat[i, j] = _extract_feature_value(fid, p_dict, param_map, derived_map, gb_p)
+
+    Design1 = np.hstack([np.ones((n_samples, 1)), Z_mat])
+    reg_d = np.full(k_dim + 1, 0.25, dtype=np.float64)
+    reg_d[0] = 1e-6
+    lin_beta = np.linalg.solve(Design1.T @ Design1 + np.diag(reg_d), Design1.T @ residuals)
+    lin_trend = Design1 @ lin_beta
+    gp_target = residuals - lin_trend
+
+    ls_opt, sig_var, noi_var, gp_alpha = fit_mle_ard_matern52_gp(Z_mat, gp_target)
+
+    loo_abs_errors: list[float] = []
+    for i in range(n_samples):
+        idx_tr = [idx for idx in range(n_samples) if idx != i]
+        D_tr = Design1[idx_tr]
+        r_tr = residuals[idx_tr]
+        try:
+            b_i = np.linalg.solve(D_tr.T @ D_tr + np.diag(reg_d), D_tr.T @ r_tr)
+            rem_tr = r_tr - D_tr @ b_i
+            K_tr = matern52_kernel(Z_mat[idx_tr], Z_mat[idx_tr], ls_opt, sig_var) + noi_var * np.eye(len(idx_tr))
+            a_i = np.linalg.solve(K_tr, rem_tr)
+            k_s = matern52_kernel(Z_mat[i : i + 1], Z_mat[idx_tr], ls_opt, sig_var)
+            res_pred_i = float((Design1[i : i + 1] @ b_i)[0] + (k_s @ a_i)[0])
+        except np.linalg.LinAlgError:
+            res_pred_i = float(lin_trend[i])
+        loo_abs_errors.append(abs(float(y_obs[i]) - (float(y_gb[i]) + res_pred_i)))
+
+    sorted_err = sorted(loo_abs_errors)
+    eff_alpha = 0.22 if len(sorted_err) <= 8 else CONFORMAL_ALPHA
+    q_idx = min(len(sorted_err) - 1, max(0, math.floor(len(sorted_err) * (1.0 - eff_alpha))))
+    conformal_rad = float(sorted_err[q_idx]) if sorted_err else 0.0
+
+    full_res_pred = lin_trend + (matern52_kernel(Z_mat, Z_mat, ls_opt, sig_var) @ gp_alpha)
+    full_pred = y_gb + full_res_pred
+    train_rmse = float(math.sqrt(np.mean((y_obs - full_pred) ** 2)))
+    cv_rmse = float(math.sqrt(np.mean(np.square(loo_abs_errors)))) if loo_abs_errors else train_rmse
+    ss_tot = float(np.sum((y_obs - np.mean(y_obs)) ** 2))
+    ss_res = float(np.sum((y_obs - full_pred) ** 2))
+    r2 = float(max(0.0, 1.0 - ss_res / ss_tot)) if ss_tot > 1e-12 else 1.0
+
+    env_mins: list[float] = []
+    env_maxs: list[float] = []
+    for j, fid in enumerate(feat_ids):
+        c_min, c_max = float(np.min(Z_mat[:, j])), float(np.max(Z_mat[:, j]))
+        if fid.startswith("g1.") or fid.startswith("g2.") or fid.startswith("phys."):
+            c_min, c_max = min(c_min, -0.95), max(c_max, 0.95)
+        elif (c_max - c_min) < 0.40:
+            mid = 0.5 * (c_min + c_max)
+            c_min, c_max = mid - 0.50, mid + 0.50
+        env_mins.append(round(c_min, 6))
+        env_maxs.append(round(c_max, 6))
+
+    envelope = ParameterFeatureEnvelope(
+        featureIds=tuple(feat_ids),
+        minimums=tuple(env_mins),
+        maximums=tuple(env_maxs),
+        marginFraction=OOD_MARGIN_FRACTION,
+    )
+
+    provisional = MetricSurrogateHead(
         metricId=metric_id,
         unit=unit,
         modelingMode=modeling_mode,
         baseMetricId=base_metric_id,
-        activeFeatureIds=tuple(active_feature_ids),
-        interactionPairs=tuple(interaction_pairs),
-        polyWeights=tuple(round(float(v), 12) for v in beta),
-        gpLengthScales=tuple(round(float(v), 8) for v in length_scales),
-        gpTrainX=tuple(tuple(round(float(v), 8) for v in row) for row in X_act),
+        usesGreyboxBackbone=True,
+        activeFeatureIds=tuple(feat_ids),
+        interactionPairs=(),
+        polyWeights=tuple(round(float(v), 12) for v in lin_beta),
+        gpLengthScales=tuple(round(float(v), 8) for v in ls_opt),
+        gpTrainX=tuple(tuple(round(float(v), 8) for v in row) for row in Z_mat),
         gpAlpha=tuple(round(float(v), 12) for v in gp_alpha),
-        gpSignalVariance=round(signal_var, 12),
-        gpNoiseVariance=round(noise_var, 12),
-        conformalRadius=round(conformal_radius, 8),
+        gpSignalVariance=round(sig_var, 12),
+        gpNoiseVariance=round(noi_var, 12),
+        conformalRadius=round(conformal_rad, 8),
+        greyboxOnlyRmse=round(gb_rmse, 8),
         trainRmse=round(train_rmse, 8),
         cvRmse=round(cv_rmse, 8),
         r2Score=round(r2, 6),
         envelope=envelope,
-        sensitivities=tuple(sensitivities),
-        interactions=tuple(interactions),
+        sensitivities=sensitivities,
+        interactions=interactions,
         marginalKnees=(),
     )
 
-    # Compute 1D Marginal Response & Knee-Point for each active parameter in param_map
-    baseline_vec = np.mean(X_act, axis=0)
+    ref_prof = all_profiles[0]
     knees: list[ParameterMarginalKnee] = []
-    grid_norm = np.linspace(-1.0, 1.0, 11)
-    for idx_p, fid in enumerate(active_param_ids):
-        if fid not in param_map:
+    grid_norm = np.linspace(-1.0, 1.0, 13)
+    for pid in active_param_ids:
+        if pid not in param_map:
             continue
-        p_def = param_map[fid]
+        p_def = param_map[pid]
         pts: list[MarginalCurvePoint] = []
         preds: list[float] = []
         raw_vals: list[float] = []
         for g_val in grid_norm:
-            probe = baseline_vec.copy()
-            probe[idx_p] = float(g_val)
-            pm, pr, _ = predict_head(provisional_head, probe)
             r_val = denormalize_parameter_value(p_def, float(g_val))
+            probe_p = dict(baseline_params)
+            probe_p[pid] = r_val
+            gb_p = evaluate_greybox_backbone(ref_prof, probe_p, consts)
+            z_probe = [_extract_feature_value(f_id, probe_p, param_map, derived_map, gb_p) for f_id in feat_ids]
+            rm, rr, _ = _predict_residual_gp(provisional, z_probe)
+            pm = float(gb_p.get(metric_id, 0.0)) + rm
+            if metric_id != "signedRadialOffsetMeanMm":
+                pm = max(0.0, pm)
             raw_vals.append(r_val)
             preds.append(pm)
             pts.append(
                 MarginalCurvePoint(
                     parameterValue=r_val,
                     predictedMean=round(pm, 6),
-                    uncertaintyRadius=round(pr, 6),
+                    uncertaintyRadius=round(rr, 6),
                 )
             )
         arr_p = np.asarray(preds, dtype=np.float64)
@@ -631,7 +719,7 @@ def _fit_single_head(
         knee_val = raw_vals[knee_idx]
         knees.append(
             ParameterMarginalKnee(
-                parameterId=fid,
+                parameterId=pid,
                 displayName=p_def.display_name,
                 unit=p_def.unit,
                 kneeValue=knee_val,
@@ -639,24 +727,79 @@ def _fit_single_head(
                 maxPrediction=round(float(np.max(arr_p)), 6),
                 curve=tuple(pts),
                 tradeoffSummary=(
-                    f"{p_def.display_name} ({fid}) 在 {knee_val:g} {p_def.unit} 附近出现边际收益拐点 "
+                    f"{p_def.display_name} ({pid}) 在 {knee_val:g} {p_def.unit} 附近触及物理瓶颈饱和拐点 "
                     f"（{metric_id} 响应范围 {np.min(arr_p):.4g} ~ {np.max(arr_p):.4g} {unit}）"
                 ),
             )
         )
 
-    return provisional_head.model_copy(update={"marginal_knees": tuple(knees)})
+    return provisional.model_copy(update={"marginal_knees": tuple(knees)})
+
+
+def _compute_loco_cross_toolpath_validation(
+    case_list: Sequence[CncBenchmarkCase],
+    full_records: Sequence[tuple[CaseGeometryProfile, CncBenchmarkCase, CncAlgorithmExport, CncQualityReport, dict[str, float]]],
+) -> CrossToolpathValidationSummary | None:
+    """Evaluate Leave-One-Case-Out (LOCO) zero-shot physical transfer error across distinct toolpath geometries."""
+    if len(case_list) < 2:
+        return None
+
+    items: list[CrossToolpathValidationItem] = []
+    for held_case in case_list:
+        train_recs = [r for r in full_records if r[1].case_id != held_case.case_id]
+        val_recs = [r for r in full_records if r[1].case_id == held_case.case_id]
+        if len(train_recs) < 3 or len(val_recs) < 1:
+            continue
+        loco_consts, _ = calibrate_greybox_constants(train_recs)
+        dur_sq: list[float] = []
+        dur_ape: list[float] = []
+        cmd_sq: list[float] = []
+        act_sq: list[float] = []
+        for prof, _, _, rep, p_dict in val_recs:
+            pred = evaluate_greybox_backbone(prof, p_dict, loco_consts)
+            obs_d = float(rep.kinematic_summary["durationSeconds"])
+            obs_cmd = float(rep.kinematic_summary["sampledPathDeviationMaxMm"])
+            dur_sq.append((pred["durationSeconds"] - obs_d) ** 2)
+            dur_ape.append(abs(pred["durationSeconds"] - obs_d) / max(obs_d, 1e-6) * 100.0)
+            cmd_sq.append((pred["sampledPathDeviationMaxMm"] - obs_cmd) ** 2)
+            if rep.servo_metrics is not None and rep.servo_metrics.get("actualPathDeviationMaxMm") is not None:
+                obs_act = float(rep.servo_metrics["actualPathDeviationMaxMm"].value or 0.0)
+                act_sq.append((pred["actualPathDeviationMaxMm"] - obs_act) ** 2)
+
+        items.append(
+            CrossToolpathValidationItem(
+                heldOutCaseId=held_case.case_id,
+                sampleCount=len(val_recs),
+                durationZeroShotRmseS=round(math.sqrt(float(np.mean(dur_sq))), 6),
+                durationZeroShotMapePct=round(float(np.mean(dur_ape)), 3),
+                commandDeviationZeroShotRmseMm=round(math.sqrt(float(np.mean(cmd_sq))), 6),
+                actualDeviationZeroShotRmseMm=(
+                    round(math.sqrt(float(np.mean(act_sq))), 6) if act_sq else None
+                ),
+            )
+        )
+
+    if not items:
+        return None
+    act_vals = [it.actual_deviation_zero_shot_rmse_mm for it in items if it.actual_deviation_zero_shot_rmse_mm is not None]
+    return CrossToolpathValidationSummary(
+        evaluatedCaseCount=len(items),
+        meanDurationMapePct=round(float(np.mean([it.duration_zero_shot_mape_pct for it in items])), 3),
+        meanCommandDeviationRmseMm=round(float(np.mean([it.command_deviation_zero_shot_rmse_mm for it in items])), 6),
+        meanActualDeviationRmseMm=round(float(np.mean(act_vals)), 6) if act_vals else None,
+        items=tuple(items),
+    )
 
 
 def learn_parameter_surrogate(
-    request_or_case: ParameterLearningRequest | CncBenchmarkCase | Mapping[str, Any],
+    request_or_case: ParameterLearningRequest | CncBenchmarkCase | Sequence[CncBenchmarkCase] | Mapping[str, Any],
     exports: Sequence[CncAlgorithmExport | Mapping[str, Any]] | None = None,
     *,
     registry: CncParameterRegistry | None = None,
     target_metrics: Sequence[str] = DEFAULT_TARGET_METRICS,
     max_active_parameters_per_metric: int = 6,
 ) -> LearnedParameterSurrogate:
-    """Train the two-stage parameter surrogate model and generate attribution reports."""
+    """Calibrate the 3-layer Grey-Box + MLE ARD-GP surrogate on single-case or multi-case exports."""
     if exports is None:
         req = (
             request_or_case
@@ -664,151 +807,159 @@ def learn_parameter_surrogate(
             else ParameterLearningRequest.model_validate(request_or_case)
         )
     else:
-        resolved_case = (
-            request_or_case
-            if isinstance(request_or_case, CncBenchmarkCase)
-            else CncBenchmarkCase.model_validate(request_or_case)
-        )
         resolved_exports = tuple(
             item if isinstance(item, CncAlgorithmExport) else CncAlgorithmExport.model_validate(item)
             for item in exports
         )
-        req = ParameterLearningRequest(
-            case=resolved_case,
-            registry=registry,
-            exports=resolved_exports,
-            targetMetrics=tuple(target_metrics),
-            maxActiveParametersPerMetric=max_active_parameters_per_metric,
-        )
+        if isinstance(request_or_case, (list, tuple)):
+            resolved_cases = tuple(
+                c if isinstance(c, CncBenchmarkCase) else CncBenchmarkCase.model_validate(c)
+                for c in request_or_case
+            )
+            req = ParameterLearningRequest(
+                case=resolved_cases[0],
+                cases=resolved_cases,
+                registry=registry,
+                exports=resolved_exports,
+                targetMetrics=tuple(target_metrics),
+                maxActiveParametersPerMetric=max_active_parameters_per_metric,
+            )
+        else:
+            resolved_case = (
+                request_or_case
+                if isinstance(request_or_case, CncBenchmarkCase)
+                else CncBenchmarkCase.model_validate(request_or_case)
+            )
+            req = ParameterLearningRequest(
+                case=resolved_case,
+                cases=(resolved_case,),
+                registry=registry,
+                exports=resolved_exports,
+                targetMetrics=tuple(target_metrics),
+                maxActiveParametersPerMetric=max_active_parameters_per_metric,
+            )
+
+    case_list: list[CncBenchmarkCase] = []
+    if req.cases:
+        case_list.extend(req.cases)
+    if req.case is not None and all(c.case_id != req.case.case_id for c in case_list):
+        case_list.insert(0, req.case)
+    primary_case = req.case or case_list[0]
+
+    case_by_hash = {benchmark_case_hash(c): c for c in case_list}
+    profile_by_hash = {h: extract_case_geometry_profile(c) for h, c in case_by_hash.items()}
+    unique_profiles = list(profile_by_hash.values())
 
     reg = req.registry or default_cnc_parameter_registry()
     default_params = default_parameter_values(reg)
 
-    reports: list[CncQualityReport] = []
+    full_records: list[tuple[CaseGeometryProfile, CncBenchmarkCase, CncAlgorithmExport, CncQualityReport, dict[str, float]]] = []
     for exp in req.exports:
         if not exp.parameters:
             raise ValueError("All exports supplied to learn_parameter_surrogate must include parameters")
-        reports.append(evaluate_cnc_export(req.case, exp))
-
-    offline_reports = [r for r in reports if r.servo_metrics is None]
-    ctrl_reports = [r for r in reports if r.servo_metrics is not None]
-    total_slices = sum(len(r.geometry_slices) for r in reports)
-    all_params = [{**default_params, **(r.parameters or {})} for r in reports]
-    ctrl_params = [{**default_params, **(r.parameters or {})} for r in ctrl_reports]
-
-    # Fit kinematic bridge heads on all reports for multi-fidelity transfer
-    kinematic_bridge_heads: dict[str, MetricSurrogateHead] = {}
-    for k_feat in KINEMATIC_BRIDGE_FEATURES:
-        y_kin = np.asarray([r.kinematic_summary.get(k_feat, 0.0) for r in reports], dtype=np.float64)
-        if float(np.std(y_kin)) > 1e-10:
-            kinematic_bridge_heads[k_feat] = _fit_single_head(
-                k_feat,
-                "unit",
-                y_kin,
-                all_params,
-                reg,
-                has_controller_traces=False,
-                max_active=4,
+        matched_case = case_by_hash.get(exp.case_content_hash)
+        if matched_case is None:
+            raise ValueError(
+                f"export caseContentHash {exp.case_content_hash[:12]}... does not match any supplied CncBenchmarkCase"
             )
+        rep = evaluate_cnc_export(matched_case, exp)
+        merged_p = {**default_params, **{k: float(v) for k, v in exp.parameters.items()}}
+        full_records.append((profile_by_hash[exp.case_content_hash], matched_case, exp, rep, merged_p))
 
+    offline_records = [r for r in full_records if r[3].servo_metrics is None]
+    ctrl_records = [r for r in full_records if r[3].servo_metrics is not None]
+    total_slices = sum(len(r[3].geometry_slices) for r in full_records)
+
+    # Layer 2: Calibrate Grey-Box Physical Constants across all supplied cases & traces
+    gb_consts, phys_notes = calibrate_greybox_constants(full_records)
+    loco_summary = _compute_loco_cross_toolpath_validation(case_list, full_records)
+
+    # Layer 3: Fit compact residual GP heads per metric
     metric_heads: dict[str, MetricSurrogateHead] = {}
     for m_id in req.target_metrics:
         if m_id in PLANNING_METRIC_IDS:
             vals: list[float] = []
-            valid_params: list[dict[str, float]] = []
+            sub_recs: list[tuple[CaseGeometryProfile, dict[str, float]]] = []
             unit = "mm"
-            for r, p_dict in zip(reports, all_params):
-                m_obj = r.analysis.metrics.get(m_id)
+            for prof, _, _, rep, p_dict in full_records:
+                if m_id == "sampledPathDeviationMaxMm" and not (prof.has_corners or prof.has_arcs or prof.has_micro_segments):
+                    continue
+                if m_id == "cornerSpeedMinMmS" and not prof.has_corners:
+                    continue
+                m_obj = rep.analysis.metrics.get(m_id)
                 if m_obj is not None and m_obj.value is not None:
                     vals.append(float(m_obj.value))
-                    valid_params.append(p_dict)
+                    sub_recs.append((prof, p_dict))
                     unit = m_obj.unit
             if len(vals) >= 4:
-                metric_heads[m_id] = _fit_single_head(
+                metric_heads[m_id] = _fit_greybox_residual_head(
                     m_id,
                     unit,
                     np.asarray(vals, dtype=np.float64),
-                    valid_params,
+                    sub_recs,
+                    unique_profiles,
+                    gb_consts,
                     reg,
+                    default_params,
                     has_controller_traces=False,
                     max_active=req.max_active_parameters_per_metric,
                 )
-        elif m_id in SERVO_METRIC_IDS and len(ctrl_reports) >= 4:
-            vals_ctrl: list[float] = []
+        elif m_id in SERVO_METRIC_IDS and len(ctrl_records) >= 4:
+            vals_c: list[float] = []
+            sub_c: list[tuple[CaseGeometryProfile, dict[str, float]]] = []
             unit = "mm"
-            for r in ctrl_reports:
-                assert r.servo_metrics is not None
-                m_obj = r.servo_metrics.get(m_id)
+            for prof, _, _, rep, p_dict in ctrl_records:
+                if m_id == "quadrantGlitchMaxMm" and not (prof.has_arcs or prof.has_xy_reversals):
+                    continue
+                if m_id in ("actualPathDeviationMaxMm", "normalServoErrorMaxMm") and not (prof.has_corners or prof.has_arcs or prof.has_micro_segments):
+                    continue
+                assert rep.servo_metrics is not None
+                m_obj = rep.servo_metrics.get(m_id)
                 if m_obj is not None and m_obj.value is not None:
-                    vals_ctrl.append(float(m_obj.value))
+                    vals_c.append(float(m_obj.value))
+                    sub_c.append((prof, p_dict))
                     unit = m_obj.unit
-            if len(vals_ctrl) < 4:
-                continue
-            y_ctrl = np.asarray(vals_ctrl, dtype=np.float64)
-            # Multi-fidelity residual fusion when offline runs also exist and m_id == actualPathDeviationMaxMm
-            if (
-                m_id == "actualPathDeviationMaxMm"
-                and "sampledPathDeviationMaxMm" in metric_heads
-                and len(offline_reports) >= 4
-            ):
-                base_head = metric_heads["sampledPathDeviationMaxMm"]
-                param_map = {p.parameter_id: p for p in reg.parameters}
-                derived_map = {d.feature_id: d for d in reg.derived_features}
-                base_preds = np.asarray(
-                    [
-                        predict_head(
-                            base_head,
-                            [
-                                _extract_feature_value(fid, p_dict, param_map, derived_map)
-                                for fid in base_head.active_feature_ids
-                            ],
-                        )[0]
-                        for p_dict in ctrl_params
-                    ],
-                    dtype=np.float64,
-                )
-                residual_y = y_ctrl - base_preds
-                metric_heads[m_id] = _fit_single_head(
+            if len(vals_c) >= 4:
+                is_fusion = m_id == "actualPathDeviationMaxMm" and len(offline_records) >= 2
+                metric_heads[m_id] = _fit_greybox_residual_head(
                     m_id,
                     unit,
-                    residual_y,
-                    ctrl_params,
+                    np.asarray(vals_c, dtype=np.float64),
+                    sub_c,
+                    unique_profiles,
+                    gb_consts,
                     reg,
+                    default_params,
                     has_controller_traces=True,
                     max_active=req.max_active_parameters_per_metric,
-                    modeling_mode="multi-fidelity-residual-fusion",
-                    base_metric_id="sampledPathDeviationMaxMm",
-                    extra_kinematic_columns=None,
-                )
-            else:
-                metric_heads[m_id] = _fit_single_head(
-                    m_id,
-                    unit,
-                    y_ctrl,
-                    ctrl_params,
-                    reg,
-                    has_controller_traces=True,
-                    max_active=req.max_active_parameters_per_metric,
+                    modeling_mode="multi-fidelity-residual-fusion" if is_fusion else "greybox-physics-gp",
+                    base_metric_id="sampledPathDeviationMaxMm" if is_fusion else None,
                 )
 
     param_id_set = {p.parameter_id for p in reg.parameters}
     global_active: list[str] = []
     for head in metric_heads.values():
-        for fid in head.active_feature_ids:
-            if fid in param_id_set and fid not in global_active:
-                global_active.append(fid)
+        for s_item in head.sensitivities:
+            if s_item.status == "Active" and s_item.parameter_id in param_id_set and s_item.parameter_id not in global_active:
+                global_active.append(s_item.parameter_id)
 
     surrogate = LearnedParameterSurrogate(
-        caseId=req.case.case_id,
-        caseContentHash=benchmark_case_hash(req.case),
+        engineMode="greybox-physics-gp",
+        caseId=primary_case.case_id,
+        caseContentHash=benchmark_case_hash(primary_case),
+        calibratedCaseIds=tuple(c.case_id for c in case_list),
+        defaultCase=primary_case,
+        greyboxConstants=gb_consts,
+        physicalDiagnostics=phys_notes,
+        crossToolpathValidation=loco_summary,
         registry=reg,
-        offlineRunCount=len(offline_reports),
-        controllerRunCount=len(ctrl_reports),
+        offlineRunCount=len(offline_records),
+        controllerRunCount=len(ctrl_records),
         totalSliceSampleCount=total_slices,
         globalActiveParameterIds=tuple(global_active),
         baselineParameters=default_params,
         metricHeads=metric_heads,
-        kinematicBridgeHeads=kinematic_bridge_heads,
+        kinematicBridgeHeads={},
         modelContentHash="",
     )
     content = surrogate.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -823,17 +974,28 @@ def _pad(text: str, width: int, *, right: bool = False) -> str:
 
 
 def render_parameter_impact_table(surrogate: LearnedParameterSurrogate) -> str:
-    """Render a concise engineering attribution report for 30+ CNC parameters."""
+    """Render a concise grey-box physical calibration, LOCO audit & 30+ parameter attribution report."""
+    cases_str = ", ".join(surrogate.calibrated_case_ids) if surrogate.calibrated_case_ids else surrogate.case_id
     lines = [
-        f"案例 {surrogate.case_id} · 30+ 参数自动学习与敏感度归因报告",
+        f"案例 {cases_str} · 30+ 参数自动学习与敏感度归因报告（引擎：{surrogate.engine_mode}）",
         f"训练样本：离线规划 {surrogate.offline_run_count} 组 + 控制器实采 {surrogate.controller_run_count} 组（共提取 {surrogate.total_slice_sample_count} 个几何基元切片）",
         f"全局识别出的核心活跃参数（共 {len(surrogate.global_active_parameter_ids)}/{len(surrogate.registry.parameters)} 个）：{', '.join(surrogate.global_active_parameter_ids)}",
-        "",
     ]
+    for diag in surrogate.physical_diagnostics:
+        lines.append(f"  [物理辨识] {diag}")
+    if surrogate.cross_toolpath_validation is not None:
+        loco = surrogate.cross_toolpath_validation
+        act_str = f"，实测轮廓 RMSE={loco.mean_actual_deviation_rmse_mm:.4g}mm" if loco.mean_actual_deviation_rmse_mm is not None else ""
+        lines.append(
+            f"  [跨刀路留一验证 LOCO] 覆盖 {loco.evaluated_case_count} 条独立刀路：零样本时长 MAPE={loco.mean_duration_mape_pct:.2f}%，"
+            f"指令轮廓 RMSE={loco.mean_command_deviation_rmse_mm:.4g}mm{act_str}"
+        )
+    lines.append("")
+
     for m_id, head in surrogate.metric_heads.items():
         lines.append(
             f"【指标 {m_id} ({head.unit})】模式={head.modeling_mode}, R²={head.r2_score:.3f}, "
-            f"CV-RMSE={head.cv_rmse:.4g}, Conformal区间=±{head.conformal_radius:.4g}"
+            f"纯灰盒RMSE={head.greybox_only_rmse:.4g}, 融合CV-RMSE={head.cv_rmse:.4g}, Conformal区间=±{head.conformal_radius:.4g}"
         )
         lines.append(
             "  "
@@ -854,10 +1016,8 @@ def render_parameter_impact_table(surrogate: LearnedParameterSurrogate) -> str:
                 + _pad(s.direction, 10, right=True)
             )
         if head.interactions:
-            top_i = head.interactions[0]
-            lines.append(f"  * 主导耦合项：{top_i.engineering_note}")
+            lines.append(f"  * 主导耦合项：{head.interactions[0].engineering_note}")
         if head.marginal_knees:
-            top_k = head.marginal_knees[0]
-            lines.append(f"  * 边际收益拐点：{top_k.tradeoff_summary}")
+            lines.append(f"  * 边际收益拐点：{head.marginal_knees[0].tradeoff_summary}")
         lines.append("")
     return "\n".join(lines)

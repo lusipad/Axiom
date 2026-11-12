@@ -26,7 +26,19 @@ from .parameter_space import (
     default_parameter_values,
     generate_parameter_doe,
 )
+from .greybox_model import (
+    CaseGeometryProfile,
+    CornerSpec,
+    GreyBoxPhysicalConstants,
+    PrimitiveSegmentSpec,
+    calibrate_greybox_constants,
+    evaluate_greybox_backbone,
+    extract_case_geometry_profile,
+    simulate_realistic_cnc_controller,
+)
 from .parameter_learner import (
+    CrossToolpathValidationItem,
+    CrossToolpathValidationSummary,
     LearnedParameterSurrogate,
     MetricSurrogateHead,
     PairwiseParameterInteraction,
@@ -317,6 +329,21 @@ from .adapters import (
     register_artifact_adapter,
 )
 from .subjects import list_subjects, register_subject
+from .cnc_governance import (
+    CNC_EXPORT_ARTIFACT_TYPE,
+    CNC_EXPORT_TO_ORDERED_POINT_ADAPTER,
+    CNC_EXPORT_TO_ORDERED_POINT_ADAPTER_ID,
+    CNC_GREYBOX_DOMAIN_PACK,
+    CNC_GREYBOX_DOMAIN_PACK_ID,
+    CNC_GREYBOX_EVALUATOR_ID,
+    CncGovernanceAssessmentReport,
+    CncGreyboxDomainArtifact,
+    CncGreyboxEvaluationCase,
+    CncGreyboxEvaluationRequest,
+    adapt_r3_telemetry_to_cnc_export,
+    assess_cnc_greybox_governance,
+    build_cnc_greybox_run_spec,
+)
 
 __all__ = [
     "CncAlgorithmExport",
@@ -615,4 +642,27 @@ __all__ = [
     "recommend_parameters",
     "render_recommendation_table",
     "simulate_parametric_cnc_export",
+    "CaseGeometryProfile",
+    "CornerSpec",
+    "GreyBoxPhysicalConstants",
+    "PrimitiveSegmentSpec",
+    "calibrate_greybox_constants",
+    "evaluate_greybox_backbone",
+    "extract_case_geometry_profile",
+    "simulate_realistic_cnc_controller",
+    "CrossToolpathValidationItem",
+    "CrossToolpathValidationSummary",
+    "CNC_EXPORT_ARTIFACT_TYPE",
+    "CNC_EXPORT_TO_ORDERED_POINT_ADAPTER",
+    "CNC_EXPORT_TO_ORDERED_POINT_ADAPTER_ID",
+    "CNC_GREYBOX_DOMAIN_PACK",
+    "CNC_GREYBOX_DOMAIN_PACK_ID",
+    "CNC_GREYBOX_EVALUATOR_ID",
+    "CncGovernanceAssessmentReport",
+    "CncGreyboxDomainArtifact",
+    "CncGreyboxEvaluationCase",
+    "CncGreyboxEvaluationRequest",
+    "adapt_r3_telemetry_to_cnc_export",
+    "assess_cnc_greybox_governance",
+    "build_cnc_greybox_run_spec",
 ]

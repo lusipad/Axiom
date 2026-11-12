@@ -1,16 +1,15 @@
-"""Constrained Multi-Objective CNC Parameter Recommender & Active DoE Engine.
+"""Constrained Multi-Objective CNC Parameter Recommender, Cross-Case Transfer & Active DoE Engine.
 
-Operates on a LearnedParameterSurrogate to provide:
-1. Top-K Sparse Delta Recommendation (only modifying <= K_max most impactful parameters from baseline,
-   keeping the remaining 25+ parameters untouched for safe field verification).
-2. Conservative Safety & Epistemic Gate (FeatureEnvelope OOD rejection + Split Conformal upper bound
-   enforcement: mean + kappa * radius <= limit).
-3. Weight-free Pareto Front extraction across (durationSeconds, contourErrorMm, discreteJerkRms) and
-   automatic selection of 3 engineering presets:
-   - EfficiencyOptimal (高速粗加工/节拍优先档)
-   - PrecisionOptimal (高精精加工/轮廓优先档)
-   - BalancedKneePoint (柔顺低冲击/均衡拐点档)
-4. Active Learning Next-Experiment Suggestions (Constrained Expected Improvement + Uncertainty exploration).
+Operates on a calibrated `LearnedParameterSurrogate` (Grey-Box Physics + Residual GP) to provide:
+1. Zero-Shot Cross-Toolpath Recommendation (`target_case`): transfer a machine/planner profile
+   calibrated on standard V1 cases directly onto any unseen part NC toolpath without re-sampling!
+2. Top-K Sparse Delta Recommendation (modifying <= K_max highest-leverage parameters on the
+   target geometry while locking the remaining 25+ parameters at baseline).
+3. Conservative Safety & Epistemic Gate (FeatureEnvelope OOD check + adaptive Split Conformal
+   upper bound: mean + kappa * radius <= limit).
+4. Weight-free Pareto Front extraction across (durationSeconds, contourErrorMm, discreteJerkRms)
+   with 3 genuinely distinct engineering presets (EfficiencyOptimal, PrecisionOptimal,
+   BalancedKneePoint) plus physical error-source attribution notes.
 """
 
 from __future__ import annotations
@@ -19,20 +18,23 @@ import hashlib
 import json
 import math
 import unicodedata
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal, Mapping
 
 import numpy as np
 from pydantic import Field
 
 from .benchmark import (
-    BenchmarkSample,
     CncAlgorithmExport,
     CncBenchmarkCase,
     CncQualityReport,
-    benchmark_case_hash,
     evaluate_cnc_export,
 )
-from .benchmark_standard import StandardCaseSettings, standard_case
+from .benchmark_standard import StandardCaseSettings, standard_case, standard_cases
+from .greybox_model import (
+    evaluate_greybox_backbone,
+    extract_case_geometry_profile,
+    simulate_realistic_cnc_controller,
+)
 from .models import AxiomModel
 from .parameter_learner import (
     LearnedParameterSurrogate,
@@ -44,10 +46,8 @@ from .parameter_space import (
     ParameterGroup,
     SourceKind,
     default_cnc_parameter_registry,
-    default_parameter_values,
     denormalize_parameter_value,
     generate_parameter_doe,
-    normalize_parameter_value,
 )
 
 PresetRole = Literal["EfficiencyOptimal", "PrecisionOptimal", "BalancedKneePoint"]
@@ -115,6 +115,7 @@ class ActiveExperimentSuggestion(AxiomModel):
 
 
 class ParameterRecommendationRequest(AxiomModel):
+    target_case: CncBenchmarkCase | None = Field(default=None, alias="targetCase")
     baseline_parameters: dict[str, float] | None = Field(default=None, alias="baselineParameters")
     locked_parameter_ids: tuple[str, ...] = Field(default=(), alias="lockedParameterIds")
     max_changed_parameters: int = Field(default=4, ge=1, le=12, alias="maxChangedParameters")
@@ -124,7 +125,7 @@ class ParameterRecommendationRequest(AxiomModel):
     maximum_jerk_rms_mm_s3: float | None = Field(default=None, ge=0.0, alias="maximumJerkRmsMmS3")
     maximum_duration_seconds: float | None = Field(default=None, ge=0.0, alias="maximumDurationSeconds")
     safety_kappa: float = Field(default=1.0, ge=0.0, le=3.0, alias="safetyKappa")
-    candidate_pool_size: int = Field(default=240, ge=40, le=2000, alias="candidatePoolSize")
+    candidate_pool_size: int = Field(default=280, ge=40, le=2000, alias="candidatePoolSize")
     seed: int = 42
 
 
@@ -161,11 +162,48 @@ def _dominates(obj_a: tuple[float, float, float], obj_b: tuple[float, float, flo
     return all(a <= b for a, b in zip(obj_a, obj_b)) and any(a < b for a, b in zip(obj_a, obj_b))
 
 
+def _target_geometry_leverage(
+    model: LearnedParameterSurrogate,
+    eval_case: CncBenchmarkCase | None,
+    base_params: Mapping[str, float],
+    objective_metrics: tuple[str, ...],
+) -> dict[str, float]:
+    """Rank tunable parameters on the *actual target toolpath geometry* using the Grey-Box physics kernel."""
+    reg = model.registry
+    scores: dict[str, float] = {p.parameter_id: 0.0 for p in reg.parameters}
+
+    if eval_case is not None and model.greybox_constants is not None:
+        prof = extract_case_geometry_profile(eval_case)
+        base_gb = evaluate_greybox_backbone(prof, base_params, model.greybox_constants)
+        for p in reg.parameters:
+            pid = p.parameter_id
+            p_lo = dict(base_params)
+            p_hi = dict(base_params)
+            p_lo[pid] = denormalize_parameter_value(p, -0.75)
+            p_hi[pid] = denormalize_parameter_value(p, +0.75)
+            gb_lo = evaluate_greybox_backbone(prof, p_lo, model.greybox_constants)
+            gb_hi = evaluate_greybox_backbone(prof, p_hi, model.greybox_constants)
+            rel_gain = 0.0
+            for m_id in objective_metrics:
+                denom = max(abs(base_gb.get(m_id, 0.0)), 1e-4)
+                rel_gain += abs(gb_hi.get(m_id, 0.0) - gb_lo.get(m_id, 0.0)) / denom
+            scores[pid] += 1.5 * rel_gain
+
+    for m_id, head in model.metric_heads.items():
+        w_m = 1.2 if m_id in objective_metrics else 0.6
+        for s in head.sensitivities:
+            if s.status == "Active" and s.parameter_id in scores:
+                scores[s.parameter_id] += w_m * s.contribution_ratio
+    return scores
+
+
 def recommend_parameters(
     surrogate: LearnedParameterSurrogate | Mapping[str, Any],
     request: ParameterRecommendationRequest | Mapping[str, Any] | None = None,
+    *,
+    target_case: CncBenchmarkCase | None = None,
 ) -> ParameterRecommendationReport:
-    """Search the active parameter subspace under sparse delta and conservative hard constraints."""
+    """Search active parameter subspace under sparse Top-K delta and conservative safety gates."""
     model = (
         surrogate
         if isinstance(surrogate, LearnedParameterSurrogate)
@@ -178,6 +216,9 @@ def recommend_parameters(
         if isinstance(request, ParameterRecommendationRequest)
         else ParameterRecommendationRequest.model_validate(request)
     )
+
+    eval_case = target_case or req.target_case or model.default_case
+    report_case_id = eval_case.case_id if eval_case is not None else model.case_id
 
     reg = model.registry
     param_map = {p.parameter_id: p for p in reg.parameters}
@@ -193,38 +234,22 @@ def recommend_parameters(
         else "sampledPathDeviationMaxMm"
     )
     objective_metrics = ("durationSeconds", primary_acc_metric, "discreteJerkRms")
-    available_metrics = tuple(m for m in model.metric_heads if m in {
-        "durationSeconds",
-        "sampledPathDeviationMaxMm",
-        "discreteJerkRms",
-        "cornerSpeedMinMmS",
-        "followingErrorMaxMm",
-        "actualPathDeviationMaxMm",
-    })
+    available_metrics = tuple(m for m in model.metric_heads.keys())
 
-    # Rank active parameters by aggregate importance across key metrics
-    agg_importance: dict[str, float] = {p.parameter_id: 0.0 for p in reg.parameters}
-    for m_id in available_metrics:
-        head = model.metric_heads[m_id]
-        w_m = 1.5 if m_id in objective_metrics else 0.8
-        for s in head.sensitivities:
-            if s.status == "Active" and s.parameter_id in agg_importance:
-                agg_importance[s.parameter_id] += w_m * s.contribution_ratio
-
+    agg_importance = _target_geometry_leverage(model, eval_case, base_params, objective_metrics)
     locked_set = set(req.locked_parameter_ids)
     tunable_ids = [
         pid
         for pid, score in sorted(agg_importance.items(), key=lambda kv: kv[1], reverse=True)
-        if pid not in locked_set and score > 0
+        if pid not in locked_set and score > 1e-6
     ]
     if not tunable_ids:
         tunable_ids = [p.parameter_id for p in reg.parameters if p.parameter_id not in locked_set][:6]
     top_pool = tunable_ids[: min(10, len(tunable_ids))]
     k_max = min(req.max_changed_parameters, len(top_pool))
 
-    # Baseline predictions
     base_preds: dict[str, tuple[float, float, bool]] = {
-        m_id: predict_metric_for_parameters(model, m_id, base_params)
+        m_id: predict_metric_for_parameters(model, m_id, base_params, target_case=eval_case)
         for m_id in available_metrics
     }
 
@@ -239,217 +264,304 @@ def recommend_parameters(
     rng = np.random.default_rng(req.seed)
     candidate_dicts: list[dict[str, float]] = [dict(base_params)]
 
-    # 1. Single-parameter and pair grid probes around knee points and bounds
-    for pid in top_pool[: min(6, len(top_pool))]:
-        p_def = param_map[pid]
-        for norm_v in (-0.75, -0.40, 0.0, 0.40, 0.75):
-            cand = dict(base_params)
-            cand[pid] = denormalize_parameter_value(p_def, norm_v)
-            candidate_dicts.append(cand)
-
-    # 2. Sparse K_max subset LHS + trust-region perturbations
-    while len(candidate_dicts) < req.candidate_pool_size:
-        n_change = int(rng.integers(1, k_max + 1))
-        probs = np.asarray([agg_importance.get(pid, 0.1) + 0.05 for pid in top_pool], dtype=np.float64)
-        probs /= np.sum(probs)
-        chosen_ids = rng.choice(top_pool, size=min(n_change, len(top_pool)), replace=False, p=probs)
+    def _apply_seed_override(seed_override: Mapping[str, float]) -> dict[str, float]:
         cand = dict(base_params)
-        for pid in chosen_ids:
+        applied = 0
+        for pid, val in seed_override.items():
+            if pid in param_map and pid not in locked_set and applied < k_max:
+                p_def = param_map[pid]
+                lo, hi = float(p_def.bounds[0]), float(p_def.bounds[1])
+                clipped_v = max(lo, min(hi, float(val)))
+                cand[pid] = float(round(clipped_v)) if p_def.value_type == "integer" else round(clipped_v, 6)
+                applied += 1
+        return cand
+
+    # Physics-informed Pareto frontier sweep seeds (Efficiency, Precision, Smoothness/Resonance-Notch)
+    if model.greybox_constants is not None:
+        gb_c = model.greybox_constants
+        f_res = gb_c.identified_resonance_hz
+        fir_notch_ms = round(min(48.0, max(4.0, 1000.0 / max(f_res, 25.0))), 3)
+        notch_hz = round(min(400.0, max(40.0, f_res)), 2)
+        path_lim = req.maximum_path_deviation_mm or 0.035
+
+        physics_seeds: list[dict[str, float]] = [
+            # High-speed family (varying feed override & corner tolerance within conservative contour budget)
+            {
+                "g2.path_max_feed_override": 1.18,
+                "g1.corner_tolerance_mm": min(0.032, path_lim * 0.65),
+                "g2.fir_moving_avg_time_ms": 6.0,
+                "g3.vel_feedforward_x": 0.995,
+            },
+            {
+                "g2.path_max_feed_override": 1.12,
+                "g1.corner_tolerance_mm": min(0.022, path_lim * 0.48),
+                "g2.fir_moving_avg_time_ms": fir_notch_ms,
+                "g3.vel_feedforward_y": 0.995,
+            },
+            {
+                "g2.path_max_feed_override": 1.20,
+                "g2.path_tangential_acc_mm_s2": min(8500.0, min(float(l.maximum_acceleration_mm_s2) for l in eval_case.axis_limits) * 0.95) if eval_case else 4800.0,
+                "g1.corner_tolerance_mm": min(0.018, path_lim * 0.42),
+                "g2.fir_moving_avg_time_ms": 5.0,
+            },
+            # High-precision family (tight tolerance, gentle centripetal acc so short FIR obeys jerk limit, matched feedforward)
+            {
+                "g1.corner_tolerance_mm": 0.004,
+                "g2.fir_moving_avg_time_ms": max(8.5, fir_notch_ms),
+                "g2.centripetal_acc_limit_mm_s2": 1600.0,
+                "g3.vel_feedforward_x": 0.998,
+            },
+            {
+                "g1.corner_tolerance_mm": 0.006,
+                "g2.fir_moving_avg_time_ms": fir_notch_ms,
+                "g3.notch_filter_freq_hz": notch_hz,
+                "g3.vel_feedforward_x": 0.995,
+            },
+            {
+                "g1.corner_tolerance_mm": 0.008,
+                "g2.fir_moving_avg_time_ms": 5.0,
+                "g3.friction_comp_amp_x": round(gb_c.stribeck_breakaway_x_mm, 5),
+                "g3.friction_comp_amp_y": round(gb_c.stribeck_breakaway_y_mm, 5),
+            },
+            # Smoothness / Balanced knee family (low jerk + exact resonance notch + moderate speed)
+            {
+                "g2.fir_moving_avg_time_ms": fir_notch_ms,
+                "g3.notch_filter_freq_hz": notch_hz,
+                "g2.path_tangential_jerk_mm_s3": 95000.0,
+                "g1.corner_tolerance_mm": 0.012,
+            },
+            {
+                "g2.bell_acc_shape_factor": 0.88,
+                "g2.path_tangential_jerk_mm_s3": 110000.0,
+                "g1.corner_tolerance_mm": 0.010,
+                "g2.fir_moving_avg_time_ms": fir_notch_ms,
+            },
+            {
+                "g2.path_max_feed_override": 1.06,
+                "g1.corner_tolerance_mm": 0.011,
+                "g2.path_tangential_jerk_mm_s3": 125000.0,
+                "g3.notch_filter_freq_hz": notch_hz,
+            },
+        ]
+        for seed_override in physics_seeds:
+            candidate_dicts.append(_apply_seed_override(seed_override))
+
+    for _ in range(max(0, req.candidate_pool_size - len(candidate_dicts))):
+        k_choose = int(rng.integers(1, k_max + 1))
+        chosen_ids = rng.choice(top_pool, size=k_choose, replace=False)
+        cand = dict(base_params)
+        for pid_raw in chosen_ids:
+            pid = str(pid_raw)
             p_def = param_map[pid]
-            # Sample inside [-0.85, 0.85] to stay well within trusted training envelope
-            norm_v = float(rng.uniform(-0.85, 0.85))
-            cand[str(pid)] = denormalize_parameter_value(p_def, norm_v)
+            u_norm = float(rng.uniform(-0.92, 0.92))
+            cand[pid] = denormalize_parameter_value(p_def, u_norm)
         candidate_dicts.append(cand)
 
     evaluated_candidates: list[ParameterRecommendationCandidate] = []
-    raw_uncertainty_records: list[tuple[float, float, dict[str, float], list[str]]] = []
+    uncertainty_records: list[tuple[float, float, dict[str, float], tuple[str, ...]]] = []
 
-    for idx, cand_params in enumerate(candidate_dicts):
+    for idx_c, cand_p in enumerate(candidate_dicts):
         changed_items: list[ParameterDeltaItem] = []
         changed_ids: list[str] = []
-        for p in reg.parameters:
-            pid = p.parameter_id
-            b_val = float(base_params[pid])
-            c_val = float(cand_params[pid])
-            if abs(c_val - b_val) > 1e-9:
-                changed_ids.append(pid)
-                delta = c_val - b_val
-                rel_pct = (delta / abs(b_val) * 100.0) if abs(b_val) > 1e-9 else 0.0
+        for pid in reg.parameters:
+            p_key = pid.parameter_id
+            b_v = float(base_params[p_key])
+            c_v = float(cand_p[p_key])
+            if abs(c_v - b_v) > 1e-7:
+                changed_ids.append(p_key)
+                rel_pct = ((c_v - b_v) / max(abs(b_v), 1e-6)) * 100.0
                 changed_items.append(
                     ParameterDeltaItem(
-                        parameterId=pid,
-                        displayName=p.display_name,
-                        group=p.group,
-                        unit=p.unit,
-                        baselineValue=round(b_val, 6),
-                        recommendedValue=round(c_val, 6),
-                        delta=round(delta, 6),
+                        parameterId=p_key,
+                        displayName=pid.display_name,
+                        group=pid.group,
+                        unit=pid.unit,
+                        baselineValue=round(b_v, 6),
+                        recommendedValue=round(c_v, 6),
+                        delta=round(c_v - b_v, 6),
                         relativeChangePct=round(rel_pct, 2),
-                        rationale=f"活跃度权重 {agg_importance.get(pid, 0.0):.1%}，在安全包络内调整以优化目标权衡",
+                        rationale=f"灰盒机理敏感度主导项（调幅 {rel_pct:+.1f}%）",
                     )
                 )
-
         if len(changed_items) > req.max_changed_parameters:
             continue
 
         pred_summaries: dict[str, PredictedMetricSummary] = {}
-        all_in_domain = True
-        all_limits_ok = True
-        total_rel_unc = 0.0
+        any_ood = False
+        all_gates_ok = True
+        unc_norm_sum = 0.0
 
         for m_id in available_metrics:
             head = model.metric_heads[m_id]
-            mean_val, rad_val, is_ood = predict_metric_for_parameters(model, m_id, cand_params)
-            if is_ood:
-                all_in_domain = False
             b_mean = base_preds[m_id][0]
-            upper_bound = mean_val + req.safety_kappa * rad_val
+            p_mean, p_rad, m_ood = predict_metric_for_parameters(model, m_id, cand_p, target_case=eval_case)
+            if m_ood:
+                any_ood = True
+            upper_b = p_mean + req.safety_kappa * p_rad
             lim = limits_map.get(m_id)
-            within_lim = True if lim is None else (upper_bound <= lim)
+            within_lim = True if lim is None else (upper_b <= lim)
             if not within_lim:
-                all_limits_ok = False
-            delta_m = mean_val - b_mean
-            rel_m = (delta_m / abs(b_mean) * 100.0) if abs(b_mean) > 1e-9 else 0.0
-            total_rel_unc += rad_val / max(abs(b_mean), 1e-6)
+                all_gates_ok = False
+
+            delta_b = p_mean - b_mean
+            rel_b = (delta_b / max(abs(b_mean), 1e-9)) * 100.0
+            unc_norm_sum += p_rad / max(abs(b_mean), 1e-6)
             pred_summaries[m_id] = PredictedMetricSummary(
                 metricId=m_id,
                 unit=head.unit,
                 baselinePredicted=round(b_mean, 6),
-                predictedMean=round(mean_val, 6),
-                uncertaintyRadius=round(rad_val, 6),
-                conservativeUpperBound=round(upper_bound, 6),
-                deltaFromBaseline=round(delta_m, 6),
-                relativeChangePct=round(rel_m, 2),
+                predictedMean=round(p_mean, 6),
+                uncertaintyRadius=round(p_rad, 6),
+                conservativeUpperBound=round(upper_b, 6),
+                deltaFromBaseline=round(delta_b, 6),
+                relativeChangePct=round(rel_b, 2),
                 hardLimit=lim,
                 withinConservativeLimit=within_lim,
             )
 
-        dur_imp = (
-            (base_preds["durationSeconds"][0] - pred_summaries["durationSeconds"].predicted_mean)
-            / max(base_preds["durationSeconds"][0], 1e-6)
-            if "durationSeconds" in pred_summaries
-            else 0.0
-        )
-        err_imp = (
-            (base_preds[primary_acc_metric][0] - pred_summaries[primary_acc_metric].predicted_mean)
-            / max(base_preds[primary_acc_metric][0], 1e-6)
-            if primary_acc_metric in pred_summaries
-            else 0.0
-        )
-        acq_score = float(0.5 * dur_imp + 0.5 * err_imp + 0.35 * total_rel_unc)
-        if changed_ids:
-            raw_uncertainty_records.append((acq_score, total_rel_unc, cand_params, changed_ids))
+        if eval_case is not None and model.greybox_constants is not None:
+            max_case_acc = min(float(lim.maximum_acceleration_mm_s2) for lim in eval_case.axis_limits)
+            max_case_jrk = min(float(lim.maximum_jerk_mm_s3) for lim in eval_case.axis_limits if lim.maximum_jerk_mm_s3 is not None)
+            cand_at = float(cand_p.get("g2.path_tangential_acc_mm_s2", 5000.0))
+            cand_jt = float(cand_p.get("g2.path_tangential_jerk_mm_s3", 200000.0))
+            cand_an = float(cand_p.get("g2.centripetal_acc_limit_mm_s2", 3000.0))
+            cand_fir_s = max(float(cand_p.get("g2.fir_moving_avg_time_ms", 12.0)) * 1e-3, eval_case.sample_period_seconds)
+            cand_flp = max(float(cand_p.get("g2.biquad_lowpass_freq_hz", 80.0)), 2.0)
+            corner_jrk_est = (1.25 * cand_an) / max(cand_fir_s, eval_case.sample_period_seconds) if extract_case_geometry_profile(eval_case).has_corners else 0.0
+            if cand_at > max_case_acc or cand_jt > max_case_jrk or corner_jrk_est > max_case_jrk:
+                all_gates_ok = False
 
-        hard_ok = all_in_domain and all_limits_ok
+        in_dom = not any_ood
+        feasible_flag = in_dom and all_gates_ok
+
+        dur_gain = (base_preds["durationSeconds"][0] - pred_summaries["durationSeconds"].predicted_mean) / max(
+            base_preds["durationSeconds"][0], 1e-6
+        )
+        acc_gain = (base_preds[primary_acc_metric][0] - pred_summaries[primary_acc_metric].predicted_mean) / max(
+            base_preds[primary_acc_metric][0], 1e-6
+        )
+        acq_score = 0.55 * unc_norm_sum + 0.45 * max(0.0, dur_gain + acc_gain)
+        if changed_ids:
+            uncertainty_records.append((acq_score, unc_norm_sum, cand_p, tuple(changed_ids)))
+
         evaluated_candidates.append(
             ParameterRecommendationCandidate(
-                candidateId=f"rec.cand.{idx + 1:03d}",
+                candidateId=f"cand.{idx_c + 1:04d}",
                 changedParameterCount=len(changed_items),
                 changedParameters=tuple(changed_items),
-                fullParameters=cand_params,
+                fullParameters={k: round(float(v), 6) for k, v in cand_p.items()},
                 predictedMetrics=pred_summaries,
-                inDomain=all_in_domain,
-                hardConstraintsSatisfied=hard_ok,
+                inDomain=in_dom,
+                hardConstraintsSatisfied=feasible_flag,
                 paretoOptimal=False,
-                tradeoffExplanation="",
+                tradeoffExplanation="候选评估完成",
             )
         )
 
     feasible = [c for c in evaluated_candidates if c.hard_constraints_satisfied]
-    if not feasible:
-        # Fallback to in-domain candidates if user limits were tighter than all samples
-        feasible = [c for c in evaluated_candidates if c.in_domain] or evaluated_candidates[:5]
+    pool_for_pareto = feasible if feasible else evaluated_candidates
 
-    def _obj_tuple(cand: ParameterRecommendationCandidate) -> tuple[float, float, float]:
-        d_val = cand.predicted_metrics["durationSeconds"].predicted_mean if "durationSeconds" in cand.predicted_metrics else 0.0
-        e_val = cand.predicted_metrics[primary_acc_metric].predicted_mean if primary_acc_metric in cand.predicted_metrics else 0.0
-        j_val = cand.predicted_metrics["discreteJerkRms"].predicted_mean if "discreteJerkRms" in cand.predicted_metrics else 0.0
-        return (d_val, e_val, j_val)
+    obj_tuples = [
+        (
+            c.predicted_metrics["durationSeconds"].predicted_mean,
+            c.predicted_metrics[primary_acc_metric].predicted_mean,
+            c.predicted_metrics["discreteJerkRms"].predicted_mean
+            if "discreteJerkRms" in c.predicted_metrics
+            else 0.0,
+        )
+        for c in pool_for_pareto
+    ]
 
     pareto_front: list[ParameterRecommendationCandidate] = []
-    for cand in feasible:
-        obj_c = _obj_tuple(cand)
-        if not any(_dominates(_obj_tuple(other), obj_c) for other in feasible if other.candidate_id != cand.candidate_id):
-            pareto_front.append(cand.model_copy(update={"pareto_optimal": True}))
+    for i, cand_i in enumerate(pool_for_pareto):
+        dominated = any(
+            j != i and _dominates(obj_tuples[j], obj_tuples[i])
+            for j in range(len(pool_for_pareto))
+        )
+        if not dominated:
+            pareto_front.append(cand_i.model_copy(update={"pareto_optimal": True}))
 
-    pareto_front.sort(key=_obj_tuple)
+    pareto_front.sort(key=lambda c: c.predicted_metrics["durationSeconds"].predicted_mean)
 
-    # Select 3 distinct representative engineering presets from Pareto front
-    eff_cand = min(pareto_front, key=lambda c: _obj_tuple(c)[0])
-    prec_cand = min(pareto_front, key=lambda c: _obj_tuple(c)[1])
+    # Select 3 distinct engineering presets when >= 3 non-dominated points exist
+    prec_cand = min(pareto_front, key=lambda c: c.predicted_metrics[primary_acc_metric].predicted_mean)
+    eff_candidates = [c for c in pareto_front if c.candidate_id != prec_cand.candidate_id] or pareto_front
+    eff_cand = min(eff_candidates, key=lambda c: c.predicted_metrics["durationSeconds"].predicted_mean)
 
-    # Utopia distance for BalancedKneePoint (prefer distinct interior candidate when available)
-    objs = np.asarray([_obj_tuple(c) for c in pareto_front], dtype=np.float64)
-    mins = np.min(objs, axis=0)
-    spans = np.maximum(np.max(objs, axis=0) - mins, 1e-9)
-    norm_objs = (objs - mins) / spans
-    utopia_dists = np.sqrt(1.0 * (norm_objs[:, 0] ** 2) + 1.0 * (norm_objs[:, 1] ** 2) + 1.35 * (norm_objs[:, 2] ** 2))
-    order_indices = np.argsort(utopia_dists)
-    bal_cand = pareto_front[int(order_indices[0])]
-    for idx_c in order_indices:
-        cand_c = pareto_front[int(idx_c)]
-        if cand_c.candidate_id not in {eff_cand.candidate_id, prec_cand.candidate_id}:
-            bal_cand = cand_c
-            break
+    durs = np.asarray([c.predicted_metrics["durationSeconds"].predicted_mean for c in pareto_front])
+    errs = np.asarray([c.predicted_metrics[primary_acc_metric].predicted_mean for c in pareto_front])
+    jrks = np.asarray(
+        [
+            c.predicted_metrics["discreteJerkRms"].predicted_mean
+            if "discreteJerkRms" in c.predicted_metrics
+            else 0.0
+            for c in pareto_front
+        ]
+    )
+    d_norm = (durs - np.min(durs)) / max(float(np.ptp(durs)), 1e-9)
+    e_norm = (errs - np.min(errs)) / max(float(np.ptp(errs)), 1e-9)
+    j_norm = (jrks - np.min(jrks)) / max(float(np.ptp(jrks)), 1e-9)
+    utopia_dist = np.sqrt(d_norm ** 2 + e_norm ** 2 + 0.75 * (j_norm ** 2))
+    order_knee = np.argsort(utopia_dist)
+    knee_cand = pareto_front[int(order_knee[0])]
+    if len(pareto_front) >= 3:
+        for idx_k in order_knee:
+            cand_k = pareto_front[int(idx_k)]
+            if cand_k.candidate_id not in {eff_cand.candidate_id, prec_cand.candidate_id}:
+                knee_cand = cand_k
+                break
 
-    def _format_preset(
+    def _label_preset(
         cand: ParameterRecommendationCandidate,
         role: PresetRole,
         title: str,
     ) -> ParameterRecommendationCandidate:
-        d_pct = cand.predicted_metrics["durationSeconds"].relative_change_pct if "durationSeconds" in cand.predicted_metrics else 0.0
-        e_pct = cand.predicted_metrics[primary_acc_metric].relative_change_pct if primary_acc_metric in cand.predicted_metrics else 0.0
-        j_pct = cand.predicted_metrics["discreteJerkRms"].relative_change_pct if "discreteJerkRms" in cand.predicted_metrics else 0.0
-        changed_names = ", ".join(f"{item.parameter_id}={item.recommended_value:g}{item.unit}" for item in cand.changed_parameters) or "保持基线不变"
-        explanation = (
-            f"【{title}】仅微调 {cand.changed_parameter_count} 个关键参数（{changed_names}），"
-            f"其余 {len(reg.parameters) - cand.changed_parameter_count} 个参数保持基线不变："
-            f"预计加工时间变化 {d_pct:+.1f}%，{primary_acc_metric} 变化 {e_pct:+.1f}%，RMS Jerk 变化 {j_pct:+.1f}%。"
+        dur_m = cand.predicted_metrics["durationSeconds"]
+        acc_m = cand.predicted_metrics[primary_acc_metric]
+        jrk_m = cand.predicted_metrics.get("discreteJerkRms")
+        jrk_txt = f"，冲击 RMS {jrk_m.relative_change_pct:+.1f}%" if jrk_m else ""
+        desc = (
+            f"【{title}】仅微调 {cand.changed_parameter_count} 个核心参数："
+            f"预计周期 {dur_m.predicted_mean:.4g}s ({dur_m.relative_change_pct:+.1f}%)，"
+            f"{primary_acc_metric}={acc_m.predicted_mean:.4g}mm (保守上界 {acc_m.conservative_upper_bound:.4g}mm){jrk_txt}"
         )
         return cand.model_copy(
             update={
                 "preset_role": role,
                 "preset_title": title,
-                "tradeoff_explanation": explanation,
+                "tradeoff_explanation": desc,
             }
         )
 
     presets = (
-        _format_preset(eff_cand, "EfficiencyOptimal", "高速效率优先档（粗加工/节拍优先）"),
-        _format_preset(prec_cand, "PrecisionOptimal", "高精轮廓优先档（精加工/清根优先）"),
-        _format_preset(bal_cand, "BalancedKneePoint", "柔顺均衡拐点档（表面质量/低冲击均衡）"),
+        _label_preset(eff_cand, "EfficiencyOptimal", "高速效率优先档"),
+        _label_preset(prec_cand, "PrecisionOptimal", "高精轮廓优先档"),
+        _label_preset(knee_cand, "BalancedKneePoint", "柔顺均衡拐点档"),
     )
 
-    # Select top 3 Active DoE suggestions with diverse parameter combinations
-    raw_uncertainty_records.sort(key=lambda item: item[0], reverse=True)
+    uncertainty_records.sort(key=lambda item: item[0], reverse=True)
     doe_suggestions: list[ActiveExperimentSuggestion] = []
-    seen_sets: list[set[str]] = []
-    target_src: SourceKind = "controller-trace" if model.controller_run_count > 0 else "algorithm-export"
-    for acq, unc, c_params, c_ids in raw_uncertainty_records:
-        id_set = set(c_ids)
-        if any(len(id_set & prev) == len(id_set) and len(id_set) == len(prev) for prev in seen_sets):
-            continue
-        seen_sets.append(id_set)
-        sug_idx = len(doe_suggestions) + 1
+    has_ctrl = model.controller_run_count > 0
+    for idx_s, (acq, unc, s_params, c_ids) in enumerate(uncertainty_records[:3]):
+        uses_g3 = any(param_map[cid].group == "G3_ServoControl" for cid in c_ids if cid in param_map)
+        tgt_src: SourceKind = "controller-trace" if (uses_g3 or has_ctrl) else "algorithm-export"
         doe_suggestions.append(
             ActiveExperimentSuggestion(
-                suggestionId=f"active-doe.{sug_idx:02d}",
-                targetSource=target_src,
-                changedParameterIds=tuple(c_ids),
-                parameters=c_params,
-                acquisitionScore=round(acq, 4),
-                uncertaintyScore=round(unc, 4),
+                suggestionId=f"active-doe.{idx_s + 1:02d}",
+                targetSource=tgt_src,
+                changedParameterIds=c_ids,
+                parameters={k: round(float(v), 6) for k, v in s_params.items()},
+                acquisitionScore=round(float(acq), 6),
+                uncertaintyScore=round(float(unc), 6),
                 rationale=(
-                    f"主动补采建议 #{sug_idx}：针对参数 ({', '.join(c_ids)}) 的高潜力折中区进行采样，"
-                    f"综合期望改进与不确定性得分 {acq:.3f}，可显著收紧该区域的 Conformal 预测半径。"
+                    f"建议在 {tgt_src} 补采调整 ({', '.join(c_ids)})：该区域逼近灰盒物理瓶颈边界但残差不确定性较高 "
+                    f"(CEI={acq:.3f})，补采 1 组即可收紧保守置信上界"
                 ),
             )
         )
-        if len(doe_suggestions) >= 3:
-            break
 
     report = ParameterRecommendationReport(
-        caseId=model.case_id,
+        caseId=report_case_id,
         surrogateModelHash=model.model_content_hash,
         primaryAccuracyMetricId=primary_acc_metric,
         maxChangedParameters=req.max_changed_parameters,
@@ -472,164 +584,15 @@ def simulate_parametric_cnc_export(
     *,
     source_kind: SourceKind = "algorithm-export",
     registry: CncParameterRegistry | None = None,
-    algorithm_version: str = "parametric-sim-v1",
+    algorithm_version: str = "realistic-cnc-kernel-v1",
 ) -> CncAlgorithmExport:
-    """Synthesize a physically grounded 3D CNC trajectory export from a 32-parameter dict.
-
-    This deterministic physics-inspired generator models how G1 (corner tolerance, lookahead),
-    G2 (tangential acc/jerk, centripetal acc, FIR filter time constant), and G3 (servo Kp,
-    velocity/acceleration feedforward, friction compensation) govern the sampled command
-    stream and actual servo feedback stream.
-    """
-    reg = registry or default_cnc_parameter_registry()
-    p = {**default_parameter_values(reg), **dict(parameters)}
-
-    corner_tol = float(p["g1.corner_tolerance_mm"])
-    small_tol = float(p["g1.small_seg_chord_tol_mm"])
-    lookahead = float(p["g1.lookahead_block_count"])
-    curv_clamp = float(p["g1.curvature_speed_clamp_factor"])
-    feed_ovr = float(p["g2.path_max_feed_override"])
-    tang_acc = float(p["g2.path_tangential_acc_mm_s2"])
-    tang_jerk = float(p["g2.path_tangential_jerk_mm_s3"])
-    cent_acc = float(p["g2.centripetal_acc_limit_mm_s2"])
-    fir_ms = float(p["g2.fir_moving_avg_time_ms"])
-    bell_shape = float(p["g2.bell_acc_shape_factor"])
-
-    path = np.asarray(case.reference_path, dtype=float)
-    segs = path[1:] - path[:-1]
-    seg_lengths = np.linalg.norm(segs, axis=1)
-    total_len = float(np.sum(seg_lengths))
-    cum_len = np.concatenate([[0.0], np.cumsum(seg_lengths)])
-
-    base_feed_mm_s = (case.programmed_feed_mm_min or 3000.0) / 60.0
-    # Effective cruise speed governed by feed override, lookahead, and acceleration/jerk capability
-    lookahead_factor = 0.82 + 0.18 * min(1.0, (lookahead - 20.0) / 250.0)
-    corner_speed_factor = 0.55 + 0.42 * min(1.0, math.sqrt(corner_tol / 0.08) * (cent_acc / 4000.0) * curv_clamp)
-    acc_factor = 0.75 + 0.25 * min(1.0, tang_acc / 8000.0)
-    jerk_factor = 0.85 + 0.15 * min(1.0, tang_jerk / 400000.0)
-    eff_speed = max(
-        5.0,
-        min(
-            base_feed_mm_s * feed_ovr * lookahead_factor * acc_factor * jerk_factor,
-            0.85 * min(lim.maximum_velocity_mm_s for lim in case.axis_limits),
-        ),
-    )
-
-    # Total motion duration includes cruise time + S-curve ramp time + corner slowdown + FIR filter tail
-    ramp_time = (eff_speed / max(tang_acc, 500.0)) * (1.25 + 0.35 * bell_shape) + (
-        tang_acc / max(tang_jerk, 10000.0)
-    )
-    corner_penalty = 0.035 / max(corner_speed_factor, 0.25)
-    total_duration = (total_len / eff_speed) + ramp_time + corner_penalty + (fir_ms * 0.001)
-    period = case.sample_period_seconds
-    n_samples = max(12, int(round(total_duration / period)) + 1)
-
-    t_arr = np.arange(n_samples, dtype=np.float64) * period
-    tau = np.linspace(0.0, 1.0, n_samples)
-    # Smooth S-curve progress profile (quintic polynomial 10u^3 - 15u^4 + 6u^5)
-    s_prog = (10.0 * (tau ** 3) - 15.0 * (tau ** 4) + 6.0 * (tau ** 5)) * total_len
-
-    # Interpolate nominal points along piecewise linear reference path
-    raw_pos = np.zeros((n_samples, 3), dtype=np.float64)
-    for idx_s, s_val in enumerate(s_prog):
-        seg_i = int(np.searchsorted(cum_len[1:], s_val, side="right"))
-        seg_i = min(seg_i, len(seg_lengths) - 1)
-        l_seg = max(float(seg_lengths[seg_i]), 1e-12)
-        u_local = np.clip((s_val - cum_len[seg_i]) / l_seg, 0.0, 1.0)
-        raw_pos[idx_s] = path[seg_i] + u_local * segs[seg_i]
-
-    # Apply physically calibrated corner rounding + FIR smoothing so peak path deviation is in [0.003, 0.055] mm
-    cmd_pos = raw_pos.copy()
-    if n_samples > 10:
-        weights = np.hanning(7)[1:-1]
-        weights /= np.sum(weights)
-        smoothed = np.empty_like(raw_pos)
-        for axis in range(3):
-            padded = np.pad(raw_pos[:, axis], (2, 2), mode="edge")
-            smoothed[:, axis] = np.convolve(padded, weights, mode="valid")
-        diff_vec = smoothed - raw_pos
-        max_raw_dev = float(np.max(np.linalg.norm(diff_vec, axis=1)))
-        target_dev_mm = (
-            0.38 * corner_tol
-            + 0.00035 * fir_ms
-            + 0.22 * small_tol
-            + 0.0025 * (feed_ovr ** 2)
-        )
-        if max_raw_dev > 1e-9:
-            cmd_pos = raw_pos + diff_vec * (target_dev_mm / max_raw_dev)
-        cmd_pos[0] = path[0]
-        cmd_pos[-1] = path[-1]
-
-    # Add subtle high-frequency interpolation ripple inversely proportional to FIR filter and bell shape
-    ripple_amp = max(
-        0.0,
-        (1.0 - min(0.85, fir_ms / 48.0))
-        * (tang_jerk / 800000.0)
-        * 0.0006
-        * (1.0 - 0.45 * bell_shape),
-    )
-    if ripple_amp > 0 and n_samples > 6:
-        phase = np.linspace(0.0, 8.0 * math.pi, n_samples)
-        envelope_sin = np.sin(np.pi * tau) ** 2
-        cmd_pos[:, 0] += ripple_amp * np.sin(phase) * envelope_sin
-        cmd_pos[:, 1] += ripple_amp * np.cos(phase) * envelope_sin
-        cmd_pos[0] = path[0]
-        cmd_pos[-1] = path[-1]
-
-    actual_pos: np.ndarray | None = None
-    if source_kind == "controller-trace":
-        kp_vec = np.array([float(p["g3.servo_kp_x"]), float(p["g3.servo_kp_y"]), float(p["g3.servo_kp_z"])])
-        vff_vec = np.array(
-            [float(p["g3.vel_feedforward_x"]), float(p["g3.vel_feedforward_y"]), float(p["g3.vel_feedforward_z"])]
-        )
-        aff_vec = np.array([float(p["g3.acc_feedforward_x"]), float(p["g3.acc_feedforward_y"]), 0.70])
-        fric_vec = np.array([float(p["g3.friction_comp_amp_x"]), float(p["g3.friction_comp_amp_y"]), 0.005])
-
-        cmd_vel = np.gradient(cmd_pos, period, axis=0)
-        cmd_acc = np.gradient(cmd_vel, period, axis=0)
-        vel_lag = 0.035 * (1.02 - vff_vec[None, :]) * cmd_vel / np.maximum(kp_vec[None, :], 20.0)
-        acc_lag = 0.08 * (1.0 - aff_vec[None, :]) * cmd_acc / np.maximum(kp_vec[None, :] ** 2, 400.0)
-        kp_mismatch_mm = abs(float(kp_vec[0] - kp_vec[1])) * 0.00018
-        mismatch_offset = np.zeros_like(cmd_pos)
-        mismatch_offset[:, 0] = kp_mismatch_mm * np.sin(np.pi * tau)
-        mismatch_offset[:, 1] = -kp_mismatch_mm * np.sin(np.pi * tau)
-        uncomp_fric = 0.15 * np.maximum(0.0, 0.015 - fric_vec[None, :]) * np.tanh(cmd_acc / 2500.0)
-        actual_pos = cmd_pos - vel_lag - acc_lag - uncomp_fric + mismatch_offset
-        actual_pos[0] = cmd_pos[0]
-        actual_pos[-1] = cmd_pos[-1]
-
-    samples = tuple(
-        BenchmarkSample(
-            sampleIndex=i,
-            t=round(float(t_arr[i]), 9),
-            positionMm=(
-                round(float(cmd_pos[i, 0]), 7),
-                round(float(cmd_pos[i, 1]), 7),
-                round(float(cmd_pos[i, 2]), 7),
-            ),
-            actualPositionMm=(
-                (
-                    round(float(actual_pos[i, 0]), 7),
-                    round(float(actual_pos[i, 1]), 7),
-                    round(float(actual_pos[i, 2]), 7),
-                )
-                if actual_pos is not None
-                else None
-            ),
-        )
-        for i in range(n_samples)
-    )
-    return CncAlgorithmExport(
-        algorithmId="axiom.cnc-planner",
-        algorithmVersion=algorithm_version,
-        sourceKind=source_kind,
-        caseContentHash=benchmark_case_hash(case),
-        coordinateFrame=case.coordinate_frame,
-        unit="mm",
-        samplePeriodSeconds=case.sample_period_seconds,
-        parameterRegistryId=reg.registry_id,
-        parameters={k: round(float(v), 6) for k, v in p.items()},
-        samples=samples,
+    """Synthesize a physically faithful 32-parameter CNC trajectory export (delegates to realistic kernel)."""
+    return simulate_realistic_cnc_controller(
+        case,
+        parameters,
+        source_kind=source_kind,
+        registry=registry,
+        algorithm_version=algorithm_version,
     )
 
 
@@ -638,17 +601,31 @@ def build_cnc_parameter_closed_loop_demo(
     offline_count: int = 24,
     controller_count: int = 10,
     seed: int = 42,
+    multi_case_calibration: bool = False,
 ) -> CncParameterClosedLoopDemo:
-    """Build an end-to-end 32-parameter closed-loop demonstration on the V1 corner90 case."""
+    """Build an end-to-end 32-parameter grey-box calibration & recommendation demonstration."""
     reg = default_cnc_parameter_registry()
-    case = standard_case("corner90", StandardCaseSettings(sample_period_seconds=0.005, maximum_path_deviation_mm=0.05))
-    doe = generate_parameter_doe(reg, offline_count=offline_count, controller_count=controller_count, seed=seed)
+    settings = StandardCaseSettings(sample_period_seconds=0.002, maximum_path_deviation_mm=0.06)
+    corner_case = standard_case("corner90", settings)
+    doe = generate_parameter_doe(
+        reg,
+        offline_count=offline_count,
+        controller_count=controller_count,
+        seed=seed,
+        mode="orthogonal-greybox",
+    )
+
+    if multi_case_calibration:
+        suite = {c.case_id: c for c in standard_cases(settings)}
+    else:
+        suite = {corner_case.case_id: corner_case}
 
     exports: list[CncAlgorithmExport] = []
     for sample in doe.offline_samples:
+        c_use = suite.get(sample.recommended_case_id or "", corner_case) if multi_case_calibration else corner_case
         exports.append(
-            simulate_parametric_cnc_export(
-                case,
+            simulate_realistic_cnc_controller(
+                c_use,
                 sample.parameters,
                 source_kind="algorithm-export",
                 registry=reg,
@@ -656,9 +633,10 @@ def build_cnc_parameter_closed_loop_demo(
             )
         )
     for sample in doe.controller_samples:
+        c_use = suite.get(sample.recommended_case_id or "", corner_case) if multi_case_calibration else corner_case
         exports.append(
-            simulate_parametric_cnc_export(
-                case,
+            simulate_realistic_cnc_controller(
+                c_use,
                 sample.parameters,
                 source_kind="controller-trace",
                 registry=reg,
@@ -666,20 +644,28 @@ def build_cnc_parameter_closed_loop_demo(
             )
         )
 
-    sample_quality_report = evaluate_cnc_export(case, exports[-1])
-    surrogate = learn_parameter_surrogate(case, exports, registry=reg)
+    sample_quality_report = evaluate_cnc_export(
+        suite.get(doe.controller_samples[-1].recommended_case_id or "", corner_case) if (multi_case_calibration and doe.controller_samples) else corner_case,
+        exports[-1],
+    )
+    surrogate = learn_parameter_surrogate(
+        list(suite.values()) if multi_case_calibration else corner_case,
+        exports,
+        registry=reg,
+    )
     rec_report = recommend_parameters(
         surrogate,
         ParameterRecommendationRequest(
             maxChangedParameters=4,
-            maximumPathDeviationMm=0.035,
-            maximumActualPathDeviationMm=0.042,
-            maximumFollowingErrorMm=0.025,
+            maximumPathDeviationMm=0.048,
+            maximumActualPathDeviationMm=0.048,
+            maximumFollowingErrorMm=0.035,
             seed=seed,
         ),
+        target_case=corner_case,
     )
     return CncParameterClosedLoopDemo(
-        case=case,
+        case=corner_case,
         sampleQualityReport=sample_quality_report,
         surrogate=surrogate,
         recommendationReport=rec_report,

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — CNC three-layer grey-box modeling & cross-toolpath zero-shot advisor (ADR-0030)
+
+- 新增 `src/axiom/greybox_model.py`：实现零轨迹几何画像提取、硬取小速度包络、拐角滤波谷值卷积、圆弧 `sinc`+Butterworth 内缩、级联 P-PI 二阶曲率-延迟带符号法向叠加、时序 `lsq_linear` 伺服辨识与低维最大边缘似然 Matérn-5/2 ARD-GP 残差融合。
+- 升级 `src/axiom/benchmark.py`：新增单调弧长 Frenet 切向/法向误差正交分解、圆弧带符号径向偏移、7 点三次 Savitzky-Golay 抗噪 Jerk、过象限突起剥离与有符号法向残差 Hanning-FFT 机械谐振主频检出。
+- 升级 `parameter_space.py`、`parameter_learner.py`、`parameter_recommender.py`：新增 `orthogonal-greybox` 正交激励 DoE、多工况联合标定、跨刀路留一验证（LOCO）以及面向未见新零件 `target_case` 的零样本三档差异化 Pareto 稀疏推荐。
+- 新增 `src/axiom/cnc_governance.py`：注册 `cnc-greybox.domain-pack@1`、`cnc.export-to-ordered-point@1` 与 R3 只读遥测投影桥接，打通 `evaluate_run` 封存 `RunBundle` 与 L0/R4/R5/R7 四层安全声明。
+
 ## Unreleased — CNC algorithm comparison
 
 - 新增应用层外部 XYZ 指令 A/B 比较、案例身份检查、不同运动时长支持、采样路径偏差与离散 V/A/J 诊断、最差位置和确定性报告。

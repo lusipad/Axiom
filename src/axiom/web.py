@@ -25,6 +25,7 @@ from .parameter_learner import (
     ParameterLearningRequest,
     learn_parameter_surrogate,
 )
+from .cnc_governance import CncGovernanceAssessmentReport, assess_cnc_greybox_governance
 from .parameter_recommender import (
     CncParameterClosedLoopDemo,
     ParameterRecommendationReport,
@@ -911,8 +912,9 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
         return default_cnc_parameter_registry()
 
     @app.get("/api/v1/benchmarks/cnc/param-doe", response_model=ParameterDoePlan, response_model_by_alias=True, response_model_exclude_none=True)
-    def cnc_parameter_doe(offlineCount: int = 36, controllerCount: int = 12, seed: int = 42) -> ParameterDoePlan:
-        return generate_parameter_doe(offline_count=offlineCount, controller_count=controllerCount, seed=seed)
+    def cnc_parameter_doe(offlineCount: int = 36, controllerCount: int = 12, seed: int = 42, mode: str = "orthogonal-greybox") -> ParameterDoePlan:
+        doe_mode = "lhs" if mode == "lhs" else "orthogonal-greybox"
+        return generate_parameter_doe(offline_count=offlineCount, controller_count=controllerCount, seed=seed, mode=doe_mode)
 
     @app.post("/api/v1/benchmarks/cnc/param-learn", response_model=LearnedParameterSurrogate, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_parameter_learn(request: ParameterLearningRequest) -> LearnedParameterSurrogate:
@@ -922,11 +924,30 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     def cnc_parameter_recommend(payload: dict[str, Any]) -> ParameterRecommendationReport:
         surrogate = LearnedParameterSurrogate.model_validate(payload["surrogate"])
         req = ParameterRecommendationRequest.model_validate(payload.get("request") or {})
-        return recommend_parameters(surrogate, req)
+        tgt = CncBenchmarkCase.model_validate(payload["targetCase"]) if "targetCase" in payload and payload["targetCase"] is not None else None
+        return recommend_parameters(surrogate, req, target_case=tgt)
 
     @app.get("/api/v1/benchmarks/cnc/param-demo", response_model=CncParameterClosedLoopDemo, response_model_by_alias=True, response_model_exclude_none=True)
-    def cnc_parameter_demo(offlineCount: int = 24, controllerCount: int = 10, seed: int = 42) -> CncParameterClosedLoopDemo:
-        return build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed)
+    def cnc_parameter_demo(offlineCount: int = 24, controllerCount: int = 10, seed: int = 42, multiCase: bool = False) -> CncParameterClosedLoopDemo:
+        return build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed, multi_case_calibration=multiCase)
+
+
+    @app.get("/api/v1/benchmarks/cnc/param-governance", response_model=CncGovernanceAssessmentReport, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_governance(offlineCount: int = 14, controllerCount: int = 8, seed: int = 42, multiCase: bool = True) -> CncGovernanceAssessmentReport:
+        demo = build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed, multi_case_calibration=multiCase)
+        return assess_cnc_greybox_governance(demo)
+
+    @app.post("/api/v1/benchmarks/cnc/param-governance", response_model=CncGovernanceAssessmentReport, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_governance_post(payload: dict[str, Any]) -> CncGovernanceAssessmentReport:
+        if "case" in payload and "surrogate" in payload and "recommendationReport" in payload:
+            demo = CncParameterClosedLoopDemo.model_validate(payload)
+            return assess_cnc_greybox_governance(demo)
+        case_obj = CncBenchmarkCase.model_validate(payload["benchmarkCase"])
+        from .benchmark import CncAlgorithmExport
+        exp_obj = CncAlgorithmExport.model_validate(payload["export"])
+        sur_obj = LearnedParameterSurrogate.model_validate(payload["surrogate"]) if payload.get("surrogate") else None
+        rec_obj = ParameterRecommendationReport.model_validate(payload["recommendationReport"]) if payload.get("recommendationReport") else None
+        return assess_cnc_greybox_governance(case_obj, export=exp_obj, surrogate=sur_obj, recommendation_report=rec_obj)
 
     @app.post(
         "/api/v1/experiments/run",

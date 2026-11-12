@@ -1,4 +1,4 @@
-"""30+ Dimensional CNC Parameter Space Taxonomy, Causal Masks, and Active DoE Generator.
+"""30+ Dimensional CNC Parameter Space Taxonomy, Causal Masks, and Orthogonal Grey-Box / LHS DoE Generator.
 
 Organizes CNC trajectory planning and servo loop parameters into three physical layers:
 - G1_GeometryLookahead: toolpath smoothing, chord tolerance, corner rounding, lookahead window
@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from typing import Annotated, Any, Literal, Mapping
 
 import numpy as np
-from pydantic import BeforeValidator, Field, StrictInt, model_validator
+from pydantic import BeforeValidator, Field, model_validator
 
 from .models import AxiomModel, _require_json_number
 
@@ -22,6 +21,7 @@ Number = Annotated[float, BeforeValidator(_require_json_number), Field(allow_inf
 ParameterGroup = Literal["G1_GeometryLookahead", "G2_KinematicsFilter", "G3_ServoControl"]
 SourceKind = Literal["algorithm-export", "controller-trace"]
 PrimitiveScope = Literal["global", "line", "arc", "corner", "micro-segment-cluster"]
+DoeMode = Literal["orthogonal-greybox", "lhs"]
 
 PLANNING_METRIC_IDS = frozenset(
     {
@@ -44,10 +44,17 @@ SERVO_METRIC_IDS = frozenset(
     {
         "followingErrorMaxMm",
         "followingErrorRmsMm",
+        "tangentialLagMaxMm",
+        "tangentialLagRmsMm",
+        "normalServoErrorMaxMm",
+        "normalServoErrorRmsMm",
         "actualPathDeviationMaxMm",
         "actualPathDeviationRmsMm",
         "actualPathDeviationP99Mm",
+        "signedRadialOffsetMeanMm",
         "quadrantGlitchMaxMm",
+        "dominantResonanceFreqHz",
+        "resonanceBandRmsMm",
     }
 )
 
@@ -127,6 +134,8 @@ class ParameterDoeSample(AxiomModel):
     sample_id: str = Field(alias="sampleId")
     target_source: SourceKind = Field(alias="targetSource")
     stage: Literal["offline-screening", "controller-calibration"]
+    recommended_case_id: str | None = Field(default=None, alias="recommendedCaseId")
+    excitation_purpose: str | None = Field(default=None, alias="excitationPurpose")
     parameters: dict[str, float]
 
 
@@ -147,7 +156,6 @@ def default_cnc_parameter_registry() -> CncParameterRegistry:
     both: tuple[SourceKind, ...] = ("algorithm-export", "controller-trace")
     ctrl_only: tuple[SourceKind, ...] = ("controller-trace",)
     params = (
-        # G1: Path Geometry Smoothing & Lookahead (8 parameters)
         ParameterDefinition(
             parameterId="g1.corner_tolerance_mm",
             displayName="拐角平滑最大弦高允差",
@@ -238,7 +246,6 @@ def default_cnc_parameter_registry() -> CncParameterRegistry:
             applicablePrimitives=("global", "corner", "micro-segment-cluster"),
             description="3阶或5阶参数样条过渡",
         ),
-        # G2: Kinematics Time Law & Interpolation Filtering (13 parameters)
         ParameterDefinition(
             parameterId="g2.path_max_feed_override",
             displayName="路径切向进给倍率上限",
@@ -370,7 +377,6 @@ def default_cnc_parameter_registry() -> CncParameterRegistry:
             appliesToSources=both,
             description="0为梯形加速度，1为纯正弦钟形加速度过渡",
         ),
-        # G3: Servo Loop & Dynamic Compensation (11 parameters, controller-trace only)
         ParameterDefinition(
             parameterId="g3.servo_kp_x",
             displayName="X轴位置环比例增益 Kv",
@@ -529,16 +535,13 @@ def causal_mask_for_metric(
     *,
     has_controller_traces: bool = False,
 ) -> dict[str, bool]:
-    """Return prior causal mask (True = allowed to influence metric_id, False = hard zeroed).
-
-    Key physical invariant:
-    - Planning metrics (duration, command path deviation, discrete command V/A/J, corner speed)
-      depend strictly on G1 (Geometry/Lookahead) and G2 (Kinematics/Filter) and have ZERO causal
-      dependence on G3 (Servo loop gains/feedforward).
-    - Servo & actual feedback metrics depend on G3 and active G1/G2 excitation parameters.
-    """
+    """Return prior causal mask (True = allowed to influence metric_id, False = hard zeroed)."""
     is_planning_metric = metric_id in PLANNING_METRIC_IDS or not (
-        metric_id in SERVO_METRIC_IDS or metric_id.startswith("actual") or metric_id.startswith("following")
+        metric_id in SERVO_METRIC_IDS
+        or metric_id.startswith("actual")
+        or metric_id.startswith("following")
+        or metric_id.startswith("normalServo")
+        or metric_id.startswith("tangentialLag")
     )
     mask: dict[str, bool] = {}
     for p in registry.parameters:
@@ -607,16 +610,108 @@ def _latin_hypercube(n_samples: int, n_dims: int, rng: np.random.Generator) -> n
     return best_lhs
 
 
+def _orthogonal_greybox_anchors(
+    reg: CncParameterRegistry,
+    base: dict[str, float],
+) -> tuple[list[tuple[str, str, dict[str, float]]], list[tuple[str, str, dict[str, float]]]]:
+    """Construct orthogonal physics-identifying anchor runs for G1/G2 (offline) and G3 (controller)."""
+    pmap = {p.parameter_id: p for p in reg.parameters}
+
+    def _clip_set(overrides: dict[str, float]) -> dict[str, float]:
+        row = dict(base)
+        for pid, val in overrides.items():
+            if pid in pmap:
+                lo, hi = float(pmap[pid].bounds[0]), float(pmap[pid].bounds[1])
+                v = max(lo, min(hi, float(val)))
+                row[pid] = float(round(v)) if pmap[pid].value_type == "integer" else float(round(v, 6))
+        return row
+
+    offline_anchors: list[tuple[str, str, dict[str, float]]] = [
+        ("axiom.v1.corner90", "基线名义规划锚点", _clip_set({})),
+        (
+            "axiom.v1.corner90",
+            "小拐角允差与3阶样条瓶颈激励（辨识 psi_spl 与削角比例）",
+            _clip_set({"g1.corner_tolerance_mm": 0.005, "g1.spline_degree": 3, "g2.fir_moving_avg_time_ms": 0.0}),
+        ),
+        (
+            "axiom.v1.corner90",
+            "大拐角允差与5阶样条激励（分离样条阶数曲率因子）",
+            _clip_set({"g1.corner_tolerance_mm": 0.065, "g1.spline_degree": 5, "g2.centripetal_acc_limit_mm_s2": 5000.0}),
+        ),
+        (
+            "axiom.v1.small-segments",
+            "前瞻段数饥饿区激励（辨识前瞻刹停安全裕度 psi_la）",
+            _clip_set({"g1.lookahead_block_count": 28, "g1.small_seg_chord_tol_mm": 0.002}),
+        ),
+        (
+            "axiom.v1.small-segments",
+            "前瞻段数饱和区对照（验证前瞻死区与弦高拟合容差）",
+            _clip_set({"g1.lookahead_block_count": 420, "g1.small_seg_chord_tol_mm": 0.030}),
+        ),
+        (
+            "axiom.v1.circle",
+            "宽窗口 FIR 滤波圆弧内缩激励（验证 sinc 内缩与拐角滤波耦合）",
+            _clip_set({"g2.fir_moving_avg_time_ms": 36.0, "g2.biquad_lowpass_freq_hz": 160.0, "g2.path_max_feed_override": 1.15}),
+        ),
+        (
+            "axiom.v1.s-curve",
+            "低截止频率二阶低通与高速向心限幅激励",
+            _clip_set({"g2.fir_moving_avg_time_ms": 4.0, "g2.biquad_lowpass_freq_hz": 25.0, "g2.centripetal_acc_limit_mm_s2": 1400.0}),
+        ),
+        (
+            "axiom.v1.line",
+            "高加减速梯形过渡激励（分离切向 Acc/Jerk 与钟形因子 psi_bell）",
+            _clip_set({"g2.path_tangential_acc_mm_s2": 11000.0, "g2.path_tangential_jerk_mm_s3": 650000.0, "g2.bell_acc_shape_factor": 0.0}),
+        ),
+        (
+            "axiom.v1.line",
+            "柔顺钟形加减速过渡激励（辨识钟形过渡耗时与 Jerk 折减）",
+            _clip_set({"g2.path_tangential_acc_mm_s2": 3000.0, "g2.path_tangential_jerk_mm_s3": 80000.0, "g2.bell_acc_shape_factor": 1.0}),
+        ),
+    ]
+
+    ctrl_anchors: list[tuple[str, str, dict[str, float]]] = [
+        ("axiom.v1.circle", "控制器默认基线整圆基准（提取主谐振峰 f_res 与稳态滞后）", _clip_set({})),
+        (
+            "axiom.v1.circle",
+            "低速度/加速度前馈激励（闭式辨识各轴速度环带宽比 psi_v）",
+            _clip_set({"g3.vel_feedforward_x": 0.85, "g3.vel_feedforward_y": 0.85, "g3.acc_feedforward_x": 0.20, "g3.acc_feedforward_y": 0.20}),
+        ),
+        (
+            "axiom.v1.circle",
+            "高加速度前馈过补偿与高增益激励（观测外甩抵消与谐振敏感度）",
+            _clip_set({"g3.servo_kp_x": 110.0, "g3.servo_kp_y": 110.0, "g3.vel_feedforward_x": 1.00, "g3.vel_feedforward_y": 1.00, "g3.acc_feedforward_x": 0.98, "g3.acc_feedforward_y": 0.98}),
+        ),
+        (
+            "axiom.v1.circle",
+            "XY 双轴位置环增益失配正交激励（验证椭圆畸变解析律）",
+            _clip_set({"g3.servo_kp_x": 45.0, "g3.servo_kp_y": 95.0, "g3.friction_comp_amp_x": 0.0, "g3.friction_comp_amp_y": 0.0}),
+        ),
+        (
+            "axiom.v1.circle",
+            "过象限摩擦补偿高幅值扫描（拟合 Stribeck 3D 过象限残差 GP）",
+            _clip_set({"g3.friction_comp_amp_x": 0.014, "g3.friction_comp_amp_y": 0.014, "g2.centripetal_acc_limit_mm_s2": 5000.0}),
+        ),
+        (
+            "axiom.v1.corner90",
+            "低频伺服陷波器扫描（探查机械固有谐振频带耦合）",
+            _clip_set({"g3.notch_filter_freq_hz": 115.0, "g2.fir_moving_avg_time_ms": 4.0, "g2.path_tangential_jerk_mm_s3": 550000.0}),
+        ),
+    ]
+    return offline_anchors, ctrl_anchors
+
+
 def generate_parameter_doe(
     registry: CncParameterRegistry | None = None,
     *,
     offline_count: int = 36,
     controller_count: int = 12,
     seed: int = 42,
+    mode: DoeMode = "orthogonal-greybox",
     baseline_parameters: Mapping[str, float] | None = None,
     active_parameter_ids: tuple[str, ...] | None = None,
 ) -> ParameterDoePlan:
-    """Generate a two-stage Latin Hypercube Design of Experiments (DoE) for 30+ CNC parameters."""
+    """Generate a two-stage DoE plan (Orthogonal Grey-Box anchors + space-filling LHS supplement)."""
     reg = registry or default_cnc_parameter_registry()
     base = default_parameter_values(reg)
     if baseline_parameters:
@@ -625,27 +720,50 @@ def generate_parameter_doe(
                 base[k] = float(v)
 
     rng = np.random.default_rng(seed)
+    off_anchors, ctrl_anchors = (
+        _orthogonal_greybox_anchors(reg, base)
+        if (mode == "orthogonal-greybox" and active_parameter_ids is None)
+        else ([], [])
+    )
+
     offline_defs = [
         p
         for p in reg.parameters
         if p.group in {"G1_GeometryLookahead", "G2_KinematicsFilter"}
         and (active_parameter_ids is None or p.parameter_id in active_parameter_ids)
     ]
-    offline_Samples_list: list[ParameterDoeSample] = []
+    offline_samples_list: list[ParameterDoeSample] = []
     if offline_count > 0 and offline_defs:
-        lhs_off = _latin_hypercube(offline_count, len(offline_defs), rng)
-        for idx in range(offline_count):
-            row_params = dict(base)
-            for j, p_def in enumerate(offline_defs):
-                row_params[p_def.parameter_id] = denormalize_parameter_value(p_def, float(lhs_off[idx, j]))
-            offline_Samples_list.append(
+        n_anc = min(offline_count, len(off_anchors))
+        for idx in range(n_anc):
+            rec_case, purpose, row_params = off_anchors[idx]
+            offline_samples_list.append(
                 ParameterDoeSample(
                     sampleId=f"doe.offline.{idx + 1:03d}",
                     targetSource="algorithm-export",
                     stage="offline-screening",
+                    recommendedCaseId=rec_case,
+                    excitationPurpose=purpose,
                     parameters=row_params,
                 )
             )
+        rem_off = offline_count - n_anc
+        if rem_off > 0:
+            lhs_off = _latin_hypercube(rem_off, len(offline_defs), rng)
+            for idx in range(rem_off):
+                row_params = dict(base)
+                for j, p_def in enumerate(offline_defs):
+                    row_params[p_def.parameter_id] = denormalize_parameter_value(p_def, float(lhs_off[idx, j]))
+                offline_samples_list.append(
+                    ParameterDoeSample(
+                        sampleId=f"doe.offline.{n_anc + idx + 1:03d}",
+                        targetSource="algorithm-export",
+                        stage="offline-screening",
+                        recommendedCaseId="axiom.v1.corner90",
+                        excitationPurpose="拉丁超立方空间填充检验",
+                        parameters=row_params,
+                    )
+                )
 
     ctrl_defs = [
         p
@@ -654,25 +772,42 @@ def generate_parameter_doe(
     ]
     ctrl_samples_list: list[ParameterDoeSample] = []
     if controller_count > 0 and ctrl_defs:
-        lhs_ctrl = _latin_hypercube(controller_count, len(ctrl_defs), rng)
-        for idx in range(controller_count):
-            row_params = dict(base)
-            for j, p_def in enumerate(ctrl_defs):
-                row_params[p_def.parameter_id] = denormalize_parameter_value(p_def, float(lhs_ctrl[idx, j]))
+        n_c_anc = min(controller_count, len(ctrl_anchors))
+        for idx in range(n_c_anc):
+            rec_case, purpose, row_params = ctrl_anchors[idx]
             ctrl_samples_list.append(
                 ParameterDoeSample(
                     sampleId=f"doe.controller.{idx + 1:03d}",
                     targetSource="controller-trace",
                     stage="controller-calibration",
+                    recommendedCaseId=rec_case,
+                    excitationPurpose=purpose,
                     parameters=row_params,
                 )
             )
+        rem_ctrl = controller_count - n_c_anc
+        if rem_ctrl > 0:
+            lhs_ctrl = _latin_hypercube(rem_ctrl, len(ctrl_defs), rng)
+            for idx in range(rem_ctrl):
+                row_params = dict(base)
+                for j, p_def in enumerate(ctrl_defs):
+                    row_params[p_def.parameter_id] = denormalize_parameter_value(p_def, float(lhs_ctrl[idx, j]))
+                ctrl_samples_list.append(
+                    ParameterDoeSample(
+                        sampleId=f"doe.controller.{n_c_anc + idx + 1:03d}",
+                        targetSource="controller-trace",
+                        stage="controller-calibration",
+                        recommendedCaseId="axiom.v1.circle",
+                        excitationPurpose="实机残差包络补充采样",
+                        parameters=row_params,
+                    )
+                )
 
     plan = ParameterDoePlan(
         registryId=reg.registry_id,
         registryContentHash=reg.registry_content_hash,
         seed=seed,
-        offlineSamples=tuple(offline_Samples_list),
+        offlineSamples=tuple(offline_samples_list),
         controllerSamples=tuple(ctrl_samples_list),
         planContentHash="",
     )

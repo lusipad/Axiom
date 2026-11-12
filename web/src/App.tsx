@@ -278,6 +278,14 @@ export function App() {
   const [showPipeline, setShowPipeline] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
+  const mainAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (mainAreaRef.current) {
+      mainAreaRef.current.scrollTop = 0;
+      mainAreaRef.current.scrollLeft = 0;
+    }
+  }, [activeLab]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -425,7 +433,7 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <div className="axiom-main-area">
+      <div className="axiom-main-area" ref={mainAreaRef}>
         {/* Error banner if visible */}
         {visibleError && (
           <div className="error-banner" role="alert">

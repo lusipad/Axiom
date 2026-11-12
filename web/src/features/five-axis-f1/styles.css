@@ -1,9 +1,7 @@
 .f1-page-wrapper {
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: auto;
   background: var(--bg);
 }
 
@@ -317,6 +315,12 @@
 .f1-stage-chain li { display: flex; gap: 12px; align-items: center; font-size: 12.5px; }
 .f1-stage-chain b { font-family: var(--mono); color: var(--brand); }
 
+@media (max-width: 1380px) {
+  .f1-main-grid { grid-template-columns: 264px minmax(0, 1fr); }
+  .f1-col-right { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 1080px) {
   .f1-main-grid { grid-template-columns: 1fr; }
+  .f1-col-right { display: flex; }
 }

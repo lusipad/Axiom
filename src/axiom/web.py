@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
-from .benchmark import CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, compare_cnc_exports
+from .benchmark import CncBenchmarkCase, CncBenchmarkReport, CncBenchmarkRequest, benchmark_case_hash, cnc_benchmark_example, cnc_diagnostics, compare_cnc_exports
 from .control import (
     BECKHOFF_WITNESS_PLC_TEMPLATE_FILE,
     BeckhoffWitnessDeploymentReport,
@@ -875,6 +875,27 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     @app.post("/api/v1/benchmarks/cnc/compare", response_model=CncBenchmarkReport, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_compare(request: CncBenchmarkRequest) -> CncBenchmarkReport:
         return compare_cnc_exports(request)
+
+    @app.post("/api/v1/benchmarks/cnc/diagnostics")
+    def cnc_diagnostic_series(request: CncBenchmarkRequest) -> dict[str, Any]:
+        return cnc_diagnostics(request)
+
+    @app.get("/api/v1/benchmarks/cnc/validation-cases")
+    def cnc_validation_cases() -> tuple[dict[str, str], ...]:
+        from .benchmark_validation import VALIDATION_SCENARIOS
+
+        return VALIDATION_SCENARIOS
+
+    @app.get("/api/v1/benchmarks/cnc/validation-cases/{identifier}")
+    def cnc_validation_case(identifier: str) -> dict[str, Any]:
+        from .benchmark_validation import VALIDATION_SCENARIOS, validation_experiment
+
+        if identifier not in {item["id"] for item in VALIDATION_SCENARIOS}:
+            raise HTTPException(status_code=404, detail="Unknown validation scenario")
+        try:
+            return validation_experiment(identifier)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post(
         "/api/v1/experiments/run",

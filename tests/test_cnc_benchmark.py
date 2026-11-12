@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import unittest
 
 from pydantic import ValidationError
@@ -71,6 +72,74 @@ class CncBenchmarkTests(unittest.TestCase):
         bind_case(payload)
         report = compare_cnc_exports(payload)
         self.assertAlmostEqual(report.candidate.metrics["sampledPathDeviationMaxMm"].value, 0.08)
+
+    def test_straight_line_backtracking_is_not_an_improvement(self):
+        payload = request_payload()
+        payload["candidate"] = copy.deepcopy(payload["baseline"])
+        payload["candidate"]["samples"][5]["positionMm"][0] = 0.2
+        report = compare_cnc_exports(payload)
+        traversal = next(c for c in report.candidate.checks if c.check_id == "sampled-line-traversal")
+        self.assertEqual(report.outcome, "CandidateViolatesLimits")
+        self.assertEqual(traversal.status, "Violated")
+        self.assertAlmostEqual(traversal.value, 0.2)
+        self.assertEqual(traversal.location.sample_index, 5)
+
+    def test_reversed_baseline_prevents_quality_comparison(self):
+        payload = request_payload()
+        payload["candidate"] = copy.deepcopy(payload["baseline"])
+        payload["baseline"]["samples"][5]["positionMm"][0] = 0.2
+        self.assertEqual(compare_cnc_exports(payload).outcome, "Inconclusive")
+
+    def test_backward_excursion_is_measured_from_high_water_not_adjacent_steps(self):
+        payload = request_payload()
+        payload["case"]["maximumEndpointErrorMm"] = 0.01
+        payload["candidate"] = copy.deepcopy(payload["baseline"])
+        for index in range(5, 9):
+            payload["candidate"]["samples"][index]["positionMm"][0] = 0.4 - (index - 4) * 0.009
+        bind_case(payload)
+        report = compare_cnc_exports(payload)
+        traversal = next(c for c in report.candidate.checks if c.check_id == "sampled-line-traversal")
+        self.assertAlmostEqual(traversal.value, 0.036)
+        self.assertEqual(traversal.status, "Violated")
+
+    def test_closed_circle_stationary_and_wrong_direction_remain_inconclusive(self):
+        payload = request_payload()
+        payload["case"]["referencePath"] = [[1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [1, 0, 0]]
+        payload["case"]["referenceArcs"] = [
+            {"segmentIndex": index, "centerMm": [0, 0], "direction": "ccw"} for index in range(4)
+        ]
+        for axis in payload["case"]["axisLimits"]:
+            axis["maximumVelocityMmS"] = 1e6
+            axis["maximumAccelerationMmS2"] = 1e9
+            axis["maximumJerkMmS3"] = 1e12
+        def circle(clockwise=False):
+            return [{"sampleIndex": i, "t": i * 0.01, "positionMm": [math.cos(i * math.pi / 5), (-1 if clockwise else 1) * math.sin(i * math.pi / 5), 0]} for i in range(11)]
+        payload["baseline"]["samples"] = circle()
+        for samples in ([{"sampleIndex": i, "t": i * 0.01, "positionMm": [1, 0, 0]} for i in range(4)], circle(True)):
+            with self.subTest(samples=len(samples)):
+                payload["candidate"]["samples"] = samples
+                bind_case(payload)
+                report = compare_cnc_exports(payload)
+                self.assertEqual(report.outcome, "Inconclusive")
+                self.assertEqual(next(c for c in report.candidate.checks if c.check_id == "sampled-line-traversal").status, "NotAssessed")
+                self.assertLess(report.candidate.metrics["sampledPathDeviationMaxMm"].value, 1e-12)
+
+    def test_collinear_reference_reversal_cannot_use_straight_line_gate(self):
+        payload = request_payload()
+        payload["case"]["referencePath"] = [[0, 0, 0], [0.8, 0, 0], [0.2, 0, 0], [1, 0, 0]]
+        payload["candidate"] = copy.deepcopy(payload["baseline"])
+        bind_case(payload)
+        report = compare_cnc_exports(payload)
+        self.assertEqual(report.outcome, "Inconclusive")
+
+    def test_mixed_offline_and_production_labels_are_not_comparable(self):
+        payload = request_payload()
+        payload["candidate"] = copy.deepcopy(payload["baseline"])
+        payload["baseline"]["sourceKind"] = "offline-sut"
+        payload["candidate"]["sourceKind"] = "algorithm-export"
+        report = compare_cnc_exports(payload)
+        self.assertEqual(report.outcome, "Inconclusive")
+        self.assertIn("Offline SUT validation", " ".join(report.reasons))
 
     def test_clock_hash_frame_and_units_cannot_be_silently_changed(self):
         for field, value in (("caseContentHash", "0" * 64), ("coordinateFrame", "machine"), ("unit", "inch"), ("samplePeriodSeconds", 0.02)):

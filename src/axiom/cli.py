@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from pydantic import ValidationError
 
@@ -41,7 +41,7 @@ class _CliInputError(Exception):
         self.payload = payload
 
 
-def _benchmark_json(path: Path) -> object:
+def _benchmark_json(path: Path) -> Any:
     with path.open("rb") as stream:
         raw = stream.read(MAX_EXPERIMENT_BYTES + 1)
     if len(raw) > MAX_EXPERIMENT_BYTES:
@@ -61,6 +61,29 @@ def _benchmark_command(args: argparse.Namespace) -> int:
             return _write_standard_cases(args)
         if args.command == "benchmark-import-trace":
             return _import_trace(args)
+        if args.command == "benchmark-ruckig":
+            from .benchmark_offline import RuckigOfflineOptions, _write_json, generate_ruckig_export
+
+            manifest_path = args.out.with_suffix(".manifest.json")
+            if args.out.exists() or manifest_path.exists():
+                raise ValueError("Offline export output files must not already exist")
+            export, manifest = generate_ruckig_export(_benchmark_json(args.case), RuckigOfflineOptions(limitScale=args.limit_scale))
+            args.out.write_text(export.model_dump_json(indent=2, by_alias=True, exclude_none=True) + "\n", encoding="utf-8")
+            _write_json(manifest_path, manifest)
+            print(f"{args.out}: {len(export.samples)} samples (offline SUT validation only)")
+            return 0
+        if args.command == "benchmark-offline-suite":
+            from .benchmark_offline import write_offline_suite
+
+            summary = write_offline_suite(args.out_dir)
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+            return 0 if summary["passed"] else 1
+        if args.command == "benchmark-validation-suite":
+            from .benchmark_validation import write_validation_suite
+
+            summary = write_validation_suite(args.out_dir)
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+            return 0 if summary["passed"] else 1
         paths = (args.case, args.baseline, args.candidate)
         if args.request is not None:
             if any(path is not None for path in paths):
@@ -386,6 +409,14 @@ def _parser() -> argparse.ArgumentParser:
     benchmark_command.add_argument("--baseline", type=Path)
     benchmark_command.add_argument("--candidate", type=Path)
     benchmark_command.add_argument("--format", choices=("json", "table"), default="json", help="json report (default) or a readable A/B table")
+    ruckig_command = commands.add_parser("benchmark-ruckig", help="export a local rest-to-rest single-axis Ruckig trajectory (offline SUT validation only)")
+    ruckig_command.add_argument("--case", type=Path, required=True)
+    ruckig_command.add_argument("--out", type=Path, required=True, help="export JSON; writes an adjacent .manifest.json too")
+    ruckig_command.add_argument("--limit-scale", type=float, default=0.99, help="fraction of case V/A/J limits used by the generator (default 0.99; evaluator limits are unchanged)")
+    offline_command = commands.add_parser("benchmark-offline-suite", help="generate and replay three local Ruckig A/A cases; no device or cloud")
+    offline_command.add_argument("--out-dir", type=Path, required=True, help="new or empty directory; existing evidence is never overwritten")
+    validation_command = commands.add_parser("benchmark-validation-suite", help="run V1 offline parameter comparisons and declared synthetic fault tests")
+    validation_command.add_argument("--out-dir", type=Path, required=True, help="new or empty directory; saves requests, diagnostic results and expected outcomes")
     standard_command = commands.add_parser("benchmark-standard-cases", help="write the five V1 standard cases and their NC programs")
     standard_command.add_argument("--out-dir", type=Path, required=True)
     standard_command.add_argument("--only", nargs="+", choices=STANDARD_CASE_NAMES)
@@ -425,7 +456,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if args.command in {"benchmark", "benchmark-case-hash", "benchmark-example", "benchmark-standard-cases", "benchmark-import-trace"}:
+    if args.command in {"benchmark", "benchmark-case-hash", "benchmark-example", "benchmark-standard-cases", "benchmark-import-trace", "benchmark-ruckig", "benchmark-offline-suite", "benchmark-validation-suite"}:
         return _benchmark_command(args)
     if args.command == "serve":
         import uvicorn

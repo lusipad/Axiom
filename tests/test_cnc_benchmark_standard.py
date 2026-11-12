@@ -153,7 +153,8 @@ def test_controller_trace_import_trims_aligns_and_reproduces_geometry():
     assert metrics["durationSeconds"].value == pytest.approx(60 / speed, abs=2 * case.sample_period_seconds)
     assert metrics["feedUtilization"].value == pytest.approx(1.0, rel=0.01)
     assert metrics["cornerSpeedMinMmS"].location.reference_segment_index == 1
-    assert report.outcome == "WithinTolerance"
+    assert report.outcome == "Inconclusive"
+    assert next(c for c in report.candidate.checks if c.check_id == "sampled-line-traversal").status == "NotAssessed"
 
 
 def test_time_column_with_millisecond_scale_is_accepted():
@@ -178,7 +179,7 @@ def test_dropped_cycles_irregular_clocks_and_missing_columns_are_rejected():
         import_controller_trace("\n".join(lines), case, algorithm_id="p", algorithm_version="A")
 
 
-def test_faster_but_less_accurate_candidate_is_a_tradeoff():
+def test_faster_but_less_accurate_curve_keeps_differences_but_requires_traversal():
     case = standard_case("s-curve", LOOSE)
     baseline = _import(case, _trace_csv(case, 40.0), "release")
     candidate = _import(case, _trace_csv(case, 50.0, bump=(200, 0.004)), "new")
@@ -188,9 +189,9 @@ def test_faster_but_less_accurate_candidate_is_a_tradeoff():
     assert statuses["sampledPathDeviationMaxMm"] == "Regressed"
     assert "sampledPathDeviationRmsMm" in statuses and "discreteJerkMax" in statuses
     assert report.differences[-1].metric_id == "computationSeconds"
-    assert report.outcome == "Tradeoff"
+    assert report.outcome == "Inconclusive"
     table = render_report_table(report)
-    assert "最大轮廓误差" in table and "结论：取舍" in table
+    assert "最大轮廓误差" in table and "结论：无法下结论" in table
 
 
 def test_cli_generates_imports_and_prints_a_table(tmp_path: Path, capsys):

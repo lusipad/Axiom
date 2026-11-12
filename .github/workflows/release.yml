@@ -508,7 +508,7 @@ jobs:
           r6_example = r6_example_payload()
           assert len(r6_example.recommendation_set.candidates) == 6
           assert r6_example.recommendation_set.pareto_candidate_ids
-          assert r6_example.recommendation_set.content_hash == "9cfbd0a833ae08e40cc68fcb5b674ea86e351fe1cb1e70625b31040113426d7a"
+          assert r6_example.recommendation_set.content_hash == "70b46f78c2979f004af642ca5d3f01b608a85d90d44bbca43bf1a9909da1269f"
           assert all(candidate.hard_constraints_satisfied for candidate in r6_example.recommendation_set.candidates)
           assert all(not candidate.promotion_eligible for candidate in r6_example.recommendation_set.candidates)
           r6 = evaluate_run(validate_r6_example_run_spec())

@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .adapters import list_artifact_adapters
 from .benchmark import (
+    CncAlgorithmExport,
     CncBenchmarkCase,
     CncBenchmarkReport,
     CncBenchmarkRequest,
@@ -20,6 +21,12 @@ from .benchmark import (
     compare_cnc_exports,
     evaluate_cnc_export,
 )
+from .controller_profile import (
+    ControllerProfile,
+    get_controller_profile,
+    list_controller_profiles,
+)
+from .parameter_diagnoser import CncSingleRunDiagnosticReport, diagnose_single_run
 from .parameter_learner import (
     LearnedParameterSurrogate,
     ParameterLearningRequest,
@@ -911,10 +918,56 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     def cnc_parameter_registry() -> CncParameterRegistry:
         return default_cnc_parameter_registry()
 
+    @app.get("/api/v1/benchmarks/cnc/controller-profiles", response_model=list[ControllerProfile], response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_controller_profiles() -> list[ControllerProfile]:
+        return list(list_controller_profiles())
+
+    @app.post("/api/v1/benchmarks/cnc/param-diagnose", response_model=CncSingleRunDiagnosticReport, response_model_by_alias=True, response_model_exclude_none=True)
+    def cnc_parameter_diagnose(payload: dict[str, Any]) -> CncSingleRunDiagnosticReport:
+        case_obj = CncBenchmarkCase.model_validate(payload["case"])
+        exp_or_rep = (
+            CncAlgorithmExport.model_validate(payload["export"])
+            if "export" in payload and payload["export"] is not None
+            else CncQualityReport.model_validate(payload["qualityReport"])
+        )
+        prof: ControllerProfile | None = None
+        if payload.get("controllerProfile") is not None:
+            prof = ControllerProfile.model_validate(payload["controllerProfile"])
+        elif payload.get("profileId") is not None:
+            try:
+                prof = get_controller_profile(str(payload["profileId"]))
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return diagnose_single_run(
+            case_obj,
+            exp_or_rep,
+            parameters=payload.get("parameters"),
+            controller_profile=prof,
+            include_drive_side=bool(payload.get("includeDriveSide", True)),
+        )
+
     @app.get("/api/v1/benchmarks/cnc/param-doe", response_model=ParameterDoePlan, response_model_by_alias=True, response_model_exclude_none=True)
-    def cnc_parameter_doe(offlineCount: int = 36, controllerCount: int = 12, seed: int = 42, mode: str = "orthogonal-greybox") -> ParameterDoePlan:
+    def cnc_parameter_doe(
+        offlineCount: int = 36,
+        controllerCount: int = 12,
+        seed: int = 42,
+        mode: str = "orthogonal-greybox",
+        profileId: str | None = None,
+    ) -> ParameterDoePlan:
         doe_mode = "lhs" if mode == "lhs" else "orthogonal-greybox"
-        return generate_parameter_doe(offline_count=offlineCount, controller_count=controllerCount, seed=seed, mode=doe_mode)
+        prof: ControllerProfile | None = None
+        if profileId is not None:
+            try:
+                prof = get_controller_profile(profileId)
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return generate_parameter_doe(
+            controller_profile=prof,
+            offline_count=offlineCount,
+            controller_count=controllerCount,
+            seed=seed,
+            mode=doe_mode,
+        )
 
     @app.post("/api/v1/benchmarks/cnc/param-learn", response_model=LearnedParameterSurrogate, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_parameter_learn(request: ParameterLearningRequest) -> LearnedParameterSurrogate:

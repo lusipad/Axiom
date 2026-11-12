@@ -31,6 +31,7 @@ from .benchmark import (
     evaluate_cnc_export,
 )
 from .benchmark_standard import StandardCaseSettings, standard_case, standard_cases
+from .controller_profile import ControllerProfile, default_generic_controller_profile
 from .greybox_model import (
     evaluate_greybox_backbone,
     extract_case_geometry_profile,
@@ -129,6 +130,7 @@ class ParameterRecommendationRequest(AxiomModel):
     candidate_pool_size: int = Field(default=280, ge=40, le=2000, alias="candidatePoolSize")
     # Recommendations never exceed the programmed feed unless the caller explicitly allows it.
     maximum_feed_override: float = Field(default=1.0, ge=0.05, le=2.0, alias="maximumFeedOverride")
+    include_drive_side_parameters: bool = Field(default=True, alias="includeDriveSideParameters")
     seed: int = 42
 
 
@@ -179,15 +181,21 @@ def _target_geometry_leverage(
 
     if eval_case is not None and model.greybox_constants is not None:
         prof = extract_case_geometry_profile(eval_case)
-        base_gb = evaluate_greybox_backbone(prof, base_params, model.greybox_constants)
+        base_gb = evaluate_greybox_backbone(
+            prof, base_params, model.greybox_constants, controller_profile=model.controller_profile
+        )
         for p in reg.parameters:
             pid = p.parameter_id
             p_lo = dict(base_params)
             p_hi = dict(base_params)
             p_lo[pid] = denormalize_parameter_value(p, -0.75)
             p_hi[pid] = denormalize_parameter_value(p, +0.75)
-            gb_lo = evaluate_greybox_backbone(prof, p_lo, model.greybox_constants)
-            gb_hi = evaluate_greybox_backbone(prof, p_hi, model.greybox_constants)
+            gb_lo = evaluate_greybox_backbone(
+                prof, p_lo, model.greybox_constants, controller_profile=model.controller_profile
+            )
+            gb_hi = evaluate_greybox_backbone(
+                prof, p_hi, model.greybox_constants, controller_profile=model.controller_profile
+            )
             rel_gain = 0.0
             for m_id in objective_metrics:
                 denom = max(abs(base_gb.get(m_id, 0.0)), 1e-4)
@@ -269,8 +277,14 @@ def recommend_parameters(
             "learn with more runs (>= 4 per metric) before requesting recommendations"
         )
 
+    ctrl_prof: ControllerProfile = model.controller_profile or default_generic_controller_profile()
+    allowed_tunable = ctrl_prof.tunable_parameter_ids(
+        include_drive_side=req.include_drive_side_parameters
+    )
     agg_importance = _target_geometry_leverage(model, eval_case, base_params, objective_metrics)
-    locked_set = set(req.locked_parameter_ids)
+    locked_set = set(req.locked_parameter_ids) | (
+        {p.parameter_id for p in reg.parameters} - set(allowed_tunable)
+    )
     tunable_ids = [
         pid
         for pid, score in sorted(agg_importance.items(), key=lambda kv: kv[1], reverse=True)
@@ -297,14 +311,14 @@ def recommend_parameters(
     rng = np.random.default_rng(req.seed)
     candidate_dicts: list[dict[str, float]] = [dict(base_params)]
 
-    feed_param = param_map.get("g2.path_max_feed_override")
+    feed_mapped = ctrl_prof.from_canonical_value("feed_override_ratio", req.maximum_feed_override)
     sampling_bounds = _parameter_sampling_bounds(model)
 
     def _clip_value(pid: str, val: float) -> float:
         p_def = param_map[pid]
         lo, hi = float(p_def.bounds[0]), float(p_def.bounds[1])
-        if feed_param is not None and pid == feed_param.parameter_id:
-            hi = min(hi, req.maximum_feed_override)
+        if feed_mapped is not None and pid == feed_mapped[0]:
+            hi = min(hi, feed_mapped[1])
         clipped_v = max(lo, min(hi, float(val)))
         return float(round(clipped_v)) if p_def.value_type == "integer" else round(clipped_v, 6)
 
@@ -321,13 +335,26 @@ def recommend_parameters(
     # resonance actually measured by FFT on controller traces. No hand-picked "answers".
     if model.greybox_constants is not None and model.controller_run_count > 0:
         f_res = model.greybox_constants.identified_resonance_hz
-        fir_notch_ms = round(min(48.0, max(4.0, 1000.0 / max(f_res, 25.0))), 3)
+        fir_s_zero = round(min(0.048, max(0.004, 1.0 / max(f_res, 25.0))), 6)
         notch_hz = round(min(400.0, max(40.0, f_res)), 2)
-        for seed_override in (
-            {"g2.fir_moving_avg_time_ms": fir_notch_ms},
-            {"g3.notch_filter_freq_hz": notch_hz},
-            {"g2.fir_moving_avg_time_ms": fir_notch_ms, "g3.notch_filter_freq_hz": notch_hz},
-        ):
+        fir_seed = (
+            ctrl_prof.from_canonical_value("fir_time_s", fir_s_zero)
+            if ctrl_prof.capabilities.has_fir_filter
+            else None
+        )
+        notch_seed = (
+            ctrl_prof.from_canonical_value("notch_freq_hz", notch_hz)
+            if ctrl_prof.capabilities.has_drive_notch_filter
+            else None
+        )
+        seed_overrides: list[dict[str, float]] = []
+        if fir_seed is not None:
+            seed_overrides.append({fir_seed[0]: fir_seed[1]})
+        if notch_seed is not None:
+            seed_overrides.append({notch_seed[0]: notch_seed[1]})
+        if fir_seed is not None and notch_seed is not None:
+            seed_overrides.append({fir_seed[0]: fir_seed[1], notch_seed[0]: notch_seed[1]})
+        for seed_override in seed_overrides:
             candidate_dicts.append(_apply_seed_override(seed_override))
 
     for _ in range(max(0, req.candidate_pool_size - len(candidate_dicts))):
@@ -410,12 +437,16 @@ def recommend_parameters(
             max_case_acc = min(float(lim.maximum_acceleration_mm_s2) for lim in eval_case.axis_limits)
             declared_jerks = [float(lim.maximum_jerk_mm_s3) for lim in eval_case.axis_limits if lim.maximum_jerk_mm_s3 is not None]
             max_case_jrk = min(declared_jerks) if declared_jerks else float("inf")
-            cand_at = float(cand_p.get("g2.path_tangential_acc_mm_s2", 5000.0))
-            cand_jt = float(cand_p.get("g2.path_tangential_jerk_mm_s3", 200000.0))
-            cand_an = float(cand_p.get("g2.centripetal_acc_limit_mm_s2", 3000.0))
-            cand_fir_s = max(float(cand_p.get("g2.fir_moving_avg_time_ms", 12.0)) * 1e-3, eval_case.sample_period_seconds)
-            cand_flp = max(float(cand_p.get("g2.biquad_lowpass_freq_hz", 80.0)), 2.0)
-            corner_jrk_est = (1.25 * cand_an) / max(cand_fir_s, eval_case.sample_period_seconds) if extract_case_geometry_profile(eval_case).has_corners else 0.0
+            q_cand = ctrl_prof.to_canonical(cand_p)
+            cand_at = q_cand.path_tangential_acc_mm_s2
+            cand_jt = q_cand.path_tangential_jerk_mm_s3
+            cand_an = q_cand.centripetal_acc_limit_mm_s2
+            cand_fir_s = max(q_cand.fir_time_s, eval_case.sample_period_seconds)
+            corner_jrk_est = (
+                (1.25 * cand_an) / cand_fir_s
+                if extract_case_geometry_profile(eval_case).has_corners
+                else 0.0
+            )
             if cand_at > max_case_acc or cand_jt > max_case_jrk or corner_jrk_est > max_case_jrk:
                 all_gates_ok = False
                 gate_failures["轴加速度/Jerk 上限"] = gate_failures.get("轴加速度/Jerk 上限", 0) + 1

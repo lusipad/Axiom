@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Annotated, Any, Literal, Mapping
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Mapping
 
 import numpy as np
 from pydantic import BeforeValidator, Field, model_validator
 
 from .models import AxiomModel, _require_json_number
+
+if TYPE_CHECKING:
+    from .controller_profile import ControllerProfile
 
 Number = Annotated[float, BeforeValidator(_require_json_number), Field(allow_inf_nan=False)]
 ParameterGroup = Literal["G1_GeometryLookahead", "G2_KinematicsFilter", "G3_ServoControl"]
@@ -629,11 +632,32 @@ def _latin_hypercube(n_samples: int, n_dims: int, rng: np.random.Generator) -> n
 def _orthogonal_greybox_anchors(
     reg: CncParameterRegistry,
     base: dict[str, float],
+    controller_profile: ControllerProfile | None = None,
 ) -> tuple[list[tuple[str, str, dict[str, float]]], list[tuple[str, str, dict[str, float]]]]:
     """Construct orthogonal physics-identifying anchor runs for G1/G2 (offline) and G3 (controller)."""
     pmap = {p.parameter_id: p for p in reg.parameters}
+    ref_slot_map: dict[str, tuple[Any, float]] = {}
+    if controller_profile is not None:
+        from .controller_profile import default_generic_controller_profile
+
+        ref_slot_map = {
+            b.vendor_parameter_id: (b.canonical_targets[0], b.scale)
+            for b in default_generic_controller_profile().bindings
+        }
 
     def _clip_set(overrides: dict[str, float]) -> dict[str, float]:
+        if controller_profile is not None:
+            canon_ovr = {
+                ref_slot_map[pid][0]: float(val) * ref_slot_map[pid][1]
+                for pid, val in overrides.items()
+                if pid in ref_slot_map
+            }
+            return controller_profile.from_canonical_overrides(
+                canon_ovr,
+                base_vendor_parameters=base,
+                respect_tunability=True,
+                include_drive_side=True,
+            )
         row = dict(base)
         for pid, val in overrides.items():
             if pid in pmap:
@@ -720,6 +744,7 @@ def _orthogonal_greybox_anchors(
 def generate_parameter_doe(
     registry: CncParameterRegistry | None = None,
     *,
+    controller_profile: ControllerProfile | None = None,
     offline_count: int = 36,
     controller_count: int = 12,
     seed: int = 42,
@@ -728,7 +753,18 @@ def generate_parameter_doe(
     active_parameter_ids: tuple[str, ...] | None = None,
 ) -> ParameterDoePlan:
     """Generate a two-stage DoE plan (Orthogonal Grey-Box anchors + space-filling LHS supplement)."""
-    reg = registry or default_cnc_parameter_registry()
+    if controller_profile is not None:
+        if registry is not None and registry.registry_id != controller_profile.registry.registry_id:
+            raise ValueError(
+                f"registry {registry.registry_id} conflicts with controller_profile registry "
+                f"{controller_profile.registry.registry_id}"
+            )
+        reg = controller_profile.registry
+        tunable_filter: frozenset[str] | None = controller_profile.tunable_parameter_ids(include_drive_side=True)
+    else:
+        reg = registry or default_cnc_parameter_registry()
+        tunable_filter = None
+
     base = default_parameter_values(reg)
     if baseline_parameters:
         for k, v in baseline_parameters.items():
@@ -737,7 +773,7 @@ def generate_parameter_doe(
 
     rng = np.random.default_rng(seed)
     off_anchors, ctrl_anchors = (
-        _orthogonal_greybox_anchors(reg, base)
+        _orthogonal_greybox_anchors(reg, base, controller_profile=controller_profile)
         if (mode == "orthogonal-greybox" and active_parameter_ids is None)
         else ([], [])
     )
@@ -746,6 +782,7 @@ def generate_parameter_doe(
         p
         for p in reg.parameters
         if p.group in {"G1_GeometryLookahead", "G2_KinematicsFilter"}
+        and (tunable_filter is None or p.parameter_id in tunable_filter)
         and (active_parameter_ids is None or p.parameter_id in active_parameter_ids)
     ]
     offline_samples_list: list[ParameterDoeSample] = []
@@ -784,7 +821,8 @@ def generate_parameter_doe(
     ctrl_defs = [
         p
         for p in reg.parameters
-        if (active_parameter_ids is None or p.parameter_id in active_parameter_ids or p.group == "G3_ServoControl")
+        if (tunable_filter is None or p.parameter_id in tunable_filter)
+        and (active_parameter_ids is None or p.parameter_id in active_parameter_ids or p.group == "G3_ServoControl")
     ]
     ctrl_samples_list: list[ParameterDoeSample] = []
     if controller_count > 0 and ctrl_defs:

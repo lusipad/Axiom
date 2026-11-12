@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from .comparison import compare
 from .benchmark import (
+    CncAlgorithmExport,
     CncBenchmarkCase,
     benchmark_case_hash,
     cnc_benchmark_example,
@@ -20,6 +21,12 @@ from .benchmark import (
 )
 from .benchmark_standard import STANDARD_CASE_NAMES, StandardCaseSettings, render_nc_program, standard_cases
 from .benchmark_trace import TraceColumns, TraceImportOptions, import_controller_trace
+from .controller_profile import (
+    ControllerProfile,
+    get_controller_profile,
+    list_controller_profiles,
+)
+from .parameter_diagnoser import diagnose_single_run, render_diagnostic_table
 from .parameter_learner import (
     LearnedParameterSurrogate,
     learn_parameter_surrogate,
@@ -27,6 +34,7 @@ from .parameter_learner import (
 )
 from .cnc_governance import assess_cnc_greybox_governance
 from .parameter_recommender import (
+    ParameterRecommendationReport,
     ParameterRecommendationRequest,
     build_cnc_parameter_closed_loop_demo,
     recommend_parameters,
@@ -91,6 +99,10 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         if args.command == "param-registry":
             print(default_cnc_parameter_registry().model_dump_json(indent=2, by_alias=True, exclude_none=True))
             return 0
+        if args.command == "param-profiles":
+            return _param_profiles_cli(args)
+        if args.command == "param-diagnose":
+            return _param_diagnose_cli(args)
         if args.command == "param-doe":
             return _param_doe_cli(args)
         if args.command == "param-learn":
@@ -216,14 +228,69 @@ def _evaluate_single_export_cli(args: argparse.Namespace) -> int:
     return 0 if report.outcome == "Passed" else 1
 
 
+def _resolve_cli_controller_profile(spec: str | None) -> ControllerProfile | None:
+    if spec is None:
+        return None
+    p = Path(spec)
+    if p.is_file():
+        return ControllerProfile.model_validate(_benchmark_json(p))
+    return get_controller_profile(spec)
+
+
+def _param_profiles_cli(args: argparse.Namespace) -> int:
+    if args.profile is not None:
+        prof = _resolve_cli_controller_profile(args.profile)
+        assert prof is not None
+        print(prof.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+        return 0
+    payload = [
+        {
+            "profileId": p.profile_id,
+            "vendorName": p.vendor_name,
+            "controllerFamily": p.controller_family,
+            "registryId": p.registry.registry_id,
+            "parameterCount": len(p.registry.parameters),
+        }
+        for p in list_controller_profiles()
+    ]
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _param_diagnose_cli(args: argparse.Namespace) -> int:
+    case_obj = CncBenchmarkCase.model_validate(_benchmark_json(args.case))
+    exp_obj = CncAlgorithmExport.model_validate(_benchmark_json(args.export))
+    prof = _resolve_cli_controller_profile(args.profile)
+    override_params = _parse_cli_params(args.params, None)
+    diag = diagnose_single_run(
+        case_obj,
+        exp_obj,
+        parameters=override_params,
+        controller_profile=prof,
+        include_drive_side=not args.nc_only,
+    )
+    if args.out is not None:
+        args.out.write_text(
+            diag.model_dump_json(indent=2, by_alias=True, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
+    if args.format == "table":
+        print(render_diagnostic_table(diag), end="")
+    else:
+        print(diag.model_dump_json(indent=2, by_alias=True, exclude_none=True))
+    return 0
+
+
 def _param_doe_cli(args: argparse.Namespace) -> int:
+    prof = _resolve_cli_controller_profile(args.profile)
     reg = (
         CncParameterRegistry.model_validate(_benchmark_json(args.registry))
         if args.registry is not None
-        else default_cnc_parameter_registry()
+        else (prof.registry if prof is not None else default_cnc_parameter_registry())
     )
     plan = generate_parameter_doe(
         reg,
+        controller_profile=prof,
         offline_count=args.offline_count,
         controller_count=args.controller_count,
         seed=args.seed,
@@ -243,6 +310,7 @@ def _param_learn_cli(args: argparse.Namespace) -> int:
     else:
         if not args.cases or not args.exports:
             raise ValueError("at least one --case and 4 --export files are required")
+        prof = _resolve_cli_controller_profile(args.profile)
         reg = (
             CncParameterRegistry.model_validate(_benchmark_json(args.registry))
             if args.registry is not None
@@ -253,6 +321,7 @@ def _param_learn_cli(args: argparse.Namespace) -> int:
             case_objs[0] if len(case_objs) == 1 else case_objs,
             [_benchmark_json(p) for p in args.exports],
             registry=reg,
+            controller_profile=prof,
             max_active_parameters_per_metric=args.max_active,
         )
     if args.out_model is not None:
@@ -279,6 +348,7 @@ def _param_recommend_cli(args: argparse.Namespace) -> int:
         maximumActualPathDeviationMm=args.max_actual_path_deviation_mm,
         maximumFollowingErrorMm=args.max_following_error_mm,
         maximumFeedOverride=args.max_feed_override,
+        includeDriveSideParameters=not args.nc_only,
         safetyKappa=args.safety_kappa,
     )
     report = recommend_parameters(surrogate, req)
@@ -639,8 +709,19 @@ def _parser() -> argparse.ArgumentParser:
     eval_single_cmd.add_argument("--export", type=Path)
     eval_single_cmd.add_argument("--format", choices=("json", "table"), default="json")
     commands.add_parser("param-registry", help="print the standard 32-parameter CNC parameter registry")
+    prof_cmd = commands.add_parser("param-profiles", help="list or inspect multi-vendor CNC controller profiles")
+    prof_cmd.add_argument("--profile", help="built-in profile ID or JSON file path")
+    diag_cmd = commands.add_parser("param-diagnose", help="diagnose a single CNC run and emit 1-2 formula-based parameter suggestions")
+    diag_cmd.add_argument("--case", type=Path, required=True)
+    diag_cmd.add_argument("--export", type=Path, required=True)
+    diag_cmd.add_argument("--profile", help="built-in controller profile ID or JSON file")
+    diag_cmd.add_argument("--params", type=Path, help="optional baseline vendor parameter JSON override")
+    diag_cmd.add_argument("--nc-only", action="store_true", help="restrict suggestions to NC-panel tunable parameters")
+    diag_cmd.add_argument("--out", type=Path, help="optional file path to write the JSON diagnostic report")
+    diag_cmd.add_argument("--format", choices=("json", "table"), default="table")
     doe_cmd = commands.add_parser("param-doe", help="generate a Latin Hypercube Design of Experiments for 30+ CNC parameters")
     doe_cmd.add_argument("--registry", type=Path)
+    doe_cmd.add_argument("--profile", help="built-in controller profile ID or JSON file")
     doe_cmd.add_argument("--offline-count", type=int, default=36)
     doe_cmd.add_argument("--controller-count", type=int, default=12)
     doe_cmd.add_argument("--seed", type=int, default=42)
@@ -650,6 +731,7 @@ def _parser() -> argparse.ArgumentParser:
     learn_cmd.add_argument("request", nargs="?", type=Path)
     learn_cmd.add_argument("--case", action="append", dest="cases", type=Path)
     learn_cmd.add_argument("--registry", type=Path)
+    learn_cmd.add_argument("--profile", help="built-in controller profile ID or JSON file")
     learn_cmd.add_argument("--export", action="append", dest="exports", type=Path)
     learn_cmd.add_argument("--max-active", type=int, default=6)
     learn_cmd.add_argument("--out-model", type=Path)
@@ -663,6 +745,7 @@ def _parser() -> argparse.ArgumentParser:
     rec_cmd.add_argument("--max-actual-path-deviation-mm", type=float, default=0.045)
     rec_cmd.add_argument("--max-following-error-mm", type=float, default=None)
     rec_cmd.add_argument("--max-feed-override", type=float, default=1.0)
+    rec_cmd.add_argument("--nc-only", action="store_true", help="restrict adjustments to NC-panel tunable parameters")
     rec_cmd.add_argument("--safety-kappa", type=float, default=1.0)
     rec_cmd.add_argument("--format", choices=("json", "table"), default="json")
     demo_cmd = commands.add_parser("param-demo", help="run the 32-parameter CNC evaluation, learning, and recommendation closed-loop demo")
@@ -699,6 +782,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "benchmark-import-trace",
         "benchmark-evaluate",
         "param-registry",
+        "param-profiles",
+        "param-diagnose",
         "param-doe",
         "param-learn",
         "param-recommend",

@@ -32,6 +32,11 @@ from .benchmark import (
     benchmark_case_hash,
     evaluate_cnc_export,
 )
+from .controller_profile import (
+    ControllerProfile,
+    default_generic_controller_profile,
+    verify_controller_profile_hash,
+)
 from .greybox_model import (
     GREYBOX_KERNEL_ID,
     CaseGeometryProfile,
@@ -220,6 +225,9 @@ class LearnedParameterSurrogate(AxiomModel):
     cross_toolpath_validation: CrossToolpathValidationSummary | None = Field(
         default=None, alias="crossToolpathValidation"
     )
+    controller_profile: ControllerProfile | None = Field(
+        default=None, alias="controllerProfile"
+    )
     registry: CncParameterRegistry
     offline_run_count: int = Field(alias="offlineRunCount")
     controller_run_count: int = Field(alias="controllerRunCount")
@@ -235,6 +243,9 @@ class ParameterLearningRequest(AxiomModel):
     case: CncBenchmarkCase | None = None
     cases: tuple[CncBenchmarkCase, ...] | None = None
     registry: CncParameterRegistry | None = None
+    controller_profile: ControllerProfile | None = Field(
+        default=None, alias="controllerProfile"
+    )
     exports: tuple[CncAlgorithmExport, ...] = Field(min_length=4, max_length=2000)
     target_metrics: tuple[str, ...] = Field(default=DEFAULT_TARGET_METRICS, alias="targetMetrics")
     max_active_parameters_per_metric: int = Field(default=6, ge=2, le=15, alias="maxActiveParametersPerMetric")
@@ -289,24 +300,60 @@ def _residual_feature_ids_for_metric(
     metric_id: str,
     active_param_ids: Sequence[str],
     has_controller_traces: bool,
+    *,
+    registry: CncParameterRegistry | None = None,
+    controller_profile: ControllerProfile | None = None,
 ) -> list[str]:
     """Select compact, physically grounded 3D-6D feature subspace for the residual ARD-GP."""
+    prof = controller_profile or default_generic_controller_profile()
+    reg = registry or prof.registry
+    reg_param_ids = {p.parameter_id for p in reg.parameters}
+    derived_ids = [d.feature_id for d in reg.derived_features]
+
+    def _slot_pid(slot: Any) -> str | None:
+        pid = prof.parameter_id_for_slot(slot)
+        return pid if (pid is not None and pid in reg_param_ids) else None
+
+    def _dedup(items: Sequence[str | None], cap: int) -> list[str]:
+        out: list[str] = []
+        for it in items:
+            if it and it not in out and len(out) < cap:
+                out.append(it)
+        return out
+
     if metric_id == "quadrantGlitchExcessMm":
-        return ["g3.friction_comp_amp_x", "g3.friction_comp_amp_y", "g3.servo_kp_x", "phys.revAccNorm"]
+        chosen = _dedup(
+            [
+                _slot_pid("friction_comp_amp_x_mm"),
+                _slot_pid("friction_comp_amp_y_mm"),
+                _slot_pid("servo_kp_x_1_s"),
+                "phys.revAccNorm",
+            ],
+            4,
+        )
+        return chosen if len(chosen) >= 2 else _dedup(chosen + list(active_param_ids), 4)
     if metric_id == "resonanceBandRmsMm":
-        return ["g3.notch_filter_freq_hz", "g2.fir_moving_avg_time_ms", "phys.firResonanceGain", "phys.notchSuppression"]
+        chosen = _dedup(
+            [
+                _slot_pid("notch_freq_hz"),
+                _slot_pid("fir_time_s"),
+                "phys.firResonanceGain",
+                "phys.notchSuppression",
+            ],
+            4,
+        )
+        return chosen
     if metric_id in ("actualPathDeviationMaxMm", "normalServoErrorMaxMm") and has_controller_traces:
-        chosen = list(active_param_ids[:4])
-        for extra in ("derived.kp_xy_mismatch", "phys.firResonanceGain", "phys.notchSuppression"):
-            if extra not in chosen and len(chosen) < 6:
-                chosen.append(extra)
-        return chosen
+        xy_mis = derived_ids[0] if derived_ids else None
+        return _dedup(
+            list(active_param_ids[:4]) + [xy_mis, "phys.firResonanceGain", "phys.notchSuppression"],
+            6,
+        )
     if metric_id == "cornerSpeedMinMmS":
-        chosen = list(active_param_ids[:4])
-        for extra in ("g2.fir_moving_avg_time_ms", "g2.biquad_lowpass_freq_hz"):
-            if extra not in chosen and len(chosen) < 5:
-                chosen.append(extra)
-        return chosen
+        return _dedup(
+            list(active_param_ids[:4]) + [_slot_pid("fir_time_s"), _slot_pid("lowpass_cutoff_hz")],
+            5,
+        )
     return list(active_param_ids[:5])
 
 
@@ -389,7 +436,12 @@ def predict_metric_for_parameters(
     gb_pred: dict[str, float] = {}
     if active_case is not None and surrogate.greybox_constants is not None:
         prof = extract_case_geometry_profile(active_case)
-        gb_pred = evaluate_greybox_backbone(prof, full_params, surrogate.greybox_constants)
+        gb_pred = evaluate_greybox_backbone(
+            prof,
+            full_params,
+            surrogate.greybox_constants,
+            controller_profile=surrogate.controller_profile,
+        )
 
     if metric_id not in surrogate.metric_heads:
         raw_gb = float(gb_pred.get(metric_id, 0.0))
@@ -436,6 +488,7 @@ def _compute_physics_sensitivities(
     *,
     has_controller_traces: bool,
     max_active: int,
+    controller_profile: ControllerProfile | None = None,
 ) -> tuple[list[str], tuple[ParameterSensitivityItem, ...], tuple[PairwiseParameterInteraction, ...]]:
     """Compute exact variance-based physical sensitivity & bilinear coupling on active case geometries."""
     mask = causal_mask_for_metric(registry, metric_id, has_controller_traces=has_controller_traces)
@@ -459,7 +512,7 @@ def _compute_physics_sensitivities(
             probe = dict(baseline_params)
             probe[pid] = denormalize_parameter_value(p, float(u_val))
             gb_across_cases = [
-                evaluate_greybox_backbone(prof, probe, consts).get(metric_id, 0.0)
+                evaluate_greybox_backbone(prof, probe, consts, controller_profile=controller_profile).get(metric_id, 0.0)
                 for prof in profiles
             ]
             sweep_vals.append(float(np.mean(gb_across_cases)))
@@ -558,7 +611,14 @@ def _compute_physics_sensitivities(
                 pr = dict(baseline_params)
                 pr[pa] = denormalize_parameter_value(da, ua)
                 pr[pb] = denormalize_parameter_value(db, ub)
-                return float(np.mean([evaluate_greybox_backbone(prof, pr, consts).get(metric_id, 0.0) for prof in profiles]))
+                return float(
+                    np.mean(
+                        [
+                            evaluate_greybox_backbone(prof, pr, consts, controller_profile=controller_profile).get(metric_id, 0.0)
+                            for prof in profiles
+                        ]
+                    )
+                )
 
             f_pp = _eval_pair(+delta_u, +delta_u)
             f_pm = _eval_pair(+delta_u, -delta_u)
@@ -596,6 +656,7 @@ def _fit_greybox_residual_head(
     *,
     has_controller_traces: bool,
     max_active: int,
+    controller_profile: ControllerProfile | None = None,
     modeling_mode: Literal["greybox-physics-gp", "multi-fidelity-residual-fusion"] = "greybox-physics-gp",
     base_metric_id: str | None = None,
 ) -> MetricSurrogateHead:
@@ -603,7 +664,10 @@ def _fit_greybox_residual_head(
     derived_map = {d.feature_id: d for d in registry.derived_features}
 
     obs_params = [r[1] for r in records_subset]
-    gb_preds_list = [evaluate_greybox_backbone(prof, p_dict, consts) for prof, p_dict in records_subset]
+    gb_preds_list = [
+        evaluate_greybox_backbone(prof, p_dict, consts, controller_profile=controller_profile)
+        for prof, p_dict in records_subset
+    ]
     y_gb = np.asarray([g.get(metric_id, 0.0) for g in gb_preds_list], dtype=np.float64)
     residuals = y_obs - y_gb
     gb_rmse = float(math.sqrt(np.mean(residuals ** 2)))
@@ -618,9 +682,16 @@ def _fit_greybox_residual_head(
         y_obs,
         has_controller_traces=has_controller_traces,
         max_active=max_active,
+        controller_profile=controller_profile,
     )
 
-    feat_ids = _residual_feature_ids_for_metric(metric_id, active_param_ids, has_controller_traces)
+    feat_ids = _residual_feature_ids_for_metric(
+        metric_id,
+        active_param_ids,
+        has_controller_traces,
+        registry=registry,
+        controller_profile=controller_profile,
+    )
     if not feat_ids:
         feat_ids = [registry.parameters[0].parameter_id]
 
@@ -743,7 +814,7 @@ def _fit_greybox_residual_head(
             r_val = denormalize_parameter_value(p_def, float(g_val))
             probe_p = dict(baseline_params)
             probe_p[pid] = r_val
-            gb_p = evaluate_greybox_backbone(ref_prof, probe_p, consts)
+            gb_p = evaluate_greybox_backbone(ref_prof, probe_p, consts, controller_profile=controller_profile)
             z_probe = [_extract_feature_value(f_id, probe_p, param_map, derived_map, gb_p) for f_id in feat_ids]
             rm, rr, _ = _predict_residual_gp(provisional, z_probe)
             pm = float(gb_p.get(metric_id, 0.0)) + rm
@@ -787,6 +858,8 @@ def _fit_greybox_residual_head(
 def _compute_loco_cross_toolpath_validation(
     case_list: Sequence[CncBenchmarkCase],
     full_records: Sequence[tuple[CaseGeometryProfile, CncBenchmarkCase, CncAlgorithmExport, CncQualityReport, dict[str, float]]],
+    *,
+    controller_profile: ControllerProfile | None = None,
 ) -> CrossToolpathValidationSummary | None:
     """Evaluate Leave-One-Case-Out (LOCO) zero-shot physical transfer error across distinct toolpath geometries."""
     if len(case_list) < 2:
@@ -798,13 +871,13 @@ def _compute_loco_cross_toolpath_validation(
         val_recs = [r for r in full_records if r[1].case_id == held_case.case_id]
         if len(train_recs) < 3 or len(val_recs) < 1:
             continue
-        loco_consts, _ = calibrate_greybox_constants(train_recs)
+        loco_consts, _ = calibrate_greybox_constants(train_recs, controller_profile=controller_profile)
         dur_sq: list[float] = []
         dur_ape: list[float] = []
         cmd_sq: list[float] = []
         act_sq: list[float] = []
         for prof, _, _, rep, p_dict in val_recs:
-            pred = evaluate_greybox_backbone(prof, p_dict, loco_consts)
+            pred = evaluate_greybox_backbone(prof, p_dict, loco_consts, controller_profile=controller_profile)
             obs_d = float(rep.kinematic_summary["durationSeconds"])
             obs_cmd = float(rep.kinematic_summary["sampledPathDeviationMaxMm"])
             dur_sq.append((pred["durationSeconds"] - obs_d) ** 2)
@@ -844,6 +917,7 @@ def learn_parameter_surrogate(
     exports: Sequence[CncAlgorithmExport | Mapping[str, Any]] | None = None,
     *,
     registry: CncParameterRegistry | None = None,
+    controller_profile: ControllerProfile | None = None,
     target_metrics: Sequence[str] = DEFAULT_TARGET_METRICS,
     max_active_parameters_per_metric: int = 6,
 ) -> LearnedParameterSurrogate:
@@ -868,6 +942,7 @@ def learn_parameter_surrogate(
                 case=resolved_cases[0],
                 cases=resolved_cases,
                 registry=registry,
+                controllerProfile=controller_profile,
                 exports=resolved_exports,
                 targetMetrics=tuple(target_metrics),
                 maxActiveParametersPerMetric=max_active_parameters_per_metric,
@@ -882,6 +957,7 @@ def learn_parameter_surrogate(
                 case=resolved_case,
                 cases=(resolved_case,),
                 registry=registry,
+                controllerProfile=controller_profile,
                 exports=resolved_exports,
                 targetMetrics=tuple(target_metrics),
                 maxActiveParametersPerMetric=max_active_parameters_per_metric,
@@ -898,16 +974,26 @@ def learn_parameter_surrogate(
     profile_by_hash = {h: extract_case_geometry_profile(c) for h, c in case_by_hash.items()}
     unique_profiles = list(profile_by_hash.values())
 
-    reg = req.registry or default_cnc_parameter_registry()
-    verify_registry_content_hash(reg)
-    missing_ids = missing_greybox_parameter_ids(reg)
-    if missing_ids:
-        raise ValueError(
-            f"registry {reg.registry_id} is not compatible with grey-box kernel {GREYBOX_KERNEL_ID}: "
-            f"missing {', '.join(missing_ids)}. Map the controller's parameters onto the kernel "
-            "parameter ids (controller profile) instead of renaming them; unmapped parameters "
-            "would otherwise silently fall back to defaults."
-        )
+    ctrl_prof = req.controller_profile
+    if ctrl_prof is not None:
+        verify_controller_profile_hash(ctrl_prof)
+        if req.registry is not None and req.registry.registry_id != ctrl_prof.registry.registry_id:
+            raise ValueError(
+                f"registry {req.registry.registry_id} conflicts with controllerProfile registry "
+                f"{ctrl_prof.registry.registry_id}"
+            )
+        reg = ctrl_prof.registry
+    else:
+        reg = req.registry or default_cnc_parameter_registry()
+        verify_registry_content_hash(reg)
+        missing_ids = missing_greybox_parameter_ids(reg)
+        if missing_ids:
+            raise ValueError(
+                f"registry {reg.registry_id} is not compatible with grey-box kernel {GREYBOX_KERNEL_ID}: "
+                f"missing {', '.join(missing_ids)}. Supply a ControllerProfile mapping the vendor "
+                "parameters onto canonical physical quantities instead of renaming them directly; "
+                "unmapped parameters would otherwise silently fall back to defaults."
+            )
     default_params = default_parameter_values(reg)
     registry_ids = set(default_params)
 
@@ -935,8 +1021,8 @@ def learn_parameter_surrogate(
     total_slices = sum(len(r[3].geometry_slices) for r in full_records)
 
     # Layer 2: Calibrate Grey-Box Physical Constants across all supplied cases & traces
-    gb_consts, phys_notes = calibrate_greybox_constants(full_records)
-    loco_summary = _compute_loco_cross_toolpath_validation(case_list, full_records)
+    gb_consts, phys_notes = calibrate_greybox_constants(full_records, controller_profile=ctrl_prof)
+    loco_summary = _compute_loco_cross_toolpath_validation(case_list, full_records, controller_profile=ctrl_prof)
 
     # Layer 3: Fit compact residual GP heads per metric
     metric_heads: dict[str, MetricSurrogateHead] = {}
@@ -967,6 +1053,7 @@ def learn_parameter_surrogate(
                     default_params,
                     has_controller_traces=False,
                     max_active=req.max_active_parameters_per_metric,
+                    controller_profile=ctrl_prof,
                 )
         elif m_id in SERVO_METRIC_IDS and len(ctrl_records) >= 4:
             vals_c: list[float] = []
@@ -996,6 +1083,7 @@ def learn_parameter_surrogate(
                     default_params,
                     has_controller_traces=True,
                     max_active=req.max_active_parameters_per_metric,
+                    controller_profile=ctrl_prof,
                     modeling_mode="multi-fidelity-residual-fusion" if is_fusion else "greybox-physics-gp",
                     base_metric_id="sampledPathDeviationMaxMm" if is_fusion else None,
                 )
@@ -1016,6 +1104,7 @@ def learn_parameter_surrogate(
         greyboxConstants=gb_consts,
         physicalDiagnostics=phys_notes,
         crossToolpathValidation=loco_summary,
+        controllerProfile=ctrl_prof,
         registry=reg,
         offlineRunCount=len(offline_records),
         controllerRunCount=len(ctrl_records),

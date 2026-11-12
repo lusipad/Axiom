@@ -46,6 +46,11 @@ from .benchmark import (
     _segment_ends,
     benchmark_case_hash,
 )
+from .controller_profile import (
+    CanonicalControlQuantities,
+    ControllerProfile,
+    default_generic_controller_profile,
+)
 from .models import AxiomModel
 from .parameter_space import (
     CncParameterRegistry,
@@ -53,6 +58,8 @@ from .parameter_space import (
     default_cnc_parameter_registry,
     default_parameter_values,
 )
+
+_DEFAULT_GENERIC_PROFILE = default_generic_controller_profile()
 
 # The grey-box kernel below encodes ONE controller architecture: tolerance-based corner
 # blending, post-interpolation FIR + 2nd-order low-pass, and a P-P cascade with velocity /
@@ -301,82 +308,61 @@ def _hardmin(values: Sequence[float]) -> float:
     return min(values)
 
 
-def evaluate_greybox_backbone(
-    profile: CaseGeometryProfile,
-    params: Mapping[str, float],
-    consts: GreyBoxPhysicalConstants,
-) -> dict[str, float]:
-    """Evaluate all white-box + calibrated grey-box physical predictions for a given CaseGeometryProfile."""
-    # Unpack G1 parameters
-    eps_cor = max(1e-5, float(params.get("g1.corner_tolerance_mm", 0.020)))
-    eps_chord = max(1e-5, float(params.get("g1.small_seg_chord_tol_mm", 0.005)))
-    n_la = max(1.0, float(params.get("g1.lookahead_block_count", 160.0)))
-    ang_thresh_deg = float(params.get("g1.corner_angle_threshold_deg", 10.0))
-    col_merge_deg = float(params.get("g1.collinear_merge_angle_deg", 0.25))
-    curv_clamp = max(0.1, float(params.get("g1.curvature_speed_clamp_factor", 0.90)))
-    l_min = max(1e-4, float(params.get("g1.min_segment_length_mm", 0.005)))
-    spl_deg = int(round(float(params.get("g1.spline_degree", 3.0))))
+def compute_filter_time_scales(q: CanonicalControlQuantities) -> tuple[float, float, float | None]:
+    """Return `(filter_tau_s, valley_tau_eff_s, omega_lp_rad_s)` from canonical filter settings."""
+    tau_fir = max(0.0, q.fir_time_s)
+    if q.lowpass_cutoff_hz is not None:
+        omega_lp = 2.0 * math.pi * max(2.0, q.lowpass_cutoff_hz)
+        filter_tau = tau_fir + (math.sqrt(2.0) / omega_lp)
+        valley_tau_eff = math.sqrt(tau_fir ** 2 + (2.0 / omega_lp) ** 2)
+        return filter_tau, valley_tau_eff, omega_lp
+    return tau_fir, tau_fir, None
 
-    # Unpack G2 parameters
-    feed_ovr = max(0.05, float(params.get("g2.path_max_feed_override", 1.00)))
-    a_t = max(50.0, float(params.get("g2.path_tangential_acc_mm_s2", 5000.0)))
-    j_t = max(1000.0, float(params.get("g2.path_tangential_jerk_mm_s3", 200000.0)))
-    a_n = max(50.0, float(params.get("g2.centripetal_acc_limit_mm_s2", 3000.0)))
+
+def compute_servo_lag_coefficients(
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
+    """Steady-state P-P cascade velocity lag `c_v`, acceleration lag `c_a`, and inward curvature gain."""
+    kp = q.servo_kp_1_s
+    vff = q.vel_feedforward_ratio
+    aff = q.acc_feedforward_ratio
+    psi_v = (consts.velocity_loop_ratio_x, consts.velocity_loop_ratio_y, consts.velocity_loop_ratio_z)
+    c_v = (
+        (1.0 - vff[0]) / kp[0],
+        (1.0 - vff[1]) / kp[1],
+        (1.0 - vff[2]) / kp[2],
+    )
+    c_a = (
+        ((1.0 - aff[0]) / (psi_v[0] * (kp[0] ** 2))) - ((1.0 - vff[0]) / (kp[0] ** 2)),
+        ((1.0 - aff[1]) / (psi_v[1] * (kp[1] ** 2))) - ((1.0 - vff[1]) / (kp[1] ** 2)),
+        ((1.0 - aff[2]) / (psi_v[2] * (kp[2] ** 2))) - ((1.0 - vff[2]) / (kp[2] ** 2)),
+    )
+    inward_curv_gain = (
+        -(c_a[0] + 0.5 * (c_v[0] ** 2)),
+        -(c_a[1] + 0.5 * (c_v[1] ** 2)),
+        -(c_a[2] + 0.5 * (c_v[2] ** 2)),
+    )
+    return c_v, c_a, inward_curv_gain
+
+
+def compute_segment_speed_envelopes(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+) -> tuple[list[float], list[float], list[float], list[float], tuple[float, float, float]]:
+    """Mechanism 1: Hard min-clipped steady-state segment speed & effective acceleration envelopes."""
+    v_prog = q.feed_override_ratio * profile.programmed_feed_mm_s
     v_lim = (
-        min(profile.axis_vel_limits[0], max(10.0, float(params.get("g2.axis_vel_limit_x", 500.0)))),
-        min(profile.axis_vel_limits[1], max(10.0, float(params.get("g2.axis_vel_limit_y", 500.0)))),
-        min(profile.axis_vel_limits[2], max(10.0, float(params.get("g2.axis_vel_limit_z", 400.0)))),
+        min(profile.axis_vel_limits[0], q.axis_vel_limit_mm_s[0]),
+        min(profile.axis_vel_limits[1], q.axis_vel_limit_mm_s[1]),
+        min(profile.axis_vel_limits[2], q.axis_vel_limit_mm_s[2]),
     )
     a_lim = (
-        min(profile.axis_acc_limits[0], max(100.0, float(params.get("g2.axis_acc_limit_x", 5000.0)))),
-        min(profile.axis_acc_limits[1], max(100.0, float(params.get("g2.axis_acc_limit_y", 5000.0)))),
-        min(profile.axis_acc_limits[2], max(100.0, float(params.get("g2.axis_acc_limit_z", 4000.0)))),
+        min(profile.axis_acc_limits[0], q.axis_acc_limit_mm_s2[0]),
+        min(profile.axis_acc_limits[1], q.axis_acc_limit_mm_s2[1]),
+        min(profile.axis_acc_limits[2], q.axis_acc_limit_mm_s2[2]),
     )
-    tau_fir = max(0.0, float(params.get("g2.fir_moving_avg_time_ms", 12.0)) * 1e-3)
-    f_lp = max(2.0, float(params.get("g2.biquad_lowpass_freq_hz", 80.0)))
-    omega_lp = 2.0 * math.pi * f_lp
-    beta_bell = float(np.clip(params.get("g2.bell_acc_shape_factor", 0.50), 0.0, 1.0))
-
-    # Unpack G3 parameters
-    kp = (
-        max(5.0, float(params.get("g3.servo_kp_x", 60.0))),
-        max(5.0, float(params.get("g3.servo_kp_y", 60.0))),
-        max(5.0, float(params.get("g3.servo_kp_z", 55.0))),
-    )
-    vff = (
-        float(params.get("g3.vel_feedforward_x", 0.98)),
-        float(params.get("g3.vel_feedforward_y", 0.98)),
-        float(params.get("g3.vel_feedforward_z", 0.95)),
-    )
-    aff = (
-        float(params.get("g3.acc_feedforward_x", 0.70)),
-        float(params.get("g3.acc_feedforward_y", 0.70)),
-        float(params.get("g3.acc_feedforward_z", 0.70)),
-    )
-    a_fric = (
-        max(0.0, float(params.get("g3.friction_comp_amp_x", 0.005))),
-        max(0.0, float(params.get("g3.friction_comp_amp_y", 0.005))),
-    )
-    f_notch = max(10.0, float(params.get("g3.notch_filter_freq_hz", 180.0)))
-
-    v_prog = feed_ovr * profile.programmed_feed_mm_s
-    psi_spl = consts.spline_curvature_deg5 if spl_deg >= 5 else consts.spline_curvature_deg3
-    psi_v = (consts.velocity_loop_ratio_x, consts.velocity_loop_ratio_y, consts.velocity_loop_ratio_z)
-    filter_tau = tau_fir + (math.sqrt(2.0) / omega_lp)
-    valley_tau_eff = math.sqrt(tau_fir ** 2 + (2.0 / omega_lp) ** 2)
-
-    # First-order velocity lag & second-order acceleration lag coefficients per axis:
-    # e_i(t) = c_v[i] * v_i(t) + c_a[i] * a_i(t) + O(jerk)
-    c_v = tuple((1.0 - vff[i]) / kp[i] for i in range(3))
-    c_a = tuple(
-        ((1.0 - aff[i]) / (psi_v[i] * (kp[i] ** 2))) - ((1.0 - vff[i]) / (kp[i] ** 2))
-        for i in range(3)
-    )
-    # Exact steady-state inward curvature shift coefficient -(c_a + 0.5 * c_v^2):
-    # > 0 means inward radial/corner shrink; < 0 means outward inertia wide-swing!
-    inward_curv_gain = tuple(-(c_a[i] + 0.5 * (c_v[i] ** 2)) for i in range(3))
-
-    # 1. Segment steady-state hard-clipped velocities
     seg_speeds: list[float] = []
     seg_eff_accs: list[float] = []
     peak_axis_vels = [0.0, 0.0, 0.0]
@@ -394,11 +380,17 @@ def evaluate_greybox_backbone(
             a_lim[1] / uy if uy > 1e-9 else float("inf"),
             a_lim[2] / uz if uz > 1e-9 else float("inf"),
         )
-        a_eff = min(a_t, a_ax)
-        v_curv = curv_clamp * math.sqrt(a_n * seg.radius_mm) if math.isfinite(seg.radius_mm) else float("inf")
+        a_eff = min(q.path_tangential_acc_mm_s2, a_ax)
+        v_curv = (
+            q.curvature_speed_clamp_factor * math.sqrt(q.centripetal_acc_limit_mm_s2 * seg.radius_mm)
+            if math.isfinite(seg.radius_mm)
+            else float("inf")
+        )
         if seg.kind == "micro-cluster":
-            eff_chord = max(seg.mean_chord_mm, l_min)
-            v_la = math.sqrt(max(1e-6, 2.0 * consts.lookahead_safety_factor * a_eff * n_la * eff_chord))
+            eff_chord = max(seg.mean_chord_mm, q.min_segment_length_mm)
+            v_la = math.sqrt(
+                max(1e-6, 2.0 * consts.lookahead_safety_factor * a_eff * q.lookahead_block_count * eff_chord)
+            )
         else:
             v_la = float("inf")
 
@@ -413,7 +405,24 @@ def evaluate_greybox_backbone(
             peak_axis_accs[0] = max(peak_axis_accs[0], a_cent_actual * ux)
             peak_axis_accs[1] = max(peak_axis_accs[1], a_cent_actual * uy)
 
-    # 2. Corner transition velocities, post-filter corner deviations & signed Frenet normal shifts
+    return seg_speeds, seg_eff_accs, peak_axis_vels, peak_axis_accs, a_lim
+
+
+def compute_corner_blending_mechanics(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+    seg_speeds: Sequence[float],
+    a_lim: tuple[float, float, float],
+    filter_tau: float,
+    c_v: tuple[float, float, float],
+    inward_curv_gain: tuple[float, float, float],
+    peak_axis_accs: list[float],
+) -> tuple[list[float], list[float], list[float], list[float], list[float]]:
+    """Mechanism 2: Inscribed spline corner blending, filter corner-pull, and servo normal shift."""
+    v_prog = q.feed_override_ratio * profile.programmed_feed_mm_s
+    psi_spl = consts.spline_curvature_deg5 if q.spline_degree >= 5 else consts.spline_curvature_deg3
+
     corner_speeds: list[float] = []
     corner_blend_times: list[float] = []
     cmd_corner_devs: list[float] = []
@@ -421,7 +430,7 @@ def evaluate_greybox_backbone(
     normal_servo_peaks: list[float] = []
 
     for cor in profile.corners:
-        if cor.turn_angle_deg <= col_merge_deg:
+        if cor.turn_angle_deg <= q.collinear_merge_angle_deg:
             v_c = max(seg_speeds) if seg_speeds else v_prog
             e_cmd_c = 0.0
             t_blend = 0.0
@@ -431,18 +440,22 @@ def evaluate_greybox_backbone(
             half_ang = 0.5 * cor.turn_angle_rad
             one_minus_cos = max(1.0 - math.cos(half_ang), 1e-6)
             geom_cap = 0.45 * cor.min_adjacent_length_mm * math.sin(half_ang)
-            eff_tol = min(eps_cor, geom_cap) if cor.turn_angle_deg >= ang_thresh_deg else min(0.20 * eps_cor, geom_cap)
+            eff_tol = (
+                min(q.corner_tolerance_mm, geom_cap)
+                if cor.turn_angle_deg >= q.corner_angle_threshold_deg
+                else min(0.20 * q.corner_tolerance_mm, geom_cap)
+            )
             r_in = max(1e-5, eff_tol * math.cos(half_ang) / one_minus_cos)
             d_trim = min(0.40 * cor.min_adjacent_length_mm, r_in * math.tan(half_ang))
             r_eff = max(1e-5, psi_spl * r_in)
             bx, by, bz = cor.bisector_abs_vec
             a_cor_lim = min(
-                a_n,
+                q.centripetal_acc_limit_mm_s2,
                 a_lim[0] / bx if bx > 1e-9 else float("inf"),
                 a_lim[1] / by if by > 1e-9 else float("inf"),
                 a_lim[2] / bz if bz > 1e-9 else float("inf"),
             )
-            v_c = min(v_prog, curv_clamp * math.sqrt(a_cor_lim * r_eff))
+            v_c = min(v_prog, q.curvature_speed_clamp_factor * math.sqrt(a_cor_lim * r_eff))
             if seg_speeds:
                 v_c = min(v_c, max(seg_speeds))
             t_blend = (2.0 * d_trim) / max(v_c, 1.0)
@@ -450,13 +463,11 @@ def evaluate_greybox_backbone(
                 consts.corner_tol_realization * eff_tol
                 + consts.corner_filter_coupling * v_c * filter_tau * math.sin(half_ang)
             )
-            # Effective post-filter curvature radius seen by the servo loop at the rounded vertex
             r_servo_eff = r_eff + 0.55 * v_c * filter_tau / max(math.sin(half_ang), 0.15)
             a_norm_c = min(max(a_lim), (v_c ** 2) / max(r_servo_eff, 0.05))
             for ax_i, b_comp in enumerate((bx, by, bz)):
                 peak_axis_accs[ax_i] = max(peak_axis_accs[ax_i], min(a_lim[ax_i], a_norm_c * b_comp))
 
-            # Signed inward servo normal shift along corner bisector (weighted by active bisector axes)
             b_sq_sum = max(bx * bx + by * by + bz * bz, 1e-9)
             mean_inward_gain = (
                 (bx * bx) * inward_curv_gain[0]
@@ -475,7 +486,22 @@ def evaluate_greybox_backbone(
         act_corner_devs.append(act_c)
         normal_servo_peaks.append(servo_norm_c)
 
-    # 3. Forward-backward boundary speed propagation, total duration & post-filter corner valley speed
+    return corner_speeds, corner_blend_times, cmd_corner_devs, act_corner_devs, normal_servo_peaks
+
+
+def propagate_kinematic_time_law(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+    seg_speeds: Sequence[float],
+    seg_eff_accs: Sequence[float],
+    corner_speeds: Sequence[float],
+    corner_blend_times: Sequence[float],
+    filter_tau: float,
+    valley_tau_eff: float,
+) -> tuple[float, float, float]:
+    """Mechanism 3: Forward-backward acceleration propagation, S-curve tail, and corner valley speed."""
+    v_prog = q.feed_override_ratio * profile.programmed_feed_mm_s
     n_prims = len(profile.segments)
     boundary_v = [0.0] * (n_prims + 1)
     default_junction_v = min(corner_speeds) if corner_speeds else (min(seg_speeds) if seg_speeds else v_prog)
@@ -505,8 +531,14 @@ def evaluate_greybox_backbone(
             v_peak_seg = math.sqrt(max(1e-6, 0.5 * (v0 ** 2 + v1 ** 2) + a_e * seg.length_mm))
             t_cruise = 0.0
         seg_peak_speeds.append(v_peak_seg)
-        t_ramps = ((abs(v_peak_seg - v0) + abs(v_peak_seg - v1)) / a_e) * (1.0 + consts.bell_ramp_overhead * beta_bell)
-        s_curve_tail = consts.jerk_ramp_weight * (a_e / j_t) if (abs(v_peak_seg - v0) > 1.0 or abs(v_peak_seg - v1) > 1.0) else 0.0
+        t_ramps = ((abs(v_peak_seg - v0) + abs(v_peak_seg - v1)) / a_e) * (
+            1.0 + consts.bell_ramp_overhead * q.bell_acc_shape_factor
+        )
+        s_curve_tail = (
+            consts.jerk_ramp_weight * (a_e / q.path_tangential_jerk_mm_s3)
+            if (abs(v_peak_seg - v0) > 1.0 or abs(v_peak_seg - v1) > 1.0)
+            else 0.0
+        )
         raw_kin_time += consts.cruise_time_scale * t_cruise + t_ramps
         total_s_tail += s_curve_tail
 
@@ -517,13 +549,15 @@ def evaluate_greybox_backbone(
     achieved_corner_min = 0.0
     if corner_speeds:
         post_filter_corner_vels: list[float] = []
-        eff_ramp_acc = (min(seg_eff_accs) if seg_eff_accs else a_t) / (1.0 + 0.35 * beta_bell)
+        eff_ramp_acc = (
+            (min(seg_eff_accs) if seg_eff_accs else q.path_tangential_acc_mm_s2)
+            / (1.0 + 0.35 * q.bell_acc_shape_factor)
+        )
         adj_cruise_cap = max(seg_peak_speeds) if seg_peak_speeds else v_prog
         for idx_c, v_c_raw in enumerate(corner_speeds):
             v_junction = boundary_v[idx_c + 1] if (idx_c + 1) < n_prims else v_c_raw
             v_base_c = min(v_c_raw, v_junction)
             t_bl = corner_blend_times[idx_c]
-            # Boxcar + lowpass convolution lifts the sharp V-valley minimum when valley_tau_eff > 0.5 * t_blend
             excess_win = max(0.0, valley_tau_eff - 0.5 * t_bl)
             valley_lift = (
                 consts.corner_valley_filter_fill
@@ -533,14 +567,33 @@ def evaluate_greybox_backbone(
                 if valley_tau_eff > 1e-5
                 else 0.0
             )
-            # Vectorial corner projection factor cos(half_ang) when filter averages incoming & outgoing velocity vectors
             half_a = 0.5 * profile.corners[idx_c].turn_angle_rad
-            vec_fold = 1.0 - (1.0 - math.cos(half_a)) * min(1.0, valley_tau_eff / max(t_bl + valley_tau_eff, 1e-5)) * 0.35
+            vec_fold = (
+                1.0
+                - (1.0 - math.cos(half_a))
+                * min(1.0, valley_tau_eff / max(t_bl + valley_tau_eff, 1e-5))
+                * 0.35
+            )
             v_post = scurve_vel_scale * min(adj_cruise_cap, (v_base_c + valley_lift) * vec_fold)
             post_filter_corner_vels.append(max(0.0, v_post))
         achieved_corner_min = min(post_filter_corner_vels)
 
-    # 4. Arc command shrink, micro-segment chord deviation, and signed servo arc deviation
+    return duration_pred, scurve_vel_scale, achieved_corner_min
+
+
+def compute_arc_and_micro_deviations(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+    seg_speeds: Sequence[float],
+    scurve_vel_scale: float,
+    omega_lp: float | None,
+    c_v: tuple[float, float, float],
+    inward_curv_gain: tuple[float, float, float],
+    cmd_corner_devs: Sequence[float],
+    normal_servo_peaks: list[float],
+) -> tuple[float, list[float], list[float], float]:
+    """Mechanism 4: FIR/low-pass command radial shrink, micro-segment chord error, and servo arc shift."""
     cmd_arc_devs: list[float] = []
     act_arc_devs: list[float] = []
     signed_radial_offsets: list[float] = []
@@ -551,14 +604,12 @@ def evaluate_greybox_backbone(
             v_arc = seg_speeds[k] * scurve_vel_scale
             r_s = max(seg.radius_mm, 1e-6)
             omega_s = v_arc / r_s
-            half_arg = 0.5 * omega_s * tau_fir
+            half_arg = 0.5 * omega_s * q.fir_time_s
             sinc_val = (math.sin(half_arg) / half_arg) if half_arg > 1e-8 else (1.0 - (half_arg ** 2) / 6.0)
-            biquad_val = 1.0 / math.sqrt(1.0 + (omega_s / omega_lp) ** 4)
+            biquad_val = (1.0 / math.sqrt(1.0 + (omega_s / omega_lp) ** 4)) if omega_lp is not None else 1.0
             dr_cmd = max(0.0, r_s * (1.0 - sinc_val * biquad_val))
             cmd_arc_devs.append(dr_cmd)
 
-            # Exact second-order signed inward radial shift on circular/helical arc:
-            # dr_inward > 0 means radius shrinks inward (R_act < R_ref -> signedRadialOffsetMeanMm < 0)
             a_cent_arc = (v_arc ** 2) / r_s
             dr_servo_inward = 0.5 * (inward_curv_gain[0] + inward_curv_gain[1]) * a_cent_arc
             dr_mismatch = (
@@ -571,18 +622,48 @@ def evaluate_greybox_backbone(
             act_arc_devs.append(abs(total_inward) + dr_mismatch)
             max_rev_acc = max(max_rev_acc, a_cent_arc)
 
-    cmd_micro_dev = consts.chord_tol_realization * eps_chord if profile.has_micro_segments else 0.0
-    sampled_dev_pred = max([0.0, cmd_micro_dev] + cmd_corner_devs + cmd_arc_devs)
+    cmd_micro_dev = consts.chord_tol_realization * q.small_seg_chord_tol_mm if profile.has_micro_segments else 0.0
+    sampled_dev_pred = max([0.0, cmd_micro_dev] + list(cmd_corner_devs) + cmd_arc_devs)
+    return sampled_dev_pred, act_arc_devs, signed_radial_offsets, max_rev_acc
 
-    # 5. Filtered Jerk RMS & Savitzky-Golay Smoothed Jerk RMS
-    fir_att = 1.0 / math.sqrt(1.0 + ((j_t * tau_fir) / max(a_t, 1.0)) ** 2)
-    lp_att = 1.0 / math.sqrt(1.0 + (j_t / max(omega_lp * a_t, 1.0)) ** 2)
+
+def compute_filtered_jerk_metrics(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+    omega_lp: float | None,
+) -> tuple[float, float]:
+    """Mechanism 5: Post-filter discrete jerk RMS and Savitzky-Golay smoothed jerk RMS."""
+    a_t = q.path_tangential_acc_mm_s2
+    j_t = q.path_tangential_jerk_mm_s3
+    fir_att = 1.0 / math.sqrt(1.0 + ((j_t * q.fir_time_s) / max(a_t, 1.0)) ** 2)
+    lp_att = (
+        1.0 / math.sqrt(1.0 + (j_t / max(omega_lp * a_t, 1.0)) ** 2)
+        if omega_lp is not None
+        else 1.0
+    )
     quant_floor = (math.sqrt(20.0 / 12.0) * 1e-7) / (profile.sample_period_s ** 3)
-    clean_jerk_rms = consts.jerk_filter_scale * j_t * (1.0 - 0.42 * beta_bell) * fir_att * lp_att
+    clean_jerk_rms = consts.jerk_filter_scale * j_t * (1.0 - 0.42 * q.bell_acc_shape_factor) * fir_att * lp_att
     jerk_rms_pred = math.sqrt(clean_jerk_rms ** 2 + quant_floor ** 2)
     smoothed_jerk_pred = 0.88 * clean_jerk_rms
+    return jerk_rms_pred, smoothed_jerk_pred
 
-    # 6. Simultaneous segment & corner vector following error peak & Frenet tangential lag peak
+
+def compute_servo_tracking_and_excitation(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+    seg_speeds: Sequence[float],
+    seg_eff_accs: Sequence[float],
+    scurve_vel_scale: float,
+    filter_tau: float,
+    c_v: tuple[float, float, float],
+    c_a: tuple[float, float, float],
+    max_rev_acc: float,
+    normal_servo_peaks: list[float],
+) -> tuple[float, float, float, float, float, float, float, list[float]]:
+    """Mechanism 6 & 7: Following error, tangential lag, quadrant glitch excess, resonance & mismatch."""
+    kp = q.servo_kp_1_s
     fe_candidates: list[float] = [0.0]
     tang_candidates: list[float] = [0.0]
     eff_scurve_j_att = 1.0 / math.sqrt(1.0 + (filter_tau * kp[0] * 0.35) ** 2)
@@ -590,11 +671,15 @@ def evaluate_greybox_backbone(
         ux, uy, uz = seg.abs_unit_vec
         u_vec = (ux, uy, uz)
         v_seg = seg_speeds[k] * scurve_vel_scale
-        a_seg = (seg_eff_accs[k] / (1.0 + 0.35 * beta_bell)) * (scurve_vel_scale ** 2) * eff_scurve_j_att
-        # Cruise instant (a = 0, v = v_seg)
+        a_seg = (
+            (seg_eff_accs[k] / (1.0 + 0.35 * q.bell_acc_shape_factor))
+            * (scurve_vel_scale ** 2)
+            * eff_scurve_j_att
+        )
         fe_cruise = math.sqrt(sum((c_v[i] * v_seg * u_vec[i]) ** 2 for i in range(3)))
-        # Ramp instant (v ~= 0.55 * v_seg, a = a_seg)
-        fe_ramp = math.sqrt(sum((0.55 * c_v[i] * v_seg * u_vec[i] + c_a[i] * a_seg * u_vec[i]) ** 2 for i in range(3)))
+        fe_ramp = math.sqrt(
+            sum((0.55 * c_v[i] * v_seg * u_vec[i] + c_a[i] * a_seg * u_vec[i]) ** 2 for i in range(3))
+        )
         if seg.kind == "arc" and math.isfinite(seg.radius_mm):
             a_cent = (v_seg ** 2) / max(seg.radius_mm, 1e-6)
             fe_arc = math.sqrt(
@@ -607,26 +692,42 @@ def evaluate_greybox_backbone(
     following_err_pred = max(fe_candidates)
     tangential_lag_pred = max(tang_candidates)
 
-    # 7. Quadrant crossing glitch & structural resonance excitation
     if profile.has_xy_reversals or profile.has_arcs:
         rev_scale = math.sqrt(max(max_rev_acc, 500.0) / 2500.0)
-        q_x = math.sqrt((consts.stribeck_breakaway_x_mm * (60.0 / kp[0]) * rev_scale - a_fric[0]) ** 2 + 1e-9)
-        q_y = math.sqrt((consts.stribeck_breakaway_y_mm * (60.0 / kp[1]) * rev_scale - a_fric[1]) ** 2 + 1e-9)
+        q_x = math.sqrt(
+            (consts.stribeck_breakaway_x_mm * (60.0 / kp[0]) * rev_scale - q.friction_comp_amp_mm[0]) ** 2 + 1e-9
+        )
+        q_y = math.sqrt(
+            (consts.stribeck_breakaway_y_mm * (60.0 / kp[1]) * rev_scale - q.friction_comp_amp_mm[1]) ** 2 + 1e-9
+        )
         quad_glitch_pred = max(q_x, q_y)
     else:
         quad_glitch_pred = 0.0
 
-    # Structural resonance amplitude modulated by FIR sinc zero, Biquad rolloff, and Servo Notch alignment
     f_res = consts.identified_resonance_hz
-    arg_res = math.pi * f_res * tau_fir
+    arg_res = math.pi * f_res * q.fir_time_s
     fir_res_gain = abs(math.sin(arg_res) / arg_res) if arg_res > 1e-6 else 1.0
-    lp_res_gain = 1.0 / math.sqrt(1.0 + (f_res / f_lp) ** 4)
-    notch_suppression = 1.0 - 0.85 * math.exp(-((f_notch - f_res) ** 2) / (2.0 * (18.0 ** 2)))
+    lp_res_gain = (
+        1.0 / math.sqrt(1.0 + (f_res / q.lowpass_cutoff_hz) ** 4)
+        if q.lowpass_cutoff_hz is not None
+        else 1.0
+    )
+    notch_suppression = (
+        1.0 - 0.85 * math.exp(-((q.notch_freq_hz - f_res) ** 2) / (2.0 * (18.0 ** 2)))
+        if q.notch_freq_hz is not None
+        else 1.0
+    )
     kp_amp = (0.5 * (kp[0] + kp[1]) / 60.0) ** 0.75
-    vib_err_mm = consts.resonance_compliance_gain * (j_t / 250000.0) * fir_res_gain * lp_res_gain * notch_suppression * kp_amp
+    vib_err_mm = (
+        consts.resonance_compliance_gain
+        * (q.path_tangential_jerk_mm_s3 / 250000.0)
+        * fir_res_gain
+        * lp_res_gain
+        * notch_suppression
+        * kp_amp
+    )
     resonance_rms_pred = 0.55 * vib_err_mm
 
-    # Straight-line XY/XYZ gain mismatch error (for tilted lines)
     line_mis_devs: list[float] = []
     for k, seg in enumerate(profile.segments):
         ux, uy, uz = seg.abs_unit_vec
@@ -640,15 +741,66 @@ def evaluate_greybox_backbone(
                 line_mis_devs.append(tot_mis)
                 normal_servo_peaks.append(tot_mis)
 
+    return (
+        following_err_pred,
+        tangential_lag_pred,
+        quad_glitch_pred,
+        vib_err_mm,
+        resonance_rms_pred,
+        fir_res_gain * lp_res_gain,
+        notch_suppression,
+        line_mis_devs,
+    )
+
+
+def evaluate_canonical_greybox_backbone(
+    profile: CaseGeometryProfile,
+    q: CanonicalControlQuantities,
+    consts: GreyBoxPhysicalConstants,
+) -> dict[str, float]:
+    """Evaluate composable grey-box mechanisms over vendor-neutral `CanonicalControlQuantities`."""
+    v_prog = q.feed_override_ratio * profile.programmed_feed_mm_s
+    filter_tau, valley_tau_eff, omega_lp = compute_filter_time_scales(q)
+    c_v, c_a, inward_curv_gain = compute_servo_lag_coefficients(q, consts)
+
+    seg_speeds, seg_eff_accs, _, peak_axis_accs, a_lim = compute_segment_speed_envelopes(profile, q, consts)
+    corner_speeds, corner_blend_times, cmd_corner_devs, act_corner_devs, normal_servo_peaks = (
+        compute_corner_blending_mechanics(
+            profile, q, consts, seg_speeds, a_lim, filter_tau, c_v, inward_curv_gain, peak_axis_accs
+        )
+    )
+    duration_pred, scurve_vel_scale, achieved_corner_min = propagate_kinematic_time_law(
+        profile, q, consts, seg_speeds, seg_eff_accs, corner_speeds, corner_blend_times, filter_tau, valley_tau_eff
+    )
+    sampled_dev_pred, act_arc_devs, signed_radial_offsets, max_rev_acc = compute_arc_and_micro_deviations(
+        profile, q, consts, seg_speeds, scurve_vel_scale, omega_lp, c_v, inward_curv_gain, cmd_corner_devs, normal_servo_peaks
+    )
+    jerk_rms_pred, smoothed_jerk_pred = compute_filtered_jerk_metrics(profile, q, consts, omega_lp)
+    (
+        following_err_pred,
+        tangential_lag_pred,
+        quad_glitch_pred,
+        vib_err_mm,
+        resonance_rms_pred,
+        fir_lp_res_gain,
+        notch_suppression,
+        line_mis_devs,
+    ) = compute_servo_tracking_and_excitation(
+        profile, q, consts, seg_speeds, seg_eff_accs, scurve_vel_scale, filter_tau, c_v, c_a, max_rev_acc, normal_servo_peaks
+    )
+
     arc_with_glitch = (
         [d + 0.65 * quad_glitch_pred for d in act_arc_devs]
         if act_arc_devs
         else ([quad_glitch_pred] if profile.has_xy_reversals else [])
     )
-    cmd_micro_only = [consts.chord_tol_realization * eps_chord] if profile.has_micro_segments else [0.0]
+    cmd_micro_only = [consts.chord_tol_realization * q.small_seg_chord_tol_mm] if profile.has_micro_segments else [0.0]
     base_act_candidates = cmd_micro_only + act_corner_devs + arc_with_glitch + line_mis_devs
     actual_dev_pred = max(base_act_candidates) + vib_err_mm
-    normal_servo_max = max([0.0] + normal_servo_peaks + ([quad_glitch_pred] if (profile.has_arcs or profile.has_xy_reversals) else [])) + vib_err_mm
+    normal_servo_max = (
+        max([0.0] + normal_servo_peaks + ([quad_glitch_pred] if (profile.has_arcs or profile.has_xy_reversals) else []))
+        + vib_err_mm
+    )
     feed_util_pred = min(1.5, profile.total_length_mm / max(duration_pred * profile.programmed_feed_mm_s, 1e-6))
 
     return {
@@ -664,33 +816,52 @@ def evaluate_greybox_backbone(
         "signedRadialOffsetMeanMm": float(np.mean(signed_radial_offsets)) if signed_radial_offsets else 0.0,
         "actualPathDeviationMaxMm": actual_dev_pred,
         "quadrantGlitchExcessMm": quad_glitch_pred,
-        "dominantResonanceFreqHz": f_res,
+        "dominantResonanceFreqHz": consts.identified_resonance_hz,
         "resonanceBandRmsMm": resonance_rms_pred,
         "velocityMaxMmS": (max(seg_speeds) * scurve_vel_scale) if seg_speeds else v_prog,
-        "accelerationMaxMmS2": max(peak_axis_accs) if any(peak_axis_accs) else a_t,
+        "accelerationMaxMmS2": max(peak_axis_accs) if any(peak_axis_accs) else q.path_tangential_acc_mm_s2,
         "jerkRmsMmS3": jerk_rms_pred,
-        "firResonanceGain": fir_res_gain * lp_res_gain,
+        "firResonanceGain": fir_lp_res_gain,
         "notchSuppressionFactor": notch_suppression,
     }
 
 
+def evaluate_greybox_backbone(
+    profile: CaseGeometryProfile | CncBenchmarkCase,
+    params: Mapping[str, float],
+    consts: GreyBoxPhysicalConstants | None = None,
+    *,
+    controller_profile: ControllerProfile | None = None,
+) -> dict[str, float]:
+    """Evaluate all white-box + calibrated grey-box predictions for `profile` via `controller_profile`."""
+    geom = extract_case_geometry_profile(profile) if isinstance(profile, CncBenchmarkCase) else profile
+    ctrl_prof = controller_profile or _DEFAULT_GENERIC_PROFILE
+    q = ctrl_prof.to_canonical(params)
+    return evaluate_canonical_greybox_backbone(geom, q, consts or GreyBoxPhysicalConstants())
+
+
 def calibrate_greybox_constants(
     records: Sequence[tuple[CaseGeometryProfile, CncBenchmarkCase, CncAlgorithmExport, CncQualityReport, dict[str, float]]],
+    *,
+    controller_profile: ControllerProfile | None = None,
 ) -> tuple[GreyBoxPhysicalConstants, tuple[str, ...]]:
     """Calibrate the grey-box physical constants via time-series NNLS & bounded Trust-Region Reflective."""
+    ctrl_prof = controller_profile or _DEFAULT_GENERIC_PROFILE
     init = GreyBoxPhysicalConstants()
     notes: list[str] = []
+
+    canonical_records = [(prof, case, exp, rep, ctrl_prof.to_canonical(p_dict)) for prof, case, exp, rep, p_dict in records]
+    ctrl_records = [rec for rec in canonical_records if rec[3].servo_metrics is not None]
 
     # Step 1: Time-series closed-form identification of servo velocity-loop ratios & FFT resonance
     psi_v_est = [init.velocity_loop_ratio_x, init.velocity_loop_ratio_y, init.velocity_loop_ratio_z]
     res_freqs: list[float] = []
-    ctrl_records = [rec for rec in records if rec[3].servo_metrics is not None]
 
     if ctrl_records:
-        for ax_idx, ax_letter in enumerate(("x", "y", "z")):
+        for ax_idx in range(3):
             design_col: list[float] = []
             target_col: list[float] = []
-            for _, case, exp, rep, p_dict in ctrl_records:
+            for _, case, exp, rep, q_ctrl in ctrl_records:
                 if len(exp.samples) < 6 or any(s.actual_position_mm is None for s in exp.samples):
                     continue
                 dt = case.sample_period_seconds
@@ -700,9 +871,9 @@ def calibrate_greybox_constants(
                     continue
                 vel = np.gradient(q_cmd, dt)
                 acc = np.gradient(vel, dt)
-                kp_i = max(5.0, float(p_dict.get(f"g3.servo_kp_{ax_letter}", 60.0)))
-                vff_i = float(p_dict.get(f"g3.vel_feedforward_{ax_letter}", 0.98))
-                aff_i = float(p_dict.get(f"g3.acc_feedforward_{ax_letter}", 0.70))
+                kp_i = q_ctrl.servo_kp_1_s[ax_idx]
+                vff_i = q_ctrl.vel_feedforward_ratio[ax_idx]
+                aff_i = q_ctrl.acc_feedforward_ratio[ax_idx]
                 e_obs = q_cmd - q_act
                 known_part = ((1.0 - vff_i) / kp_i) * vel - ((1.0 - vff_i) / (kp_i ** 2)) * acc
                 basis = ((1.0 - aff_i) / (kp_i ** 2)) * acc
@@ -759,12 +930,12 @@ def calibrate_greybox_constants(
 
     xs_init = np.array([psi_v_est[0], psi_v_est[1], psi_v_est[2], 0.010, 0.010, 0.002], dtype=np.float64)
 
-    dur_scale = max(float(np.std([r[3].kinematic_summary["durationSeconds"] for r in records])), 0.02)
-    dev_scale = max(float(np.std([r[3].kinematic_summary["sampledPathDeviationMaxMm"] for r in records])), 0.002)
-    jrk_scale = max(float(np.std([r[3].kinematic_summary["jerkRmsMmS3"] for r in records])), 5000.0)
+    dur_scale = max(float(np.std([r[3].kinematic_summary["durationSeconds"] for r in canonical_records])), 0.02)
+    dev_scale = max(float(np.std([r[3].kinematic_summary["sampledPathDeviationMaxMm"] for r in canonical_records])), 0.002)
+    jrk_scale = max(float(np.std([r[3].kinematic_summary["jerkRmsMmS3"] for r in canonical_records])), 5000.0)
     cor_v_obs = [
         float(r[3].analysis.metrics["cornerSpeedMinMmS"].value)
-        for r in records
+        for r in canonical_records
         if "cornerSpeedMinMmS" in r[3].analysis.metrics and r[3].analysis.metrics["cornerSpeedMinMmS"].value is not None
     ]
     cor_v_scale = max(float(np.std(cor_v_obs)) if len(cor_v_obs) >= 2 else 2.0, 1.0)
@@ -772,8 +943,8 @@ def calibrate_greybox_constants(
     def _plan_residuals(xp: np.ndarray) -> np.ndarray:
         c_tmp = _make_consts(xp, xs_init)
         res_list: list[float] = []
-        for prof, _, _, rep, p_dict in records:
-            pred = evaluate_greybox_backbone(prof, p_dict, c_tmp)
+        for prof, _, _, rep, q_rec in canonical_records:
+            pred = evaluate_canonical_greybox_backbone(prof, q_rec, c_tmp)
             res_list.append((pred["durationSeconds"] - rep.kinematic_summary["durationSeconds"]) / dur_scale)
             res_list.append((pred["sampledPathDeviationMaxMm"] - rep.kinematic_summary["sampledPathDeviationMaxMm"]) / dev_scale)
             res_list.append(0.5 * (pred["discreteJerkRms"] - rep.kinematic_summary["jerkRmsMmS3"]) / jrk_scale)
@@ -783,7 +954,7 @@ def calibrate_greybox_constants(
         prior_pen = 0.08 * (xp - x0_plan) / (ub_plan - lb_plan)
         return np.concatenate([np.asarray(res_list, dtype=np.float64), prior_pen])
 
-    if len(records) >= 3:
+    if len(canonical_records) >= 3:
         opt_p = least_squares(_plan_residuals, x0_plan, bounds=(lb_plan, ub_plan), method="trf", max_nfev=130)
         xp_opt = opt_p.x
     else:
@@ -801,9 +972,9 @@ def calibrate_greybox_constants(
         def _servo_residuals(xs: np.ndarray) -> np.ndarray:
             c_tmp = _make_consts(xp_opt, xs)
             s_res: list[float] = []
-            for prof, _, _, rep, p_dict in ctrl_records:
+            for prof, _, _, rep, q_ctrl in ctrl_records:
                 assert rep.servo_metrics is not None
-                pred = evaluate_greybox_backbone(prof, p_dict, c_tmp)
+                pred = evaluate_canonical_greybox_backbone(prof, q_ctrl, c_tmp)
                 fe_obs = float(rep.servo_metrics["followingErrorMaxMm"].value or 0.0)
                 act_obs = float(rep.servo_metrics["actualPathDeviationMaxMm"].value or 0.0)
                 qg_obs = float(rep.servo_metrics["quadrantGlitchExcessMm"].value or 0.0)
@@ -833,11 +1004,11 @@ def calibrate_greybox_constants(
         "velocityLoopRatioX", "velocityLoopRatioY", "velocityLoopRatioZ",
         "stribeckBreakawayXMm", "stribeckBreakawayYMm", "resonanceComplianceGain",
     )
-    hits = _bound_hits(plan_names, xp_opt, lb_plan, ub_plan) if len(records) >= 3 else []
+    hits = _bound_hits(plan_names, xp_opt, lb_plan, ub_plan) if len(canonical_records) >= 3 else []
     if len(ctrl_records) >= 3:
         hits += _bound_hits(servo_names, xs_opt, lb_s, ub_s)
     notes.append(
-        f"规划层拟合系数（{GREYBOX_KERNEL_ID}，非直接物理量）：3阶/5阶样条曲率系数=({calibrated.spline_curvature_deg3:.3f}, {calibrated.spline_curvature_deg5:.3f})，"
+        f"规划层拟合系数（{ctrl_prof.profile_id}，非直接物理量）：3阶/5阶样条曲率系数=({calibrated.spline_curvature_deg3:.3f}, {calibrated.spline_curvature_deg5:.3f})，"
         f"前瞻刹停裕度={calibrated.lookahead_safety_factor:.3f}，拐角滤波耦合={calibrated.corner_filter_coupling:.3f}，"
         f"拐角谷值平滑系数={calibrated.corner_valley_filter_fill:.3f}"
     )
@@ -921,6 +1092,7 @@ def simulate_realistic_cnc_controller(
     *,
     source_kind: SourceKind = "algorithm-export",
     registry: CncParameterRegistry | None = None,
+    controller_profile: ControllerProfile | None = None,
     algorithm_version: str = "realistic-cnc-kernel-v1",
     machine_resonance_hz: float = 115.0,
 ) -> CncAlgorithmExport:
@@ -933,29 +1105,31 @@ def simulate_realistic_cnc_controller(
     Its hidden "true" constants are close to the kernel defaults, so it must not be used
     as the sole ground truth for transfer or calibration claims.
     """
-    reg = registry or default_cnc_parameter_registry()
+    ctrl_prof = controller_profile or _DEFAULT_GENERIC_PROFILE
+    reg = registry or ctrl_prof.registry
     p = {**default_parameter_values(reg), **dict(parameters)}
+    q = ctrl_prof.to_canonical(p)
     prof = extract_case_geometry_profile(case)
     dt = case.sample_period_seconds
 
-    eps_cor = float(p["g1.corner_tolerance_mm"])
-    eps_chord = float(p["g1.small_seg_chord_tol_mm"])
-    n_la = float(p["g1.lookahead_block_count"])
-    ang_th = float(p["g1.corner_angle_threshold_deg"])
-    col_deg = float(p["g1.collinear_merge_angle_deg"])
-    curv_clamp = float(p["g1.curvature_speed_clamp_factor"])
-    l_min = float(p["g1.min_segment_length_mm"])
-    spl_deg = int(round(float(p["g1.spline_degree"])))
+    eps_cor = q.corner_tolerance_mm
+    eps_chord = q.small_seg_chord_tol_mm if ctrl_prof.capabilities.has_micro_spline else 0.0
+    n_la = q.lookahead_block_count
+    ang_th = q.corner_angle_threshold_deg
+    col_deg = q.collinear_merge_angle_deg
+    curv_clamp = q.curvature_speed_clamp_factor
+    l_min = q.min_segment_length_mm
+    spl_deg = q.spline_degree
 
-    feed_ovr = float(p["g2.path_max_feed_override"])
-    a_t = float(p["g2.path_tangential_acc_mm_s2"])
-    j_t = float(p["g2.path_tangential_jerk_mm_s3"])
-    a_n = float(p["g2.centripetal_acc_limit_mm_s2"])
-    v_lim = (float(p["g2.axis_vel_limit_x"]), float(p["g2.axis_vel_limit_y"]), float(p["g2.axis_vel_limit_z"]))
-    a_lim = (float(p["g2.axis_acc_limit_x"]), float(p["g2.axis_acc_limit_y"]), float(p["g2.axis_acc_limit_z"]))
-    fir_ms = float(p["g2.fir_moving_avg_time_ms"])
-    f_lp = float(p["g2.biquad_lowpass_freq_hz"])
-    beta_bell = float(p["g2.bell_acc_shape_factor"])
+    feed_ovr = q.feed_override_ratio
+    a_t = q.path_tangential_acc_mm_s2
+    j_t = q.path_tangential_jerk_mm_s3
+    a_n = q.centripetal_acc_limit_mm_s2
+    v_lim = q.axis_vel_limit_mm_s
+    a_lim = q.axis_acc_limit_mm_s2
+    fir_ms = q.fir_time_s * 1e3
+    f_lp = q.lowpass_cutoff_hz
+    beta_bell = q.bell_acc_shape_factor
 
     # 1. Build geometric path with inscribed corner rounding arcs along vertices
     raw_vertices = np.asarray(case.reference_path, dtype=float)
@@ -1125,8 +1299,12 @@ def simulate_realistic_cnc_controller(
         kernel = np.ones(n_fir, dtype=np.float64) / n_fir
         cmd_pos = np.column_stack([np.convolve(padded[:, ax], kernel, mode="valid") for ax in range(3)])
 
-    rc = 1.0 / (2.0 * math.pi * max(f_lp, 2.0))
-    alpha_lp = dt / (rc + dt)
+    if f_lp is not None:
+        rc = 1.0 / (2.0 * math.pi * max(f_lp, 2.0))
+        alpha_lp = dt / (rc + dt)
+    else:
+        rc = 0.0
+        alpha_lp = 1.0
     if alpha_lp < 0.98:
         lp_out = np.empty_like(cmd_pos)
         state1 = cmd_pos[0].copy()
@@ -1155,15 +1333,11 @@ def simulate_realistic_cnc_controller(
     # 3. Cascade P-PI Servo Loop + Stribeck Quadrant Stiction + Structural Resonance (when controller-trace)
     act_pos: np.ndarray | None = None
     if source_kind == "controller-trace":
-        kp_arr = np.array([float(p["g3.servo_kp_x"]), float(p["g3.servo_kp_y"]), float(p["g3.servo_kp_z"])])
-        vff_arr = np.array([float(p["g3.vel_feedforward_x"]), float(p["g3.vel_feedforward_y"]), float(p["g3.vel_feedforward_z"])])
-        aff_arr = np.array([
-            float(p["g3.acc_feedforward_x"]),
-            float(p["g3.acc_feedforward_y"]),
-            float(p.get("g3.acc_feedforward_z", 0.70)),
-        ])
-        fric_comp = np.array([float(p["g3.friction_comp_amp_x"]), float(p["g3.friction_comp_amp_y"]), 0.0])
-        f_notch = float(p["g3.notch_filter_freq_hz"])
+        kp_arr = np.array(q.servo_kp_1_s, dtype=np.float64)
+        vff_arr = np.array(q.vel_feedforward_ratio, dtype=np.float64)
+        aff_arr = np.array(q.acc_feedforward_ratio, dtype=np.float64)
+        fric_comp = np.array([q.friction_comp_amp_mm[0], q.friction_comp_amp_mm[1], 0.0], dtype=np.float64)
+        f_notch = q.notch_freq_hz
 
         cmd_vel = np.gradient(cmd_pos, dt, axis=0)
         cmd_acc = np.gradient(cmd_vel, dt, axis=0)
@@ -1210,7 +1384,11 @@ def simulate_realistic_cnc_controller(
                 act_pos[mask, ax] += sign_dir * pulse
 
         if 0.5 / dt > machine_resonance_hz * 1.15:
-            notch_att = 1.0 - 0.85 * math.exp(-((f_notch - machine_resonance_hz) ** 2) / (2.0 * (18.0 ** 2)))
+            notch_att = (
+                1.0 - 0.85 * math.exp(-((f_notch - machine_resonance_hz) ** 2) / (2.0 * (18.0 ** 2)))
+                if f_notch is not None
+                else 1.0
+            )
             omega_r = 2.0 * math.pi * machine_resonance_hz
             zeta_r = 0.045
             res_disp = np.zeros(n_total, dtype=np.float64)

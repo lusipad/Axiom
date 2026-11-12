@@ -279,6 +279,57 @@ const CONFIDENCE_META: Record<string, { label: string; tone: BadgeTone }> = {
   TrendOnly: { label: "趋势参考 · 需单刀复测", tone: "warning" },
 };
 
+const CONFIDENCE_SHORT: Record<string, string> = {
+  High: "高置信度",
+  Medium: "中置信度",
+  TrendOnly: "趋势参考",
+};
+
+const SEVERITY_LABELS: Record<string, string> = {
+  Critical: "严重超差",
+  Warning: "机理预警",
+  Info: "提速裕量",
+};
+
+const ERROR_SOURCE_LABELS: Record<string, string> = {
+  QuadrantFriction: "过象限换向摩擦",
+  ServoTracking: "双轴伺服跟随失配",
+  StructuralResonance: "机械结构谐振",
+  PlanningOrFilter: "插补平滑与滤波",
+  HeadroomAvailable: "加减速节拍裕量",
+};
+
+const DIRECTION_LABELS: Record<string, string> = {
+  positive: "正相关",
+  negative: "负相关",
+  nonlinear: "非线性",
+  neutral: "弱相关",
+};
+
+const OUTCOME_LABELS: Record<string, string> = {
+  Passed: "实证通过",
+  Failed: "失准熔断",
+  Inconclusive: "待真机实证",
+  Invalid: "输入无效",
+};
+
+const PERMISSION_LABELS: Record<string, string> = {
+  OfflineAdvisory: "离线参数建议（零写权限）",
+};
+
+const CLAIM_STATUS_LABELS: Record<string, string> = {
+  Supported: "已证实",
+  Passed: "通过",
+  Inconclusive: "待真机实证",
+  Refuted: "已证伪",
+  Failed: "未通过",
+};
+
+const EVIDENCE_LEVEL_LABELS: Record<string, string> = {
+  Observed: "采样观测核验",
+  Validated: "真机留出实证",
+};
+
 const METRIC_LABELS: Record<string, string> = {
   durationSeconds: "运动周期",
   sampledPathDeviationMaxMm: "指令最大轮廓偏差",
@@ -297,6 +348,29 @@ const CLAIM_TITLES: Record<string, string> = {
   "cnc-greybox.r5-epistemic-claim@1": "R5 · 共形预测不确定度包络覆盖",
   "cnc-greybox.r7-zero-write-advisory-claim@1": "R7 · 零写权限离线建议安全红线",
 };
+
+const CLAIM_PREDICATE_LABELS: Record<string, string> = {
+  "cnc-greybox.sampled-limits-claim@1":
+    "采样 XYZ 轨迹满足各轴行程、首尾端点、轮廓公差与离散速度/加速度/Jerk 硬约束限制。",
+  "cnc-greybox.r4-calibration-claim@1":
+    "灰盒物理标定模型对独立留出的真机复切样本具备在声明不确定度内的预测精度（缺少真机留出样本时保持「待真机实证」）。",
+  "cnc-greybox.r5-epistemic-claim@1":
+    "推荐预设落入训练特征安全包络内，且其共形不确定度上界在真机复切样本上达到标称经验覆盖率（缺少真机留出样本时保持「待真机实证」）。",
+  "cnc-greybox.r7-zero-write-advisory-claim@1":
+    "系统权限严格锁定为离线参数建议（零设备写权限）；设备级安全认证保持未开启状态，由现场工程师人工核验。",
+};
+
+function localizeTuningCopy(text: string): string {
+  return text
+    .replace(/\(Siemens\s*\/\s*siemens-sinumerik-840d@1\)/g, "（西门子 840D sl）")
+    .replace(/\(Beckhoff\s*\/\s*beckhoff-twincat-nc@1\)/g, "（倍福 TwinCAT 3 NC）")
+    .replace(/\(Generic\s*\/\s*generic-fir-biquad@1\)/g, "（通用 32 维标准层）")
+    .replace(/actualPathDeviationMaxMm=/g, "实测伺服轮廓偏差=")
+    .replace(/sampledPathDeviationMaxMm=/g, "指令最大轮廓偏差=")
+    .replace(/\bcontroller-trace\b/g, "机床试切采集")
+    .replace(/\balgorithm-export\b/g, "离线插补预筛")
+    .replace(/\bCEI=/g, "期望改进分=");
+}
 
 function fmtNum(value: number | null | undefined, digits = 4): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -601,9 +675,9 @@ export function CncParamTuningWorkbench({
       <header className="pt-hero">
         <div className="pt-hero-main">
           <div className="pt-eyebrow-row">
-            <span className="pt-eyebrow">SHOP-FLOOR PARAMETER STUDIO</span>
+            <span className="pt-eyebrow">现场数控调参工作台</span>
             <span className="pt-safety-pill">
-              OfflineAdvisory · 离线参数建议 · 零设备写权限
+              离线参数建议 · 零设备写权限
             </span>
           </div>
           <h1>现场调参与单刀快诊</h1>
@@ -1005,7 +1079,9 @@ export function CncParamTuningWorkbench({
                             ]?.tone ?? "pass"
                           }`}
                         >
-                          {activeDiagnosticReport.cycleTimeConfidence} · 白盒确定性公式
+                          {CONFIDENCE_SHORT[activeDiagnosticReport.cycleTimeConfidence] ??
+                            activeDiagnosticReport.cycleTimeConfidence}{" "}
+                          · 白盒确定性公式
                         </span>
                       </strong>
                     </div>
@@ -1019,7 +1095,9 @@ export function CncParamTuningWorkbench({
                             ]?.tone ?? "warning"
                           }`}
                         >
-                          {activeDiagnosticReport.contourErrorConfidence} · 仅作方向参考
+                          {CONFIDENCE_SHORT[activeDiagnosticReport.contourErrorConfidence] ??
+                            activeDiagnosticReport.contourErrorConfidence}{" "}
+                          · 仅作方向参考
                         </span>
                       </strong>
                     </div>
@@ -1043,7 +1121,7 @@ export function CncParamTuningWorkbench({
                     <div>
                       <h2>优先单刀调参动作单（上限 2 项）</h2>
                       <p className="pt-card-sub">
-                        {activeDiagnosticReport.summaryHeadline}
+                        {localizeTuningCopy(activeDiagnosticReport.summaryHeadline)}
                       </p>
                     </div>
                     <button
@@ -1160,7 +1238,7 @@ export function CncParamTuningWorkbench({
                             <strong>{finding.symptom}</strong>
                             <div className="pt-action-badges">
                               <span className={`pt-pill ${sevTone}`}>
-                                {finding.severity}
+                                {SEVERITY_LABELS[finding.severity] ?? finding.severity}
                               </span>
                               <span className="pt-pill neutral">
                                 {METRIC_LABELS[finding.observedMetricId] ??
@@ -1173,7 +1251,8 @@ export function CncParamTuningWorkbench({
                           {ncOnly && finding.suggestions.length === 0 && (
                             <p className="pt-finding-LockNote">
                               已开启「仅调 NC 规划参数」：该问题属于驱动器伺服侧机理（
-                              {finding.errorSource}
+                              {ERROR_SOURCE_LABELS[finding.errorSource] ??
+                                finding.errorSource}
                               ），驱动增益/摩擦补偿建议已按权限自动屏蔽。
                             </p>
                           )}
@@ -1275,7 +1354,9 @@ export function CncParamTuningWorkbench({
 
                 <div className="pt-presets-grid">
                   {closedLoop.recommendationReport.presets.map((preset) => {
-                    const isBalanced = preset.presetRole === "balanced";
+                    const isBalanced =
+                      preset.presetRole === "BalancedKneePoint" ||
+                      preset.presetRole === "balanced";
                     return (
                       <article
                         key={preset.candidateId}
@@ -1295,7 +1376,7 @@ export function CncParamTuningWorkbench({
                             </span>
                           </div>
                           <p className="pt-card-sub" style={{ margin: 0 }}>
-                            {preset.tradeoffExplanation}
+                            {localizeTuningCopy(preset.tradeoffExplanation)}
                           </p>
                           <div className="pt-preset-deltas">
                             {preset.changedParameters.map((delta) => (
@@ -1366,7 +1447,9 @@ export function CncParamTuningWorkbench({
                                 <div className="pt-sens-bar-label">
                                   <span>
                                     {sens.displayName}{" "}
-                                    <code>({sens.direction})</code>
+                                    <code>
+                                      ({DIRECTION_LABELS[sens.direction] ?? sens.direction})
+                                    </code>
                                   </span>
                                   <strong>{pct}%</strong>
                                 </div>
@@ -1389,7 +1472,7 @@ export function CncParamTuningWorkbench({
                   <>
                     <div className="pt-card-head" style={{ marginTop: 8 }}>
                       <div>
-                        <h3>主动补点建议（Active DoE · 下一刀测哪里信息量最大）</h3>
+                        <h3>主动补点建议（下一刀测哪里信息量最大）</h3>
                       </div>
                     </div>
                     <div className="pt-presets-grid">
@@ -1401,7 +1484,12 @@ export function CncParamTuningWorkbench({
                             key={item.suggestionId}
                           >
                             <div className="pt-finding-head">
-                              <strong>{item.suggestionId}</strong>
+                              <strong>
+                                {item.suggestionId.replace(
+                                  /^active-doe\.0?(\d+)$/,
+                                  "补采建议 #$1",
+                                )}
+                              </strong>
                               <span className="pt-pill info">
                                 {item.targetSource === "controller-trace"
                                   ? "建议机床试切采集"
@@ -1409,7 +1497,7 @@ export function CncParamTuningWorkbench({
                               </span>
                             </div>
                             <p className="pt-card-sub" style={{ margin: 0 }}>
-                              {item.rationale}
+                              {localizeTuningCopy(item.rationale)}
                             </p>
                           </div>
                         ))}
@@ -1443,7 +1531,10 @@ export function CncParamTuningWorkbench({
                 >
                   <div className="pt-scenario-top">
                     <span className={`pt-pill ${govItem.badgeTone}`}>
-                      结论：{govItem.governance.runBundle.run.caseOutcome}
+                      结论：
+                      {OUTCOME_LABELS[
+                        govItem.governance.runBundle.run.caseOutcome
+                      ] ?? govItem.governance.runBundle.run.caseOutcome}
                     </span>
                     <span className="pt-pill neutral">
                       R3 留出{" "}
@@ -1461,16 +1552,23 @@ export function CncParamTuningWorkbench({
           <section className={`pt-gov-banner ${activeGovScenario.badgeTone}`}>
             <div>
               <strong>
-                当前治理判定：{activeGovScenario.governance.runBundle.run.caseOutcome}
-                （权限上限：{activeGovScenario.governance.permissionCeiling}）
+                当前治理判定：
+                {OUTCOME_LABELS[
+                  activeGovScenario.governance.runBundle.run.caseOutcome
+                ] ?? activeGovScenario.governance.runBundle.run.caseOutcome}
+                （权限上限：
+                {PERMISSION_LABELS[
+                  activeGovScenario.governance.permissionCeiling
+                ] ?? activeGovScenario.governance.permissionCeiling}
+                ）
               </strong>
               <p>
                 {activeGovScenario.stateId === "synthetic-only" &&
-                  "诚实性门禁生效：当前仅有离线/合成校准样本（0 刀真机留出），R4 物理标定与 R5 认知包络拒绝自封 Supported，保持 Inconclusive 直至至少 3 刀独立 R3 遥测复切对账达标。"}
+                  "诚实性门禁生效：当前仅有离线/合成校准样本（0 刀真机留出），R4 物理标定与 R5 认知包络拒绝自封「已证实」，保持「待真机实证」直至至少 3 刀独立 R3 遥测复切对账达标。"}
                 {activeGovScenario.stateId === "r3-promoted" &&
-                  "实证晋升通过：直角、整圆、S 曲线 3 刀独立 R3 机床只读遥测全部完成预测-实测对账，周期 MAPE 1.43%（≤ 8%）、轮廓 RMSE 7.6 µm（≤ 15 µm）、保守上界覆盖率 88.9%（≥ 80%），R4/R5 自动晋升 Supported。"}
+                  "实证晋升通过：直角、整圆、S 曲线 3 刀独立 R3 机床只读遥测全部完成预测-实测对账，周期 MAPE 1.43%（≤ 8%）、轮廓 RMSE 7.6 µm（≤ 15 µm）、保守上界覆盖率 88.9%（≥ 80%），R4/R5 自动晋升为「已证实」。"}
                 {activeGovScenario.stateId === "drift-refuted" &&
-                  "失准熔断告警：现场导轨温升引发 +0.085 mm 热漂移，切后实测轮廓误差突破 95% 保守上界（轮廓 RMSE 68.1 µm > 15 µm 门限，覆盖率跌至 66.7%），R4/R5 自动降级为 Refuted，提示重新采集基准刀标定。"}
+                  "失准熔断告警：现场导轨温升引发 +0.085 mm 热漂移，切后实测轮廓误差突破 95% 保守上界（轮廓 RMSE 68.1 µm > 15 µm 门限，覆盖率跌至 66.7%），R4/R5 自动降级为「已证伪」，提示重新采集基准刀标定。"}
               </p>
             </div>
             <button
@@ -1538,7 +1636,7 @@ export function CncParamTuningWorkbench({
           <section className="pt-card">
             <div className="pt-card-head">
               <div>
-                <h2>预测-实测逐刀对账台账（Prediction-Verification Ledger）</h2>
+                <h2>预测-实测逐刀对账台账</h2>
                 <p className="pt-card-sub">
                   每次按建议参数在机床上复切后，将只读采集的 R3 轨迹回传台账，逐项比对「切前灰盒预测区间」与「切后真机实测值」。
                 </p>
@@ -1669,13 +1767,13 @@ export function CncParamTuningWorkbench({
           <section className="pt-card">
             <div className="pt-card-head">
               <div>
-                <h2>Axiom 形式化可审计声明矩阵（R0–R7 Governance Claims）</h2>
+                <h2>Axiom 形式化可审计声明矩阵（R0–R7 治理门禁）</h2>
                 <p className="pt-card-sub">
                   每条结论均与输入案例、代理模型、推荐报告及对账台账的 SHA-256 谱系哈希严格绑定。
                 </p>
               </div>
               <span className="pt-pill neutral">
-                Bundle: {activeGovScenario.governance.runBundle.bundleHash.slice(0, 12)}…
+                证据包哈希：{activeGovScenario.governance.runBundle.bundleHash.slice(0, 12)}…
               </span>
             </div>
 
@@ -1691,14 +1789,18 @@ export function CncParamTuningWorkbench({
                       </strong>
                       <div className="pt-action-badges">
                         <span className={`pt-pill ${claimTone(claim.status)}`}>
-                          {claim.status}
+                          {CLAIM_STATUS_LABELS[claim.status] ?? claim.status}
                         </span>
                         <span className="pt-pill neutral">
-                          {claim.evidence.level}
+                          {EVIDENCE_LEVEL_LABELS[claim.evidence.level] ??
+                            claim.evidence.level}
                         </span>
                       </div>
                     </div>
-                    <p>{claim.predicate}</p>
+                    <p>
+                      {CLAIM_PREDICATE_LABELS[claim.claimDefinitionId] ??
+                        claim.predicate}
+                    </p>
                   </article>
                 ))}
             </div>

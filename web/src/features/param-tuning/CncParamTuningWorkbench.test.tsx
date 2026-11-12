@@ -98,26 +98,32 @@ describe("CncParamTuningWorkbench", () => {
       screen.getByRole("tab", { name: /预测-实测对账与真机门禁/i }),
     );
     expect(
-      await screen.findByText(/当前治理判定：Inconclusive/),
+      await screen.findByText(/当前治理判定：待真机实证/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/采样 XYZ 轨迹满足各轴行程、首尾端点/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Sampled XYZ trajectory satisfies/i),
+    ).not.toBeInTheDocument();
 
     // Promote to 3/3 R3 holdout verified
     fireEvent.click(
       screen.getByRole("button", { name: /阶段 B · 满 3 刀独立 R3 真机复切对账达标/i }),
     );
     expect(
-      await screen.findByText(/当前治理判定：Passed/),
+      await screen.findByText(/当前治理判定：实证通过/),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/vmc-850-shopfloor-01/).length).toBeGreaterThan(0);
 
-    // Thermal drift circuit breaker -> Refuted / Failed
+    // Thermal drift circuit breaker -> 已证伪 / 失准熔断
     fireEvent.click(
       screen.getByRole("button", { name: /阶段 C · 现场导轨热漂移失准预警/i }),
     );
     expect(
-      await screen.findByText(/当前治理判定：Failed/),
+      await screen.findByText(/当前治理判定：失准熔断/),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Refuted").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已证伪").length).toBeGreaterThan(0);
   });
 
   it("supports Light/Dark studio theme switching and navigation from App", async () => {

@@ -62,4 +62,33 @@ describe("CNC algorithm comparison", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "比较 A / B" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "下载报告" })).not.toBeInTheDocument();
   });
+
+  it("localizes canonical English backend report reasons and per-axis check IDs into Chinese", async () => {
+    const englishBackendReport = {
+      ...report,
+      reasons: [
+        "Candidate violates one or more sampled-command limits",
+        "Discrete V/A/J differences do not certify continuous velocity, acceleration or jerk",
+        "Computation timing is producer-reported; a single observation does not establish statistical significance",
+        "Synthetic example data: this report is not evidence about a production algorithm",
+      ],
+      candidate: {
+        ...report.candidate,
+        checks: [
+          check,
+          { checkId: "endpoints", value: 0, unit: "mm", limit: 0.01, status: "WithinLimit" },
+          { checkId: "X.discrete-jerk", value: 12000, unit: "mm/s^3", limit: 50000, status: "WithinLimit" },
+        ],
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn((url: string) => url.endsWith("example") ? json(example) : json(englishBackendReport)));
+    render(<CncBenchmarkWorkbench />);
+    fireEvent.click(screen.getByRole("button", { name: "一键载入示例并立即对比" }));
+
+    expect(await screen.findByText(/候选版本违反了一项或多项采样运动学\/轮廓硬约束限制/)).toBeInTheDocument();
+    expect(screen.getByText(/离散采样差分仅校验采样时刻的 V\/A\/J/)).toBeInTheDocument();
+    expect(screen.getByText("首尾端点误差限制")).toBeInTheDocument();
+    expect(screen.getByText("X 轴采样 Jerk 限制")).toBeInTheDocument();
+    expect(screen.queryByText(/Candidate violates one or more sampled-command limits/i)).not.toBeInTheDocument();
+  });
 });

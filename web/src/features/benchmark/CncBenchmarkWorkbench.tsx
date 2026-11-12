@@ -26,9 +26,9 @@ interface ClosedLoopDemo {
 }
 
 const roleTitles: Record<Role, string> = {
-  case: "01 · CASE 参考路径与约束",
-  baseline: "02 · BASELINE A 基线版本",
-  candidate: "03 · CANDIDATE B 候选版本",
+  case: "01 · 刀路参考与约束门禁",
+  baseline: "02 · 基线版本 A",
+  candidate: "03 · 候选版本 B",
 };
 
 const roleHints: Record<Role, string> = {
@@ -42,12 +42,30 @@ const labels: Record<Role, string> = { case: "刀路与约束", baseline: "基�
 const metricLabels: Record<string, string> = {
   sampledPathDeviationMaxMm: "最大路径偏差",
   sampledPathDeviationMeanMm: "平均路径偏差",
+  sampledPathDeviationRmsMm: "路径偏差有效值 RMS",
+  sampledPathDeviationP95Mm: "P95 路径偏差",
+  sampledPathDeviationP99Mm: "P99 路径偏差",
+  endpointErrorMaxMm: "首尾端点最大误差",
   durationSeconds: "运动时间",
   computationSeconds: "单周期计算耗时",
+  discreteVelocityMax: "最大离散轴速度",
+  discreteAccelerationMax: "最大离散轴加速度",
+  discreteJerkMax: "最大离散 Jerk",
+  discreteJerkRms: "离散冲击 Jerk RMS",
   sampledJerkMaxMmPerSec3: "最大 Jerk",
+  smoothedJerkRmsMmS3: "平滑冲击 Jerk RMS",
+  cornerSpeedMinMmS: "最低拐角过弯速度",
+  feedUtilization: "编程进给利用率",
+  feedUtilizationRatio: "编程进给利用率",
+  actualPathDeviationMaxMm: "实测最大轮廓误差",
   actualContourErrorMaxMm: "最大伺服轮廓误差",
+  followingErrorMaxMm: "最大伺服跟随误差",
   trackingErrorRmsMm: "伺服跟随误差 RMS",
+  tangentialLagMaxMm: "最大切向跟随滞后",
+  normalServoErrorMaxMm: "双轴法向伺服失配峰值",
+  quadrantGlitchExcessMm: "过象限摩擦突跳超量",
   quadrantPeakGlitchMm: "过象限摩擦尖峰",
+  resonanceBandRmsMm: "谐振频带残差 RMS",
   highFreqVibrationEnergyRatio: "高频振动能量占比",
   commandBandLimitedEnergyRatio: "规划器高频激励占比",
 };
@@ -55,9 +73,14 @@ const metricLabels: Record<string, string> = {
 const metricUnits: Record<string, string> = {
   sampledPathDeviationMaxMm: "mm",
   sampledPathDeviationMeanMm: "mm",
+  sampledPathDeviationRmsMm: "mm",
+  sampledPathDeviationP95Mm: "mm",
+  sampledPathDeviationP99Mm: "mm",
+  endpointErrorMaxMm: "mm",
   durationSeconds: "s",
-  computationSeconds: "ms",
+  computationSeconds: "s",
   sampledJerkMaxMmPerSec3: "mm/s³",
+  discreteJerkRms: "mm/s³",
 };
 
 const statusLabels: Record<string, string> = {
@@ -69,17 +92,134 @@ const statusLabels: Record<string, string> = {
   Inconclusive: "证据不足",
   NotComparable: "不可比较",
   WithinLimit: "满足采样限制",
+  Passed: "通过",
+  Failed: "未通过",
   Violated: "超限",
   InsufficientSamples: "样本不足",
 };
 
 const checkLabels: Record<string, string> = {
   "sampled-path-deviation": "路径偏差限制",
+  "endpoints": "首尾端点误差限制",
   "sampled-velocity": "速度限制",
   "sampled-acceleration": "加速度限制",
   "sampled-jerk": "Jerk 限制",
-  "axis-stroke": "轴行程",
+  "axis-stroke": "轴行程范围",
 };
+
+const axisCheckLabels: Record<string, string> = {
+  "position-range": "轴行程范围",
+  "discrete-velocity": "轴采样速度限制",
+  "discrete-acceleration": "轴采样加速度限制",
+  "discrete-jerk": "轴采样 Jerk 限制",
+};
+
+const modelingModeLabels: Record<string, string> = {
+  "greybox-physics-gp": "灰盒物理先验 + 残差 GP",
+  "multi-fidelity-residual-fusion": "多保真残差融合",
+  "single-fidelity-surrogate": "单保真代理模型",
+};
+
+const presetRoleLabels: Record<string, string> = {
+  EfficiencyOptimal: "效率最优",
+  PrecisionOptimal: "精度最优",
+  BalancedKneePoint: "均衡拐点",
+  efficiency: "效率最优",
+  accuracy: "精度最优",
+  balanced: "均衡拐点",
+};
+
+const directionLabels: Record<string, string> = {
+  positive: "正相关",
+  negative: "负相关",
+  nonlinear: "非线性",
+  neutral: "弱相关",
+};
+
+const targetSourceLabels: Record<string, string> = {
+  "controller-trace": "机床试切采集",
+  "algorithm-export": "离线插补预筛",
+  "synthetic-example": "合成示例",
+};
+
+const differenceReasonLabels: Record<string, string> = {
+  "Both exports must include this measurement": "基线与候选均需包含该项测量值",
+  "Both computation times must be positive": "两份计算耗时均须为正数",
+  "Computation environments do not match": "两份计算耗时运行环境声明不一致",
+  "At least one metric has insufficient samples": "至少一份轨迹采样点数不足以计算差分",
+};
+
+function formatCheckLabel(checkId: string): string {
+  if (checkLabels[checkId]) return checkLabels[checkId]!;
+  const axisMatch = /^([A-Za-z]+)\.(.+)$/.exec(checkId);
+  if (axisMatch) {
+    const [, axis, kind] = axisMatch;
+    if (axis && kind && axisCheckLabels[kind]) {
+      return `${axis} ${axisCheckLabels[kind]}`;
+    }
+  }
+  return checkId;
+}
+
+const caveatReasonMap: Record<string, string> = {
+  "Discrete V/A/J differences do not certify continuous velocity, acceleration or jerk":
+    "离散采样差分仅校验采样时刻的 V/A/J，不等同于采样点间连续运动学证明",
+  "Computation timing is producer-reported; a single observation does not establish statistical significance":
+    "计算耗时由导出端自行上报，单次观测不构成统计显著性结论",
+  "Synthetic example data: this report is not evidence about a production algorithm":
+    "当前使用内置合成示例数据，仅用于回归定位演示，不作为生产算法验收证据",
+};
+
+const primaryReasonMap: Record<string, string> = {
+  "Candidate violates one or more sampled-command limits":
+    "候选版本违反了一项或多项采样运动学/轮廓硬约束限制，请先根据下方超限样本位置修复。",
+  "A/B quality comparison requires a valid baseline and enough samples for every requested check":
+    "A/B 质量对比要求基线版本满足约束限制，且采样点数足以完成全部运动学差分检查。",
+  "Synthetic examples and algorithm exports cannot establish one A/B result":
+    "合成示例数据不能与真实算法导出轨迹混用进行 A/B 验收判定。",
+  "Lower duration, sampled path deviation and comparable reported computation time are preferred; no weighted score is used":
+    "评估原则：运动时间更短、路径偏差更小、同环境计算耗时更低者优先（不使用主观加权总分）。",
+};
+
+function formatReportReasons(reasons: string[]): { primary: string[]; caveats: string[] } {
+  const primary: string[] = [];
+  const caveats: string[] = [];
+  for (const raw of reasons) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (caveatReasonMap[trimmed]) {
+      caveats.push(caveatReasonMap[trimmed]!);
+      continue;
+    }
+    if (primaryReasonMap[trimmed]) {
+      primary.push(primaryReasonMap[trimmed]!);
+      continue;
+    }
+    const tolPrefix = "Case-declared tolerances also compare ";
+    if (trimmed.startsWith(tolPrefix)) {
+      const rest = trimmed.slice(tolPrefix.length).replace(/;\s*lower is preferred\.?$/i, "");
+      const localizedMetrics = rest
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean)
+        .map((m) => metricLabels[m] ?? m)
+        .join("、");
+      primary.push(`案例声明容差同时对比了 ${localizedMetrics}（数值更小者优先）。`);
+      continue;
+    }
+    primary.push(trimmed);
+  }
+  return { primary, caveats };
+}
+
+function localizeClosedLoopCopy(text: string): string {
+  return text
+    .replace(/actualPathDeviationMaxMm=/g, "实测最大轮廓误差=")
+    .replace(/sampledPathDeviationMaxMm=/g, "最大路径偏差=")
+    .replace(/\bcontroller-trace\b/g, "机床试切采集")
+    .replace(/\balgorithm-export\b/g, "离线插补预筛")
+    .replace(/\bCEI=/g, "期望改进分=");
+}
 
 async function requestJson<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(
@@ -299,6 +439,7 @@ export function CncBenchmarkWorkbench({
   const totalChecks = report?.candidate.checks.length ?? 0;
   const passedChecks = (report?.candidate.checks ?? []).filter((c) => c.status === "WithinLimit" || c.status === "Passed").length;
   const violatedChecks = totalChecks - passedChecks;
+  const formattedReasons = formatReportReasons(report?.reasons ?? []);
 
   const renderCardMeta = (role: Role) => {
     const data = inputs[role];
@@ -385,7 +526,7 @@ export function CncBenchmarkWorkbench({
         {/* Step 01: 导入输入 */}
         <section className="cnc-step-section">
           <div className="step-label-row">
-            <span className="step-num-eyebrow">STEP 01 · 导入对比输入（三选齐后激活对比）</span>
+            <span className="step-num-eyebrow">步骤 01 · 导入对比输入（三选齐后激活对比）</span>
             <div className="step-actions-quick">
               <button
                 type="button"
@@ -515,7 +656,7 @@ export function CncBenchmarkWorkbench({
         {report ? (
           <section className="cnc-step-section cnc-results" aria-label="算法比较报告">
             <div className="step-label-row">
-              <span className="step-num-eyebrow">STEP 02 · 版本验收结论与超限样本定位</span>
+              <span className="step-num-eyebrow">步骤 02 · 版本验收结论与超限样本定位</span>
             </div>
 
             {/* KPI Strip */}
@@ -567,11 +708,20 @@ export function CncBenchmarkWorkbench({
                     </svg>
                     <h3 className="outcome-text-heading">{statusLabels[report.outcome] ?? report.outcome}</h3>
                   </div>
-                  <span className="outcome-explanation">
-                    {report.reasons.length > 0
-                      ? report.reasons.join("；")
-                      : "已完成采样轨迹对比与硬约束门禁核验，请结合下方差异表与最差样本位置审阅。"}
-                  </span>
+                  <div className="outcome-body">
+                    <span className="outcome-explanation">
+                      {formattedReasons.primary.length > 0
+                        ? formattedReasons.primary.join(" ")
+                        : "已完成采样轨迹对比与硬约束门禁核验，请结合下方差异表与最差样本位置审阅。"}
+                    </span>
+                    {formattedReasons.caveats.length > 0 && (
+                      <ul className="outcome-caveats" aria-label="评估边界说明">
+                        {formattedReasons.caveats.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
 
                 <div className="cnc-section-subhead">
@@ -598,6 +748,7 @@ export function CncBenchmarkWorkbench({
                         const pctText = (item.baseline && item.candidate)
                           ? `${((item.candidate - item.baseline) / item.baseline * 100) > 0 ? "+" : ""}${((item.candidate - item.baseline) / item.baseline * 100).toFixed(1)}%`
                           : deltaText;
+                        const reasonHint = item.reason ? (differenceReasonLabels[item.reason] ?? item.reason) : undefined;
 
                         return (
                           <tr key={item.metricId}>
@@ -611,7 +762,7 @@ export function CncBenchmarkWorkbench({
                               {isNotComparable ? "—" : pctText}
                             </td>
                             <td>
-                              <span className={`status-tag tag-${item.status}`}>
+                              <span className={`status-tag tag-${item.status}`} title={reasonHint}>
                                 {statusLabels[item.status] ?? item.status}
                               </span>
                             </td>
@@ -641,7 +792,7 @@ export function CncBenchmarkWorkbench({
                         const isViolated = check.status === "Violated" || check.status === "CandidateViolatesLimits";
                         return (
                           <tr key={check.checkId}>
-                            <td><strong>{checkLabels[check.checkId] ?? check.checkId}</strong></td>
+                            <td><strong>{formatCheckLabel(check.checkId)}</strong></td>
                             <td>
                               <span className={`status-tag ${isPassed ? "tag-Improved" : isViolated ? "tag-Regressed" : "tag-Tradeoff"}`}>
                                 {isPassed ? "通过" : statusLabels[check.status] ?? check.status}
@@ -684,11 +835,11 @@ export function CncBenchmarkWorkbench({
                       <span className="val mono">{report.caseId}</span>
                     </div>
                     <div className="identity-row">
-                      <span className="label">Case Hash</span>
+                      <span className="label">案例哈希</span>
                       <span className="val mono">{shortHash(report.caseContentHash)}</span>
                     </div>
                     <div className="identity-row">
-                      <span className="label">Report Hash</span>
+                      <span className="label">报告哈希</span>
                       <span className="val mono">{shortHash(report.reportContentHash)}</span>
                     </div>
                   </div>
@@ -719,7 +870,7 @@ export function CncBenchmarkWorkbench({
         ) : (
           <section className="cnc-empty-card">
             <div className="empty-inner">
-              <span className="empty-badge">REPRODUCIBLE A/B BENCHMARK</span>
+              <span className="empty-badge">可复现 A/B 算法基准核验</span>
               <h2>从一次可复现的算法版本比较开始</h2>
               <p>
                 上传「刀路与约束 + 基线 A + 候选 B」三份 JSON 文件，或一键载入内置回归示例。报告将独立校验轨迹偏差与速度/加速度/Jerk 限制，并精确定位超限发生的样本序号、时刻与轴。
@@ -752,7 +903,7 @@ export function CncBenchmarkWorkbench({
           <section className="cnc-results closed-loop-section" aria-label="30+ 参数评估与推荐闭环报告">
             <div className="cnc-result-heading">
               <div>
-                <span className="eyebrow">32-PARAMETER MULTI-FIDELITY CLOSED LOOP</span>
+                <span className="eyebrow">32 维多保真灰盒调参闭环</span>
                 <h2>高维参数质量评估、敏感度归因与稀疏微调推荐</h2>
                 <p className="text-muted" style={{ margin: 0, fontSize: "13px" }}>
                   案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 实采切片 {closedLoop.surrogate.controllerRunCount} 组（共 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）
@@ -788,7 +939,7 @@ export function CncBenchmarkWorkbench({
                     <th>质量指标</th>
                     <th>建模模式</th>
                     <th>留一 R² / 保守共形半径</th>
-                    <th>Top-3 主导参数及贡献占比</th>
+                    <th>前 3 主导参数及贡献占比</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -798,7 +949,7 @@ export function CncBenchmarkWorkbench({
                         <strong>{metricLabels[head.metricId] ?? head.metricId}</strong>
                         <small> ({head.unit})</small>
                       </td>
-                      <td><span className="mono">{head.modelingMode}</span></td>
+                      <td><span>{modelingModeLabels[head.modelingMode] ?? head.modelingMode}</span></td>
                       <td className="mono">
                         LOO R²={head.looR2Score == null ? "-" : number(head.looR2Score)} · ±{number(head.conformalRadius)}
                         {head.residualEnabled === false ? " · 仅物理先验" : ""}
@@ -807,7 +958,7 @@ export function CncBenchmarkWorkbench({
                         {head.sensitivities
                           .filter((s) => s.status === "Active")
                           .slice(0, 3)
-                          .map((s) => `${s.displayName} (${(s.contributionRatio * 100).toFixed(1)}%, ${s.direction})`)
+                          .map((s) => `${s.displayName} (${(s.contributionRatio * 100).toFixed(1)}%, ${directionLabels[s.direction] ?? s.direction})`)
                           .join("；")}
                       </td>
                     </tr>
@@ -817,7 +968,7 @@ export function CncBenchmarkWorkbench({
             </div>
 
             <div className="cnc-section-subhead" style={{ marginTop: "24px" }}>
-              <span className="subhead-title">2. 受约束三档 Pareto 稀疏推荐（最多微调 {closedLoop.recommendationReport.maxChangedParameters} 个核心参数）</span>
+              <span className="subhead-title">2. 受约束三档帕累托稀疏推荐（最多微调 {closedLoop.recommendationReport.maxChangedParameters} 个核心参数）</span>
             </div>
             <div className="cnc-table-box">
               <table>
@@ -836,8 +987,8 @@ export function CncBenchmarkWorkbench({
                   )}
                   {closedLoop.recommendationReport.presets.map((preset) => (
                     <tr key={preset.candidateId}>
-                      <td><strong>{preset.presetTitle}</strong><small> ({preset.presetRole})</small></td>
-                      <td>{preset.tradeoffExplanation}</td>
+                      <td><strong>{preset.presetTitle}</strong><small> ({presetRoleLabels[preset.presetRole] ?? preset.presetRole})</small></td>
+                      <td>{localizeClosedLoopCopy(preset.tradeoffExplanation)}</td>
                       <td className="mono text-muted">
                         {preset.changedParameters
                           .map((p) => `${p.displayName}: ${p.baselineValue} → ${p.recommendedValue} ${p.unit} (${p.relativeChangePct >= 0 ? "+" : ""}${p.relativeChangePct}%)`)
@@ -850,12 +1001,12 @@ export function CncBenchmarkWorkbench({
             </div>
 
             <div className="cnc-section-subhead" style={{ marginTop: "24px" }}>
-              <span className="subhead-title">3. 主动学习下一批补采建议（Active DoE）</span>
+              <span className="subhead-title">3. 主动学习下一批补采建议</span>
             </div>
             <ul className="active-doe-list">
               {closedLoop.recommendationReport.activeDoeSuggestions.map((sug) => (
                 <li key={sug.suggestionId}>
-                  <strong>[{sug.suggestionId} · {sug.targetSource}]</strong> {sug.rationale}
+                  <strong>[{sug.suggestionId.replace(/^active-doe\.0?(\d+)$/, "补采方案 #$1")} · {targetSourceLabels[sug.targetSource] ?? sug.targetSource}]</strong> {localizeClosedLoopCopy(sug.rationale)}
                 </li>
               ))}
             </ul>

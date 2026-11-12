@@ -214,12 +214,22 @@ function formatReportReasons(reasons: string[]): { primary: string[]; caveats: s
 
 function localizeClosedLoopCopy(text: string): string {
   return text
+    .replace(/[（(]Siemens\s*\/\s*siemens-sinumerik-840d@1[）)]/g, "（西门子 840D sl）")
+    .replace(/[（(]Beckhoff\s*\/\s*beckhoff-twincat-nc@1[）)]/g, "（倍福 TwinCAT 3 NC）")
+    .replace(/[（(]Generic(?:\s+Reference\s+CNC)?\s*\/\s*generic-fir-biquad@1[）)]/g, "（通用 32 维标准层）")
     .replace(/actualPathDeviationMaxMm=/g, "实测最大轮廓误差=")
     .replace(/sampledPathDeviationMaxMm=/g, "最大路径偏差=")
     .replace(/\bcontroller-trace\b/g, "机床试切采集")
     .replace(/\balgorithm-export\b/g, "离线插补预筛")
     .replace(/\bCEI=/g, "期望改进分=");
 }
+
+const caseIdLabels: Record<string, string> = {
+  "line": "直线基准刀路 (line)",
+  "axiom.v1.circle": "整圆精铣基准刀路",
+  "axiom.v1.corner90": "90° 直角轮廓刀路",
+  "axiom.v1.s-curve": "S 型自由曲面刀路",
+};
 
 async function requestJson<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(
@@ -373,9 +383,9 @@ export function CncBenchmarkWorkbench({
       if (current === revision.current) {
         setInputs(payload);
         setFilenames({
-          case: `${String(payload.case?.caseId ?? "case")}.json`,
-          baseline: `${String(payload.baseline?.algorithmId ?? "baseline")} (${String(payload.baseline?.algorithmVersion ?? "A")})`,
-          candidate: `${String(payload.candidate?.algorithmId ?? "candidate")} (${String(payload.candidate?.algorithmVersion ?? "B")})`,
+          case: "直线插补基准刀路.json",
+          baseline: "基线规划器 v1 (旧版)",
+          candidate: "候选规划器 v2 (待验收)",
         });
       }
     } catch (reason) {
@@ -393,9 +403,9 @@ export function CncBenchmarkWorkbench({
       if (current !== revision.current) return;
       setInputs(payload);
       setFilenames({
-        case: `${String(payload.case?.caseId ?? "case")}.json`,
-        baseline: `${String(payload.baseline?.algorithmId ?? "baseline")} (${String(payload.baseline?.algorithmVersion ?? "A")})`,
-        candidate: `${String(payload.candidate?.algorithmId ?? "candidate")} (${String(payload.candidate?.algorithmVersion ?? "B")})`,
+        case: "直线插补基准刀路.json",
+        baseline: "基线规划器 v1 (旧版)",
+        candidate: "候选规划器 v2 (待验收)",
       });
       const next = await requestJson<Report>("compare", payload);
       if (current === revision.current) setReport(next);
@@ -831,8 +841,8 @@ export function CncBenchmarkWorkbench({
                   </div>
                   <div className="identity-rows">
                     <div className="identity-row">
-                      <span className="label">案例 ID</span>
-                      <span className="val mono">{report.caseId}</span>
+                      <span className="label">评估案例</span>
+                      <span className="val mono">{caseIdLabels[report.caseId] ?? report.caseId}</span>
                     </div>
                     <div className="identity-row">
                       <span className="label">案例哈希</span>
@@ -868,32 +878,42 @@ export function CncBenchmarkWorkbench({
             </div>
           </section>
         ) : (
-          <section className="cnc-empty-card">
-            <div className="empty-inner">
-              <span className="empty-badge">可复现 A/B 算法基准核验</span>
-              <h2>从一次可复现的算法版本比较开始</h2>
-              <p>
-                上传「刀路与约束 + 基线 A + 候选 B」三份 JSON 文件，或一键载入内置回归示例。报告将独立校验轨迹偏差与速度/加速度/Jerk 限制，并精确定位超限发生的样本序号、时刻与轴。
-              </p>
-              <div className="empty-actions">
-                <button
-                  type="button"
-                  className="button button-primary"
-                  onClick={loadExampleAndCompare}
-                  disabled={busy}
-                >
-                  {busy ? "正在载入并对比…" : "一键载入示例并立即对比"}
-                </button>
-                {onOpenParamTuning && (
+          <section className="cnc-studio-onboarding">
+            <div className="cnc-onboarding-left">
+              <div className="empty-inner">
+                <span className="empty-badge">可复现 A/B 算法基准核验</span>
+                <h2>从一次可复现的算法版本比较开始</h2>
+                <p>
+                  上传「刀路与约束 + 基线 A + 候选 B」三份 JSON 文件，或一键载入内置回归示例。系统将自动校验轨迹偏差与速度/加速度/跃度限制，并精确定位超限发生的样本序号、时刻与轴。
+                </p>
+                <div className="cnc-feature-pills">
+                  <span>✓ 采样轮廓偏差对比</span>
+                  <span>✓ 离散 V/A/J 超限样本定位</span>
+                  <span>✓ 同源案例防篡改校验</span>
+                </div>
+                <div className="empty-actions">
                   <button
                     type="button"
-                    className="button button-secondary"
-                    onClick={onOpenParamTuning}
+                    className="button button-primary"
+                    onClick={loadExampleAndCompare}
+                    disabled={busy}
                   >
-                    体验单刀快诊与多系统调参 →
+                    {busy ? "正在载入并对比…" : "一键载入示例并立即对比"}
                   </button>
-                )}
+                  {onOpenParamTuning && (
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={onOpenParamTuning}
+                    >
+                      体验单刀快诊与多系统调参 →
+                    </button>
+                  )}
+                </div>
               </div>
+            </div>
+            <div className="cnc-onboarding-right">
+              <PathPreview inputs={inputs} />
             </div>
           </section>
         )}
@@ -906,7 +926,7 @@ export function CncBenchmarkWorkbench({
                 <span className="eyebrow">32 维多保真灰盒调参闭环</span>
                 <h2>高维参数质量评估、敏感度归因与稀疏微调推荐</h2>
                 <p className="text-muted" style={{ margin: 0, fontSize: "13px" }}>
-                  案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 实采切片 {closedLoop.surrogate.controllerRunCount} 组（共 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）
+                  案例 {caseIdLabels[closedLoop.case.caseId] ?? closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 实采切片 {closedLoop.surrogate.controllerRunCount} 组（共 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）
                 </p>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
@@ -930,7 +950,7 @@ export function CncBenchmarkWorkbench({
             </div>
 
             <div className="cnc-section-subhead" style={{ marginTop: "16px" }}>
-              <span className="subhead-title">1. 参数影响识别（解析物理先验 + 保守残差 ARD-GP）</span>
+              <span className="subhead-title">1. 参数影响识别（解析物理先验 + 保守残差代理模型）</span>
             </div>
             <div className="cnc-table-box">
               <table>
@@ -938,7 +958,7 @@ export function CncBenchmarkWorkbench({
                   <tr>
                     <th>质量指标</th>
                     <th>建模模式</th>
-                    <th>留一 R² / 保守共形半径</th>
+                    <th>拟合度 R² / 保守共形半径</th>
                     <th>前 3 主导参数及贡献占比</th>
                   </tr>
                 </thead>
@@ -951,7 +971,7 @@ export function CncBenchmarkWorkbench({
                       </td>
                       <td><span>{modelingModeLabels[head.modelingMode] ?? head.modelingMode}</span></td>
                       <td className="mono">
-                        LOO R²={head.looR2Score == null ? "-" : number(head.looR2Score)} · ±{number(head.conformalRadius)}
+                        拟合度 R²={head.looR2Score == null ? "-" : number(head.looR2Score)} · ±{number(head.conformalRadius)}
                         {head.residualEnabled === false ? " · 仅物理先验" : ""}
                       </td>
                       <td>

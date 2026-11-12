@@ -6,15 +6,15 @@
 }
 
 .cnc-container {
-  max-width: 1280px;
+  max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 26px 32px 56px;
+  padding: 18px 28px 44px;
   box-sizing: border-box;
 }
 
 .cnc-step-section {
-  margin-bottom: 28px;
+  margin-bottom: 18px;
 }
 
 .step-label-row {
@@ -640,14 +640,37 @@
   border-radius: var(--radius-sm);
 }
 
-/* Empty Card */
-.cnc-empty-card {
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-lg);
-  padding: 48px 32px;
-  text-align: center;
+/* Studio Onboarding Split View */
+.cnc-studio-onboarding {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.cnc-onboarding-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 32px 32px;
   background: var(--panel);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
+}
+
+.cnc-onboarding-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.cnc-onboarding-right .cnc-preview-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .empty-badge {
@@ -658,30 +681,47 @@
   border: 1px solid var(--brand-border);
   color: var(--brand);
   font: 600 11px var(--mono);
-  letter-spacing: .06em;
+  letter-spacing: .04em;
   margin-bottom: 12px;
 }
 
 .empty-inner h2 {
-  font-size: 20px;
+  font-size: 21px;
   color: var(--text);
   margin: 0 0 10px;
-  letter-spacing: -.01em;
+  letter-spacing: -.015em;
 }
 
 .empty-inner p {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 13.5px;
-  max-width: 56ch;
-  margin: 0 auto;
-  line-height: 1.7;
+  max-width: 60ch;
+  margin: 0;
+  line-height: 1.65;
+}
+
+.cnc-feature-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cnc-feature-pills span {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--panel-deep);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .empty-actions {
-  margin-top: 20px;
+  margin-top: 22px;
   display: flex;
-  justify-content: center;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -728,7 +768,8 @@
   .cnc-kpi-strip {
     grid-template-columns: repeat(2, 1fr);
   }
-  .cnc-report-columns {
+  .cnc-report-columns,
+  .cnc-studio-onboarding {
     grid-template-columns: 1fr;
   }
 }

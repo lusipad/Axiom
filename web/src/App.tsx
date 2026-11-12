@@ -572,12 +572,12 @@ export function App() {
           <main className="workspace">
             <aside className="config-panel">
               <div className="panel-heading">
-                <div><span className="eyebrow">EXPERIMENT SPEC</span><h1>双臂实验配置</h1></div>
-                <span className="schema-badge">@1</span>
+                <div><span className="eyebrow">双臂实验规范</span><h1>双臂实验配置</h1></div>
+                <span className="schema-badge">版本 v1</span>
               </div>
 
               <section className="config-section">
-                <div className="section-title"><span>01</span><h2>共享输入</h2><em>{spec?.sharedInput.points.length ?? 0} pts</em></div>
+                <div className="section-title"><span>01</span><h2>共享输入</h2><em>{spec?.sharedInput.points.length ?? 0} 采样点</em></div>
                 <label className="field-label" htmlFor="points">有序离散点（JSON）</label>
                 <textarea
                   id="points"
@@ -587,14 +587,14 @@ export function App() {
                   spellCheck={false}
                 />
                 <div className="input-meta">
-                  <span>{spec?.sharedInput.semantics?.coordinateFrame ?? "frame unknown"}</span>
+                  <span>{spec?.sharedInput.semantics?.coordinateFrame ?? "未知坐标系"}</span>
                   <span>{pointUnit}</span>
-                  <span>{spec?.sharedInput.semantics?.closed ? "closed" : "open"}</span>
+                  <span>{spec?.sharedInput.semantics?.closed ? "闭合路径" : "开放路径"}</span>
                 </div>
               </section>
 
               <section className="config-section">
-                <div className="section-title"><span>02</span><h2>参数集</h2><em>frozen</em></div>
+                <div className="section-title"><span>02</span><h2>参数集</h2><em>已冻结</em></div>
                 <label className="field-label" htmlFor="error-vector">误差向量（{pointUnit}）</label>
                 <input id="error-vector" className="text-input mono" value={errorVector} onChange={(event) => setErrorVector(event.target.value)} />
                 <div className="gain-row">
@@ -606,10 +606,10 @@ export function App() {
               </section>
 
               <section className="config-section arms-section">
-                <div className="section-title"><span>03</span><h2>实验双臂</h2><em>strict</em></div>
+                <div className="section-title"><span>03</span><h2>实验双臂</h2><em>严格同源</em></div>
                 {spec?.arms.map((arm, index) => (
                   <div className={`arm-card arm-${index}`} key={arm.armId}>
-                    <div className="arm-card-head"><span className="arm-swatch" /><strong>{arm.armId}</strong><code>{arm.runnerId ?? "unknown-runner"}</code></div>
+                    <div className="arm-card-head"><span className="arm-swatch" /><strong>{arm.armId === "baseline" ? "基线臂 (baseline)" : arm.armId === "candidate" ? "候选臂 (candidate)" : arm.armId}</strong><code>{arm.runnerId ?? "默认执行器"}</code></div>
                     <label className="visually-hidden" htmlFor={`arm-${index}`}>{arm.armId} Subject</label>
                     <select
                       id={`arm-${index}`}
@@ -636,8 +636,8 @@ export function App() {
                   <button role="tab" aria-selected={pointView === "metrics"} onClick={() => setPointView("metrics")}>指标比较</button>
                 </div>
                 <div className="run-state">
-                  <span className={resultClass(report?.executionStatus)}>{report?.executionStatus ?? "Not run"}</span>
-                  <span className={resultClass(compatible)}>{compatible === undefined ? "等待比较" : compatible ? "Strict compatible" : "Incompatible"}</span>
+                  <span className={resultClass(report?.executionStatus)}>{report?.executionStatus === "Succeeded" ? "执行成功" : report?.executionStatus ?? "待运行"}</span>
+                  <span className={resultClass(compatible)}>{compatible === undefined ? "等待比较" : compatible ? "Strict compatible" : "同源不兼容"}</span>
                 </div>
               </div>
 
@@ -645,8 +645,7 @@ export function App() {
                 <div className="geometry-view">
                   <div className="plot-toolbar">
                     <code>
-                      {spec?.sharedInput.semantics?.coordinateFrame ?? "unknown frame"} · XY
-                      {pointDimension > 2 ? ` projection of ${pointDimension}D` : ""} · {pointUnit}
+                      {spec?.sharedInput.semantics?.coordinateFrame ?? "未知坐标系"} · XY 平面投影 · {pointUnit}
                     </code>
                   </div>
                   <div className="plot-stage">
@@ -663,11 +662,11 @@ export function App() {
               ) : (
                 <div className="metrics-view">
                   <table>
-                    <thead><tr><th>指标定义</th><th>{baseline?.armId ?? "baseline"}</th><th>{candidate?.armId ?? "candidate"}</th><th>Δ (B−A)</th><th>优选</th></tr></thead>
+                    <thead><tr><th>指标定义</th><th>{baseline?.armId ?? "基线"}</th><th>{candidate?.armId ?? "候选"}</th><th>Δ (B−A)</th><th>优选</th></tr></thead>
                     <tbody>
                       {(report?.comparison?.metricComparisons ?? []).map((metric) => (
                         <tr key={metric.metricId}>
-                          <td><code>{metric.metricId}</code><small>{metric.unit ?? "dimensionless"}</small></td>
+                          <td><code>{metric.metricId}</code><small>{metric.unit ?? "无量纲"}</small></td>
                           <td>{formatValue(metric.left)}</td><td>{formatValue(metric.right)}</td>
                           <td className={typeof metric.delta === "number" && metric.delta < 0 ? "status-positive" : ""}>{formatValue(metric.delta)}</td>
                           <td>{report ? comparisonWinner(metric, report) : "—"}</td>
@@ -682,33 +681,33 @@ export function App() {
               )}
 
               <div className="metric-strip">
-                <div><span>BASELINE MAX</span><strong>{armMetric(baseline, "paired.euclidean.max")}</strong><small className={resultClass(baseline?.caseOutcome)}>{baseline?.caseOutcome ?? "—"}</small></div>
-                <div><span>CANDIDATE MAX</span><strong>{armMetric(candidate, "paired.euclidean.max")}</strong><small className={resultClass(candidate?.caseOutcome)}>{candidate?.caseOutcome ?? "—"}</small></div>
-                <div><span>THRESHOLD</span><strong>≤ {threshold} {pointUnit}</strong><small>hard gate</small></div>
-                <div><span>COMPARISON</span><strong className={resultClass(compatible)}>{compatible ? "Compatible" : compatible === false ? "Blocked" : "—"}</strong><small>lineage strict</small></div>
+                <div><span>基线最大偏差</span><strong>{armMetric(baseline, "paired.euclidean.max")}</strong><small className={resultClass(baseline?.caseOutcome)}>{baseline?.caseOutcome === "Passed" ? "通过" : baseline?.caseOutcome === "Failed" ? "未通过" : baseline?.caseOutcome ?? "—"}</small></div>
+                <div><span>候选最大偏差</span><strong>{armMetric(candidate, "paired.euclidean.max")}</strong><small className={resultClass(candidate?.caseOutcome)}>{candidate?.caseOutcome === "Passed" ? "通过" : candidate?.caseOutcome === "Failed" ? "未通过" : candidate?.caseOutcome ?? "—"}</small></div>
+                <div><span>硬门限阈值</span><strong>≤ {threshold} {pointUnit}</strong><small>硬约束门禁</small></div>
+                <div><span>同源可比性</span><strong className={resultClass(compatible)}>{compatible ? "可比较" : compatible === false ? "已阻断" : "—"}</strong><small>严格谱系校验</small></div>
               </div>
             </section>
 
             <aside className="evidence-panel">
               <div className="panel-heading evidence-heading">
-                <div><span className="eyebrow">SEALED OUTPUT</span><h2>证据与谱系</h2></div>
+                <div><span className="eyebrow">封存证据输出</span><h2>证据与谱系</h2></div>
                 <button type="button" className="icon-button" onClick={downloadPointEvidence} disabled={!report} title="下载证据 JSON">⇩</button>
               </div>
 
               <section className="verdict-card">
-                <span className="eyebrow">EXPERIMENT VERDICT</span>
-                <div className="verdict-row"><strong className={resultClass(report?.caseOutcome)}>{report?.caseOutcome ?? "Pending"}</strong><span>{report ? "证据包已封存" : "等待执行"}</span></div>
-                <div className="verdict-rule"><i /><span>Execution</span><b className={resultClass(report?.executionStatus)}>{report?.executionStatus ?? "—"}</b></div>
-                <div className="verdict-rule"><i /><span>Compatibility</span><b className={resultClass(compatible)}>{compatible === undefined ? "—" : compatible ? "Accepted" : "Rejected"}</b></div>
+                <span className="eyebrow">双臂实验判定结论</span>
+                <div className="verdict-row"><strong className={resultClass(report?.caseOutcome)}>{report?.caseOutcome === "Passed" ? "通过" : report?.caseOutcome === "Failed" ? "未通过" : report?.caseOutcome ?? "待执行"}</strong><span>{report ? "证据包已封存" : "等待执行"}</span></div>
+                <div className="verdict-rule"><i /><span>执行状态</span><b className={resultClass(report?.executionStatus)}>{report?.executionStatus === "Succeeded" ? "成功" : report?.executionStatus ?? "—"}</b></div>
+                <div className="verdict-rule"><i /><span>同源校验</span><b className={resultClass(compatible)}>{compatible === undefined ? "—" : compatible ? "已通过" : "已拒绝"}</b></div>
               </section>
 
               <section className="evidence-section">
                 <div className="section-title compact"><span>01</span><h2>冻结身份</h2></div>
                 <dl className="identity-list">
-                  <div><dt>Input</dt><dd title={report?.sharedInputHash}>{shortHash(report?.sharedInputHash)}</dd></div>
-                  <div><dt>Parameters</dt><dd title={report?.parameterSetHash}>{shortHash(report?.parameterSetHash)}</dd></div>
-                  <div><dt>Experiment</dt><dd title={report?.experimentSpecHash}>{shortHash(report?.experimentSpecHash)}</dd></div>
-                  <div><dt>Bundle</dt><dd title={report?.contentHash}>{shortHash(report?.contentHash)}</dd></div>
+                  <div><dt>共享输入哈希</dt><dd title={report?.sharedInputHash}>{shortHash(report?.sharedInputHash)}</dd></div>
+                  <div><dt>参数集哈希</dt><dd title={report?.parameterSetHash}>{shortHash(report?.parameterSetHash)}</dd></div>
+                  <div><dt>实验规范哈希</dt><dd title={report?.experimentSpecHash}>{shortHash(report?.experimentSpecHash)}</dd></div>
+                  <div><dt>证据包哈希</dt><dd title={report?.contentHash}>{shortHash(report?.contentHash)}</dd></div>
                 </dl>
               </section>
 
@@ -717,9 +716,9 @@ export function App() {
                 <div className="claims-list">
                   {(report?.armResults ?? []).map((arm) => (
                     <article key={arm.armId}>
-                      <div><span className={`arm-swatch ${arm.armId === candidate?.armId ? "candidate" : ""}`} /><strong>{arm.armId}</strong><em className={resultClass(arm.caseOutcome)}>{arm.caseOutcome}</em></div>
-                      <p>{arm.runBundle?.claims[0]?.predicate ?? arm.failure?.message ?? "没有可发布声明"}</p>
-                      <footer><code>{arm.subjectId}@{arm.subjectVersion}</code><span>{arm.runBundle?.claims[0]?.evidence?.level ?? "—"}</span></footer>
+                      <div><span className={`arm-swatch ${arm.armId === candidate?.armId ? "candidate" : ""}`} /><strong>{arm.armId === "baseline" ? "基线臂" : arm.armId === "candidate" ? "候选臂" : arm.armId}</strong><em className={resultClass(arm.caseOutcome)}>{arm.caseOutcome === "Passed" ? "通过" : arm.caseOutcome === "Failed" ? "未通过" : arm.caseOutcome}</em></div>
+                      <p>{(arm.runBundle?.claims[0]?.predicate ?? arm.failure?.message ?? "没有可发布声明").replace("paired.euclidean.max <=", "点对最大欧氏偏差 ≤")}</p>
+                      <footer><code>{arm.subjectId}@{arm.subjectVersion}</code><span>{arm.runBundle?.claims[0]?.evidence?.level === "Exact" ? "精确计算" : arm.runBundle?.claims[0]?.evidence?.level ?? "—"}</span></footer>
                     </article>
                   ))}
                   {!report && <div className="placeholder-lines"><i /><i /><i /></div>}
@@ -729,10 +728,10 @@ export function App() {
               <section className="evidence-section">
                 <div className="section-title compact"><span>03</span><h2>执行链</h2></div>
                 <ol className="execution-chain">
-                  <li className={spec ? "done" : ""}><span>Spec validated</span><code>experiment-spec@1</code></li>
-                  <li className={report ? "done" : ""}><span>Shared input frozen</span><code>{shortHash(report?.sharedInputHash)}</code></li>
-                  <li className={report ? "done" : ""}><span>Subjects executed</span><code>{pointRunnerLabel || "pending"}</code></li>
-                  <li className={compatible ? "done" : ""}><span>Strict comparison</span><code>{report?.comparison?.policyId ?? "pending"}</code></li>
+                  <li className={spec ? "done" : ""}><span>实验规范已校验</span><code>experiment-spec@1</code></li>
+                  <li className={report ? "done" : ""}><span>共享输入已冻结</span><code>{shortHash(report?.sharedInputHash)}</code></li>
+                  <li className={report ? "done" : ""}><span>双臂算法已执行</span><code>{pointRunnerLabel || "待运行"}</code></li>
+                  <li className={compatible ? "done" : ""}><span>严格同源对比完成</span><code>{report?.comparison?.policyId ?? "待对比"}</code></li>
                 </ol>
               </section>
             </aside>

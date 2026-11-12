@@ -44,6 +44,14 @@ describe("CncParamTuningWorkbench", () => {
       await screen.findByText("MD32520 QEC 过象限摩擦补偿量"),
     ).toBeInTheDocument();
     expect(screen.getByText("MD32410 轴跃度滑动滤波时间")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/siemens-sinumerik-840d@1/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/quadrantGlitchExcess/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/A_fric_new/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/建议补偿量 = 当前设定/)).toBeInTheDocument();
 
     // Switch to Beckhoff TwinCAT 3 NC
     fireEvent.click(

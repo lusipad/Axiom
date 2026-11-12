@@ -453,7 +453,7 @@ export function Sidebar({ active, onSelect, theme, onThemeChange }: SidebarProps
           </button>
         </div>
         <div className="sidebar-version">
-          <span>v2.1 · Grey-Box CNC</span>
+          <span>v2.1 · 灰盒数控调参版</span>
           <span>离线只读</span>
         </div>
       </div>

@@ -1,7 +1,7 @@
 # Axiom CNC 三层灰盒物理建模、正交误差解耦与跨刀路零样本推荐系统规范
 
-> 文档状态：Accepted v2.0（替代 v1.0 纯黑盒 `ElasticNet` 初筛草案，见 [ADR-0030](架构决策记录/ADR-0030-三层灰盒物理建模与跨刀路零样本推荐.md)）
-> 适用代码基线：`src/axiom/benchmark.py`、`src/axiom/greybox_model.py`、`src/axiom/parameter_space.py`、`src/axiom/parameter_learner.py`、`src/axiom/parameter_recommender.py`、`src/axiom/cnc_governance.py`
+> 文档状态：Proposed v2.1（替代 v1.0 纯黑盒 `ElasticNet` 初筛草案；合成证据保持 `Observed`/`Inconclusive`，见 [ADR-0030](架构决策记录/ADR-0030-三层灰盒物理建模与跨刀路零样本推荐.md)）
+> 适用代码基线：`src/axiom/benchmark.py`、`src/axiom/controller_profile.py`、`src/axiom/greybox_model.py`、`src/axiom/parameter_diagnoser.py`、`src/axiom/parameter_space.py`、`src/axiom/parameter_learner.py`、`src/axiom/parameter_recommender.py`、`src/axiom/prediction_ledger.py`、`src/axiom/cnc_governance.py`
 > 关联规范：`CNC-BENCHMARK.md`、`Axiom 通用评估框架规范.md`、`物理模型与现实对齐规范.md`、`数据集与学习模型规范.md`、`受约束优化与安全闭环规范.md`
 
 ## 1. 核心问题与为什么放弃纯黑盒 `ElasticNet`
@@ -63,62 +63,56 @@ $$\hat{y}_m(\boldsymbol{\theta}; \mathcal{G}) = \underbrace{f_m^{\text{GB}}\!\le
 ### 3.3 第三层：低维最大边缘似然 ARD Matérn-5/2 GP 残差与留一验证
 
 - 对灰盒剥离后的残差 $r_m = y_m^{\text{obs}} - f_m^{\text{GB}}$，仅在物理因果筛选出的 **3～6 维活跃特征与物理无量纲桥接特征**（如 `derived.kp_xy_mismatch`、`phys.firResonanceGain`、`phys.notchSuppression`）上，通过 `L-BFGS-B` 最大化精确对数边缘似然（Log Marginal Likelihood）拟合各向异性 Matérn-5/2 高斯过程。
-- 结合留一法（LOO）异方差自适应 Split Conformal 校准半径 $q_{1-\alpha} \cdot (0.45 + 0.55 \sigma_{\text{GP}} / \sigma_0)$ 输出保守安全上界。
+- 结合留一法（LOO）未压缩残差分位数（秩 $\lceil (n+1)(1-\alpha) \rceil$，仅在留一 RMSE 优于纯灰盒 2% 以上时启用残差 GP）输出保守安全上界；对未参与标定的新刀路以跨刀路留一（LOCO）最差零样本误差 $\times 1.645$ 作为不确定性下限。
 - 当传入 $\ge 2$ 条校准刀路时，自动执行 **跨刀路留一交叉验证（LOCO，`CrossToolpathValidationSummary`）**，输出未见刀路上的零样本时长 MAPE 与轮廓误差 RMSE。
 
-## 4. `R0–R7` 统一安全治理桥接（`cnc_governance.py`）
+### 3.4 多厂商控制器画像（`controller_profile.py`）与单次试切物理诊断（`parameter_diagnoser.py`）
 
-为彻底消除 CNC 参数优化工作流与 `Axiom` 核心证据框架之间的架构断层，`cnc_governance.py` 将三层灰盒闭环接入通用 `DomainPack` 与 `RunBundle` 主干：
+- **标准控制量与拓扑开关**：灰盒核统一作用于厂商无关的 `CanonicalControlQuantities` 与 `ControllerCapabilities`（`hasFirFilter`、`hasCommandLowpass`、`hasMicroSpline`、`hasDriveNotchFilter`），通过 `ControllerProfile` 完成厂商参数映射、双向单位换算（含 `reciprocal_2pi`：$f_{\text{LP}} = \frac{1}{2\pi \tau_{\text{PT2}}}$）及权限分级（`nc-tunable` / `drive-side` / `read-only`）。内置 `generic-fir-biquad@1`、`beckhoff-twincat-nc@1`、`siemens-sinumerik-840d@1`。
+- **零实验单刀诊断（`diagnose_single_run`）**：面向现场首件试切场景，无需预先运行 DoE，直接从单条轨迹的 Frenet 正交误差与有符号法向 FFT 谐振主频给出 $\le 2$ 条厂商原生参数建议，并标注置信度等级（`High` 白盒确定性零点对齐、`Medium` 经验半定量、`TrendOnly` 定向趋势）。
+
+## 4. `R0–R7` 统一安全治理与预测-实测对账台账（`cnc_governance.py` / `prediction_ledger.py`）
+
+为彻底消除 CNC 参数优化工作流与 `Axiom` 核心证据框架之间的架构断层，`cnc_governance.py` 与 `prediction_ledger.py` 将三层灰盒闭环接入通用 `DomainPack`、`RunBundle` 与实机对账闭环：
 
 1. **领域包注册**：公开注册 `cnc-greybox.domain-pack@1` 与 `DomainRuntimeBinding`，可通过公共 `axiom.evaluate_run(run_spec)` 直接复算并封存 SHA-256 `RunBundle`。
 2. **显式 Artifact 转换与 R3 只读遥测接入**：
    - 注册 `cnc.export-to-ordered-point@1` 适配器，完整记录保留语义与丢弃语义哈希；
-   - 提供 `adapt_r3_telemetry_to_cnc_export`，将 R3 只读 `MachineTelemetryTrace` 确定性投影为 `controller-trace` 导出，若检测到非 `file-import` 写操作或序号断裂则立即阻断。
-3. **四层标准声明（Claims）与权限天花板**：
-   - `cnc-greybox.sampled-limits-claim@1`（L0 采样硬限门禁）；
-   - `cnc-greybox.r4-calibration-claim@1`（R4 灰盒物理标定有效性）；
-   - `cnc-greybox.r5-epistemic-claim@1`（R5 适用域包络与 Split Conformal 保守上界闭合）；
+   - 提供 `adapt_r3_telemetry_to_cnc_export`，校验 `traceContentHash`、设备时间戳采样周期一致性与通道质量，将 R3 只读 `MachineTelemetryTrace` 确定性投影为 `controller-trace` 导出。
+3. **预测-实测对账单（`PredictionVerificationLedger`）**：
+   - 将推荐前的预测区间与上机试切后的实测轨迹配对封存，严格区分 `synthetic-simulation`、`external-controller-trace` 与 `real-machine-r3-telemetry` 三级来源，并按 `r3TraceContentHash` 去重计数（`distinctRealR3TraceCount`）。
+4. **四层标准声明（Claims）与诚实晋升/证伪门禁**：
+   - `cnc-greybox.sampled-limits-claim@1`（L0 采样硬限门禁，证据等级 `Observed`）；
+   - `cnc-greybox.r4-calibration-claim@1` & `cnc-greybox.r5-epistemic-claim@1`（无实机对账单或不足 3 条独立 R3 轨迹时一律为 `Inconclusive`；满 3 条独立 R3 实机轨迹且满足误差与 $\ge 80\%$ 保守区间覆盖率时晋升为 `Supported`，越界失配则判为 `Refuted`）；
    - `cnc-greybox.r7-zero-write-advisory-claim@1`（R6/R7 锁定 `OfflineAdvisory`、`deviceWriteAllowed=False`，并保持 `DeploymentShadow / ControlledTrial / ClosedLoop = Open`、`DeviceSafe = NotAssessed`）。
 
-## 5. CLI、HTTP API 与跨刀路零样本推荐工作流
+## 5. CLI、HTTP API 与现场渐进式工作流
 
-### 5.1 最小正交灰盒定参 + 跨刀路零样本推荐（CLI）
+### 5.1 现场三步渐进工作流（CLI）
 
 ```powershell
-# 1. 生成五条 V1 标准校准刀路（直线、整圆、90°拐角、密集小线段、S曲线）
+# 阶段 A（零 DoE 首刀快诊）：切一刀即输出 <=2 项厂商原生参数调整建议（支持倍福只调 NC 参数）
+axiom param-diagnose --case circle.case.json --export cut_01.json --controller-profile beckhoff-twincat-nc@1 --nc-only --format table
+
+# 阶段 B（改后复测对账）：将推荐方案与改后 R3 实采轨迹写入防篡改对账单，累计 >=3 刀晋升治理声明
+axiom param-ledger --case circle.case.json --model machine_greybox_model.json --recommendation rec.json --trace r3_cut_02.json --out ledger.json --format table
+axiom param-governance --case circle.case.json --export cut_02.json --model machine_greybox_model.json --recommendation rec.json --ledger ledger.json
+
+# 阶段 C（深度多刀路标定 + 新零件零样本推荐）：
 axiom benchmark-standard-cases --out-dir v1 --feed 3000 --period 0.002
-
-# 2. 生成正交物理激励试验表（仅需 10 组离线 + 6 组控制器实采即可完成全参数物理标定）
-axiom param-doe --mode orthogonal-greybox --offline-count 10 --controller-count 6 --out doe_plan.json
-
-# 3. 多刀路联合标定三层灰盒模型（自动输出物理辨识常数与跨刀路 LOCO 留一验证报告）
-axiom param-learn `
-  --case v1/line.case.json `
-  --case v1/circle.case.json `
-  --case v1/corner90.case.json `
-  --case v1/micro200.case.json `
-  --case v1/scurve.case.json `
-  --export exports/run_01.json --export exports/run_02.json `
-  --out-model machine_greybox_model.json --format table
-
-# 4. 针对任意未采集过的新零件刀路（unseen_part.case.json）直接零样本推荐 Top-4 稀疏微调参数
-axiom param-recommend `
-  --model machine_greybox_model.json `
-  --target-case unseen_part.case.json `
-  --max-changed-params 4 `
-  --max-actual-path-deviation-mm 0.035 `
-  --format table
-
-# 5. 一键体验多工况灰盒标定闭环或输出 R0-R7 封存治理证书
-axiom param-demo --multi-case --format table
-axiom param-governance --multi-case
+axiom param-doe --controller-profile beckhoff-twincat-nc@1 --mode orthogonal-greybox --offline-count 10 --controller-count 6 --out doe_plan.json
+axiom param-learn --controller-profile beckhoff-twincat-nc@1 --case v1/corner90.case.json --case v1/circle.case.json --export exports/run_01.json --export exports/run_02.json --out-model machine_greybox_model.json --format table
+axiom param-recommend --model machine_greybox_model.json --target-case unseen_part.case.json --nc-only --max-changed-params 4 --max-actual-path-deviation-mm 0.035 --format table
 ```
 
 ### 5.2 FastAPI 端点一览
 
+- `GET /api/v1/benchmarks/cnc/controller-profiles`：查询内置多厂商控制器画像、能力开关与参数权限分级。
 - `POST /api/v1/benchmarks/cnc/evaluate`：单次双源轨迹 Frenet 正交误差解耦、抗噪 Jerk 与 FFT 谐振诊断。
-- `GET /api/v1/benchmarks/cnc/param-doe?mode=orthogonal-greybox`：生成物理正交激励定参试验表。
+- `POST /api/v1/benchmarks/cnc/param-diagnose`：零 DoE 单次试切物理诊断与厂商原生参数微调建议。
+- `GET /api/v1/benchmarks/cnc/param-doe?mode=orthogonal-greybox`：生成支持指定 `controllerProfileId` 的定参试验表（自动锁定 `read-only` 机械上限）。
 - `POST /api/v1/benchmarks/cnc/param-learn`：支持单 `case` 或多 `cases` 联合灰盒标定与 LOCO 验证。
-- `POST /api/v1/benchmarks/cnc/param-recommend`：支持传入新零件 `targetCase` 执行跨刀路零样本三档 Pareto 稀疏推荐。
-- `GET /api/v1/benchmarks/cnc/param-demo?multiCase=true`：端到端 32 维参数多工况灰盒闭环演示。
-- `GET /api/v1/benchmarks/cnc/param-governance` & `POST /api/v1/benchmarks/cnc/param-governance`：执行 `cnc-greybox.domain-pack@1` 并返回封存 `RunBundle` 与四层治理声明。
+- `POST /api/v1/benchmarks/cnc/param-recommend`：支持传入新零件 `targetCase` 与 `includeDriveSideParameters=false` 执行跨刀路零样本稀疏推荐。
+- `POST /api/v1/benchmarks/cnc/param-ledger`：追加并核验预测-实测对账单，统计经验覆盖率与改善率。
+- `GET /api/v1/benchmarks/cnc/param-demo?multiCase=true`：端到端高维参数多工况灰盒闭环演示。
+- `GET /api/v1/benchmarks/cnc/param-governance` & `POST /api/v1/benchmarks/cnc/param-governance`：执行 `cnc-greybox.domain-pack@1`（支持传入 `verificationLedger`）并返回封存 `RunBundle` 与四层治理声明。

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Multi-vendor controller profiles, zero-DoE diagnoser, holdout ledger & adversarial verification
+
+- **多厂商控制器画像与物理核解耦**（`src/axiom/controller_profile.py`）：将灰盒机理方程与厂商参数表解耦，基于 `CanonicalControlQuantities` 与 `ControllerCapabilities` 组合评估；内置 `generic-fir-biquad@1`（32 参数）、`beckhoff-twincat-nc@1`（倍福 TwinCAT NC + AX5000，含 `1/(2π·T_pt2)` 倒数变换与 `nc-tunable`/`drive-side`/`read-only` 分权）及 `siemens-sinumerik-840d@1`（西门子 840D sl，关闭独立指令二阶低通），未知或越权参数直接报错。
+- **零实验单次试切物理诊断顾问**（`src/axiom/parameter_diagnoser.py`）：新增 `diagnose_single_run`、CLI `param-diagnose` 与 `POST /api/v1/benchmarks/cnc/param-diagnose`，无需预先采集 16 组 DoE，仅凭单次试切轨迹直接定位谐振峰、过象限突起、XY 增益失配或滤波圆弧内缩，输出 ≤ 2 项带置信度（`High`/`Medium`/`TrendOnly`）的厂商原生参数微调建议。
+- **预测-实测对账单与 R3 实机 Holdout 治理闭环**（`src/axiom/prediction_ledger.py`、`src/axiom/cnc_governance.py`）：新增 `PredictionVerificationLedger`、CLI `param-ledger` 与 `POST /api/v1/benchmarks/cnc/param-ledger`，严格区分 `synthetic-simulation`、`external-controller-trace` 与 `real-machine-r3-telemetry` 三级溯源并阻止重复报送；仅当不少于 3 条独立 R3 只读实机轨迹完成对账且误差与覆盖率达标时，`cnc-greybox` R4/R5 声明才晋升为 `Supported`（超界失配则判为 `Refuted`）。
+- **合成仿真器物理缺陷修复与结构失配对抗验证**（`src/axiom/greybox_model.py`、`tests/test_cnc_adversarial_mismatch.py`）：修复微线段平滑与坐标原点绑定的 `pt[1] *= ...` 缺陷（改为平移/旋转不变的局部离散曲率向内牵引）以及静止时仍持续振动的正弦注入缺陷（改为弧长空间微纹理经真实因果 FIR 卷积、离散二阶 IIR 陷波与 RK4 结构模态积分驱动）；新增含速度环 PI 积分器、欠阻尼双二阶指令滤波、加速度环连续 Stribeck 摩擦与双模态谐振的异构失配被控对象验收套件。
+
 ## Unreleased — ADR-0030 review fixes (claims, uncertainty, recommender)
 
 - 治理：`cnc-greybox` R4/R5 在没有实机验证数据时为 `Inconclusive`（`RealMachineHoldoutRequired`），证据等级改为 `Observed`；重算 surrogate/推荐报告哈希防篡改；拟合度门禁改用留一 R²（`cnc-greybox.surrogate-mean-loo-r2@1`）。

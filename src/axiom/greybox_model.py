@@ -1098,12 +1098,13 @@ def simulate_realistic_cnc_controller(
 ) -> CncAlgorithmExport:
     """Synthetic discrete-time CNC planner, filter and servo simulator (test fixture only).
 
-    Implements hard min-clipped lookahead, inscribed corner blending, a causal FIR moving
-    average followed by two cascaded first-order low-pass stages (critically damped, not a
-    true Butterworth), a P-P position/velocity cascade with feed-forward (no velocity-loop
-    integrator), an injected quadrant-reversal pulse and an injected sinusoidal resonance.
-    Its hidden "true" constants are close to the kernel defaults, so it must not be used
-    as the sole ground truth for transfer or calibration claims.
+    Implements hard min-clipped lookahead, inscribed corner blending, translation-invariant
+    local-curvature micro-spline chord pull, a causal FIR moving average followed by two
+    cascaded first-order low-pass stages (critically damped, not a true Butterworth), a P-P
+    position/velocity cascade with feed-forward (no velocity-loop integrator), a quadrant-
+    reversal stiction pulse, and a trajectory-driven RK4 structural mode filtered by a
+    discrete-time IIR biquad notch. Its hidden constants remain close to kernel defaults, so
+    it must not be used as the sole ground truth for transfer or calibration claims.
     """
     ctrl_prof = controller_profile or _DEFAULT_GENERIC_PROFILE
     reg = registry or ctrl_prof.registry
@@ -1142,6 +1143,23 @@ def simulate_realistic_cnc_controller(
     psi_spl_true = 0.54 if spl_deg >= 5 else 0.68
 
     n_segs = len(ends)
+    vertex_chord_pull = np.zeros_like(raw_vertices, dtype=np.float64)
+    if eps_chord > 0.0 and len(raw_vertices) >= 3:
+        for v_i in range(1, len(raw_vertices) - 1):
+            if (v_i - 1) in arcs_map or v_i in arcs_map:
+                continue
+            v_in = raw_vertices[v_i] - raw_vertices[v_i - 1]
+            v_out = raw_vertices[v_i + 1] - raw_vertices[v_i]
+            ds_prev = float(np.linalg.norm(v_in))
+            ds_next = float(np.linalg.norm(v_out))
+            if min(ds_prev, ds_next) <= MICRO_SEGMENT_THRESHOLD_MM and ds_prev > 1e-9 and ds_next > 1e-9:
+                du = (v_out / ds_next) - (v_in / ds_prev)
+                du_norm = float(np.linalg.norm(du))
+                if du_norm > 1e-9:
+                    kappa_est = du_norm / (0.5 * (ds_prev + ds_next))
+                    pull_mag = 0.35 * eps_chord * min(1.0, kappa_est / 0.05)
+                    vertex_chord_pull[v_i] = pull_mag * (du / du_norm)
+
     corner_trim = [0.0] * (n_segs + 1)
     corner_v_map: dict[int, float] = {}
     for (_, len_a, _, u_before), (idx_b, len_b, u_after, _) in zip(ends, ends[1:]):
@@ -1226,8 +1244,7 @@ def simulate_realistic_cnc_controller(
                 u_frac = (s0 + (s1 - s0) * (j / n_sub)) / max(seg_len, 1e-9)
                 pt = p_start + u_frac * vec
                 if is_micro and eps_chord > 0:
-                    pt = pt.copy()
-                    pt[1] *= max(0.0, 1.0 - 0.35 * eps_chord / 2.0)
+                    pt = pt + (1.0 - u_frac) * vertex_chord_pull[seg_idx] + u_frac * vertex_chord_pull[seg_idx + 1]
                 fine_pts.append(pt)
                 fine_v_caps.append(v_seg_cap)
 
@@ -1384,27 +1401,87 @@ def simulate_realistic_cnc_controller(
                 act_pos[mask, ax] += sign_dir * pulse
 
         if 0.5 / dt > machine_resonance_hz * 1.15:
-            notch_att = (
-                1.0 - 0.85 * math.exp(-((f_notch - machine_resonance_hz) ** 2) / (2.0 * (18.0 ** 2)))
-                if f_notch is not None
-                else 1.0
-            )
+            s_end = float(node_s[-1]) if len(node_s) > 0 else 0.0
+            if s_end > 1e-6:
+                taper = np.clip(np.minimum(s_grid / 0.5, (s_end - s_grid) / 0.5), 0.0, 1.0)
+                m_idx = np.arange(1, 33, dtype=np.float64)
+                k_spatial = 1.1 + 4.2 * ((m_idx * 0.61803398875) % 1.0)
+                max_ds = float(np.max(np.abs(np.diff(s_grid)))) if len(s_grid) > 1 else 0.0
+                nyq_mask = (k_spatial * max_ds <= 0.42).astype(np.float64)
+                n_active = max(1.0, float(np.sum(nyq_mask)))
+                phases = 2.0 * math.pi * ((m_idx * 0.38196601125) % 1.0)
+                tex_filt = 0.00036 * taper * np.sum(
+                    (np.sin(2.0 * math.pi * np.outer(s_grid, k_spatial) + phases) * nyq_mask) / math.sqrt(n_active),
+                    axis=1,
+                )
+                if n_fir > 1:
+                    pad_tex = np.concatenate(
+                        [np.repeat(tex_filt[:1], n_fir - 1), tex_filt, np.repeat(tex_filt[-1:], n_fir - 1)]
+                    )
+                    tex_filt = np.convolve(pad_tex, np.ones(n_fir, dtype=np.float64) / n_fir, mode="valid")
+                if len(tex_filt) < n_total:
+                    tex_filt = np.pad(tex_filt, (0, n_total - len(tex_filt)), mode="edge")
+                else:
+                    tex_filt = tex_filt[:n_total]
+                # Sample-period-invariant exact exponential high-pass (zero DC when stationary)
+                alpha_hp = math.exp(-dt / 0.003)
+                tex_hp = np.zeros(n_total, dtype=np.float64)
+                lp_slow = float(tex_filt[0])
+                for k in range(n_total):
+                    xk = float(tex_filt[k])
+                    lp_slow = alpha_hp * lp_slow + (1.0 - alpha_hp) * xk
+                    tex_hp[k] = xk - lp_slow
+            else:
+                tex_hp = np.zeros(n_total, dtype=np.float64)
+
+            cmd_jrk = np.gradient(cmd_acc, dt, axis=0)
+            lin_jx = cmd_jrk[:, 0] - 0.75 * cmd_jrk[:, 1]
+            kp_gain = (0.5 * (float(kp_arr[0]) + float(kp_arr[1])) / 60.0) ** 0.75
+            raw_u = kp_gain * (8.0e-10 * lin_jx + 1.0 * tex_hp)
+
+            if f_notch is not None and 1.0 < f_notch < 0.48 / dt:
+                w0 = 2.0 * math.pi * f_notch * dt
+                bw_hz = 28.0
+                alpha_n = math.sin(w0) * math.sinh(
+                    0.5 * math.log(2.0) * (2.0 * math.pi * bw_hz * dt) / max(math.sin(w0), 1e-6)
+                )
+                a0 = 1.0 + alpha_n
+                b0 = 1.0 / a0
+                b1 = (-2.0 * math.cos(w0)) / a0
+                b2 = 1.0 / a0
+                a1 = (-2.0 * math.cos(w0)) / a0
+                a2 = (1.0 - alpha_n) / a0
+                u_drv = np.zeros_like(raw_u)
+                x1 = x2 = y1 = y2 = 0.0
+                for k in range(n_total):
+                    xk = float(raw_u[k])
+                    yk = b0 * xk + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+                    x2, x1, y2, y1 = x1, xk, y1, yk
+                    u_drv[k] = yk
+            else:
+                u_drv = raw_u
+
             omega_r = 2.0 * math.pi * machine_resonance_hz
-            zeta_r = 0.045
+            zeta_r = 0.018
             res_disp = np.zeros(n_total, dtype=np.float64)
             z_pos, z_vel = 0.0, 0.0
-            n_sub_r = max(4, int(math.ceil(dt * omega_r * 4.0)))
+            n_sub_r = max(4, int(math.ceil(dt * omega_r * 2.0)))
             hr = dt / n_sub_r
-            fir_att_res = abs(math.sin(math.pi * machine_resonance_hz * fir_ms * 1e-3) / max(math.pi * machine_resonance_hz * fir_ms * 1e-3, 1e-6)) if fir_ms > 0 else 1.0
-            drive_amp = 0.00045 * notch_att * fir_att_res * (j_t / 500_000.0) * ((0.5 * (kp_arr[0] + kp_arr[1]) / 60.0) ** 0.75)
-            cmd_jrk = np.gradient(cmd_acc, dt, axis=0)
-            for k in range(n_total - 1):
-                u_force = drive_amp * math.sin(omega_r * t_full[k]) + 1.5e-10 * notch_att * float(cmd_jrk[k, 0] - cmd_jrk[k, 1])
+            w2 = omega_r * omega_r
+            two_zw = 2.0 * zeta_r * omega_r
+            for k in range(n_total):
+                uk = float(u_drv[k])
                 for _ in range(n_sub_r):
-                    z_acc = (omega_r ** 2) * u_force - 2.0 * zeta_r * omega_r * z_vel - (omega_r ** 2) * z_pos
-                    z_vel += hr * z_acc
-                    z_pos += hr * z_vel
-                res_disp[k + 1] = z_pos
+                    k1z, k1v = z_vel, w2 * (uk - z_pos) - two_zw * z_vel
+                    z2, v2 = z_pos + 0.5 * hr * k1z, z_vel + 0.5 * hr * k1v
+                    k2z, k2v = v2, w2 * (uk - z2) - two_zw * v2
+                    z3, v3 = z_pos + 0.5 * hr * k2z, z_vel + 0.5 * hr * k2v
+                    k3z, k3v = v3, w2 * (uk - z3) - two_zw * v3
+                    z4, v4 = z_pos + hr * k3z, z_vel + hr * k3v
+                    k4z, k4v = v4, w2 * (uk - z4) - two_zw * v4
+                    z_pos += (hr / 6.0) * (k1z + 2.0 * k2z + 2.0 * k3z + k4z)
+                    z_vel += (hr / 6.0) * (k1v + 2.0 * k2v + 2.0 * k3v + k4v)
+                res_disp[k] = z_pos
             res_disp[0] = 0.0
             res_disp[-1] = 0.0
             act_pos[:, 0] += res_disp

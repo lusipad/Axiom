@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -202,6 +204,379 @@ def _load_control_r7_api() -> Any:
         raise HTTPException(
             status_code=503, detail="Control R7 API is unavailable."
         ) from exc
+
+
+def _seal_r3_trace_for_workbench(
+    case: CncBenchmarkCase,
+    export: CncAlgorithmExport,
+    *,
+    trace_id: str,
+    receipt_id: str,
+    actual_y_bias_mm: float = 0.0,
+) -> MachineTelemetryTrace:
+    from .machine.runtime import machine_trace_content_hash
+
+    t0 = datetime(2026, 11, 12, 10, 0, 0, tzinfo=timezone.utc)
+    dt = case.sample_period_seconds
+    frames = []
+    for k, s in enumerate(export.samples):
+        act = s.actual_position_mm or s.position_mm
+        ts = (t0 + timedelta(seconds=round(k * dt, 6))).isoformat().replace("+00:00", "Z")
+        frames.append(
+            {
+                "sequenceId": k,
+                "deviceTimestamp": ts,
+                "samples": [
+                    {"channelId": "cmd_x", "value": float(s.position_mm[0]), "quality": "good"},
+                    {"channelId": "cmd_y", "value": float(s.position_mm[1]), "quality": "good"},
+                    {"channelId": "cmd_z", "value": float(s.position_mm[2]), "quality": "good"},
+                    {"channelId": "act_x", "value": float(act[0]), "quality": "good"},
+                    {"channelId": "act_y", "value": float(act[1]) + actual_y_bias_mm, "quality": "good"},
+                    {"channelId": "act_z", "value": float(act[2]), "quality": "good"},
+                ],
+            }
+        )
+    raw = {
+        "schemaVersion": 1,
+        "artifactType": "machine.telemetry-trace",
+        "traceId": trace_id,
+        "sourceKind": "controller-export",
+        "deviceIdentity": {
+            "deviceId": "vmc-850-shopfloor-01",
+            "controllerFamily": "SINUMERIK-840D-sl",
+            "machineModel": "VMC-850",
+        },
+        "captureReceipt": {
+            "receiptId": receipt_id,
+            "sourceId": "axiom.windows-file-telemetry-source@1",
+            "operation": "file-import",
+            "transport": "windows-file-json",
+            "capturedAt": "2026-11-12T10:05:00Z",
+            "traceContentHash": "0" * 64,
+        },
+        "frames": frames,
+    }
+    unsigned = MachineTelemetryTrace.model_validate(raw)
+    raw["captureReceipt"]["traceContentHash"] = machine_trace_content_hash(unsigned)
+    return MachineTelemetryTrace.model_validate(raw)
+
+
+def _downsample_preview(
+    case: CncBenchmarkCase,
+    export: CncAlgorithmExport,
+    *,
+    magnification: float = 80.0,
+    max_points: int = 220,
+) -> dict[str, Any]:
+    ref_pts = [[round(float(p[0]), 4), round(float(p[1]), 4)] for p in case.reference_path]
+    n = len(export.samples)
+    stride = max(1, n // max_points)
+    cmd_pts: list[list[float]] = []
+    act_mag_pts: list[list[float]] = []
+    for idx in range(0, n, stride):
+        s = export.samples[idx]
+        cx, cy = float(s.position_mm[0]), float(s.position_mm[1])
+        ax, ay = (
+            (float(s.actual_position_mm[0]), float(s.actual_position_mm[1]))
+            if s.actual_position_mm is not None
+            else (cx, cy)
+        )
+        cmd_pts.append([round(cx, 4), round(cy, 4)])
+        act_mag_pts.append(
+            [
+                round(cx + (ax - cx) * magnification, 4),
+                round(cy + (ay - cy) * magnification, 4),
+            ]
+        )
+    if (n - 1) % stride != 0 and n > 0:
+        s = export.samples[-1]
+        cx, cy = float(s.position_mm[0]), float(s.position_mm[1])
+        ax, ay = (
+            (float(s.actual_position_mm[0]), float(s.actual_position_mm[1]))
+            if s.actual_position_mm is not None
+            else (cx, cy)
+        )
+        cmd_pts.append([round(cx, 4), round(cy, 4)])
+        act_mag_pts.append(
+            [
+                round(cx + (ax - cx) * magnification, 4),
+                round(cy + (ay - cy) * magnification, 4),
+            ]
+        )
+    return {
+        "magnification": magnification,
+        "reference": ref_pts,
+        "command": cmd_pts,
+        "actualMagnified": act_mag_pts,
+    }
+
+
+@lru_cache(maxsize=1)
+def _build_cnc_param_workbench_bundle() -> dict[str, Any]:
+    from .benchmark_standard import standard_case
+    from .greybox_model import simulate_realistic_cnc_controller
+    from .parameter_space import default_parameter_values
+
+    preferred_order = {
+        "siemens-sinumerik-840d@1": 0,
+        "beckhoff-twincat-nc@1": 1,
+        "generic-fir-biquad@1": 2,
+    }
+    profiles = sorted(
+        list_controller_profiles(),
+        key=lambda p: preferred_order.get(p.profile_id, 99),
+    )
+
+    scenario_specs = (
+        {
+            "scenarioId": "resonance-circle",
+            "title": "整圆精铣 · 142 Hz 导轨共振与过象限突起",
+            "subtitle": "典型精加工故障：圆弧表面高频振纹 + 90°/180° 换向静摩擦尖峰",
+            "caseName": "circle",
+            "badgeTone": "danger",
+            "resonanceHz": 142.0,
+            "magnification": 120.0,
+            "overrides": {
+                "siemens-sinumerik-840d@1": {
+                    "sinumerik.md32410_ax_jerk_time_s": 0.002,
+                    "sinumerik.sinamics_p1417_notch_hz": 290.0,
+                    "sinumerik.md32520_quad_fric_mm": 0.0,
+                    "sinumerik.md32200_posctrl_gain_x": 4.8,
+                    "sinumerik.md32200_posctrl_gain_y": 2.6,
+                },
+                "beckhoff-twincat-nc@1": {
+                    "tc.moving_avg_filter_s": 0.002,
+                    "tc.ax5000_notch_hz": 290.0,
+                    "tc.quadrant_comp_um_xy": 0.0,
+                    "tc.kv_factor_x_m_min_mm": 4.8,
+                    "tc.kv_factor_y_m_min_mm": 2.6,
+                },
+                "generic-fir-biquad@1": {
+                    "g2.fir_moving_avg_time_ms": 2.0,
+                    "g3.notch_filter_freq_hz": 290.0,
+                    "g3.friction_comp_amp_x": 0.0,
+                    "g3.friction_comp_amp_y": 0.0,
+                    "g3.servo_kp_x": 80.0,
+                    "g3.servo_kp_y": 44.0,
+                },
+            },
+        },
+        {
+            "scenarioId": "corner-overshoot",
+            "title": "90° 直角轮廓 · 拐角内缩超差",
+            "subtitle": "典型开粗转半精问题：连续路径平滑公差与滤波窗口过大导致清根圆化",
+            "caseName": "corner90",
+            "badgeTone": "warning",
+            "resonanceHz": 185.0,
+            "magnification": 40.0,
+            "overrides": {
+                "siemens-sinumerik-840d@1": {
+                    "sinumerik.cycle832_contour_tol_mm": 0.065,
+                    "sinumerik.md32410_ax_jerk_time_s": 0.022,
+                },
+                "beckhoff-twincat-nc@1": {
+                    "tc.contour_blend_tol_um": 65.0,
+                    "tc.moving_avg_filter_s": 0.022,
+                },
+                "generic-fir-biquad@1": {
+                    "g1.corner_tolerance_mm": 0.065,
+                    "g2.fir_moving_avg_time_ms": 22.0,
+                },
+            },
+        },
+        {
+            "scenarioId": "headroom-scurve",
+            "title": "S 型自由曲面 · 精度充裕挖掘节拍裕量",
+            "subtitle": "典型保守加工优化：轮廓偏差远低于工艺门限，可安全提升加速度缩短单件周期",
+            "caseName": "s-curve",
+            "badgeTone": "info",
+            "resonanceHz": 190.0,
+            "magnification": 60.0,
+            "overrides": {
+                "siemens-sinumerik-840d@1": {
+                    "sinumerik.cycle832_contour_tol_mm": 0.006,
+                    "sinumerik.md32300_max_ax_acc_m_s2": 2.2,
+                    "sinumerik.md32410_ax_jerk_time_s": 0.005,
+                },
+                "beckhoff-twincat-nc@1": {
+                    "tc.contour_blend_tol_um": 6.0,
+                    "tc.path_acc_m_s2": 2.2,
+                    "tc.moving_avg_filter_s": 0.005,
+                },
+                "generic-fir-biquad@1": {
+                    "g1.corner_tolerance_mm": 0.006,
+                    "g2.path_tangential_acc_mm_s2": 2200.0,
+                    "g2.fir_moving_avg_time_ms": 5.0,
+                },
+            },
+        },
+    )
+
+    diagnostic_scenarios = []
+    for spec in scenario_specs:
+        case_obj = standard_case(str(spec["caseName"]))
+        reports_by_profile: dict[str, Any] = {}
+        preview_payload: dict[str, Any] | None = None
+        for prof in profiles:
+            params = default_parameter_values(prof.registry)
+            params.update(spec["overrides"].get(prof.profile_id, {}))
+            exp = simulate_realistic_cnc_controller(
+                case_obj,
+                params,
+                source_kind="controller-trace",
+                machine_resonance_hz=float(spec["resonanceHz"]),
+                controller_profile=prof,
+                algorithm_version="trace@1",
+            ).model_copy(update={"algorithm_id": "shopfloor.captured-trace"})
+            if preview_payload is None:
+                preview_payload = _downsample_preview(
+                    case_obj, exp, magnification=float(spec["magnification"])
+                )
+            diag_full = diagnose_single_run(
+                case_obj, exp, parameters=params, controller_profile=prof, include_drive_side=True
+            )
+            diag_nc = diagnose_single_run(
+                case_obj, exp, parameters=params, controller_profile=prof, include_drive_side=False
+            )
+            reports_by_profile[prof.profile_id] = {
+                "full": diag_full.model_dump(mode="json", by_alias=True, exclude_none=True),
+                "ncOnly": diag_nc.model_dump(mode="json", by_alias=True, exclude_none=True),
+            }
+        diagnostic_scenarios.append(
+            {
+                "scenarioId": spec["scenarioId"],
+                "title": spec["title"],
+                "subtitle": spec["subtitle"],
+                "caseId": case_obj.case_id,
+                "badgeTone": spec["badgeTone"],
+                "preview": preview_payload,
+                "reportsByProfile": reports_by_profile,
+            }
+        )
+
+    def _compact_governance(gov: CncGovernanceAssessmentReport) -> dict[str, Any]:
+        raw = gov.model_dump(mode="json", by_alias=True, exclude_none=True)
+        rb = raw.get("runBundle")
+        if isinstance(rb, dict):
+            rb = dict(rb)
+            rb.pop("runSpec", None)
+            if "observation" in rb and isinstance(rb["observation"], dict):
+                obs = dict(rb["observation"])
+                obs.pop("artifact", None)
+                rb["observation"] = obs
+            raw["runBundle"] = rb
+        return raw
+
+    # Build 3 governance & prediction-ledger states
+    gov_demo = build_cnc_parameter_closed_loop_demo(
+        offline_count=18, controller_count=10, seed=42, multi_case_calibration=True
+    )
+    sur = gov_demo.surrogate
+
+    gov_unverified = assess_cnc_greybox_governance(gov_demo)
+
+    ok_entries = []
+    drift_entries = []
+    for idx, cname in enumerate(("corner90", "circle", "s-curve"), 1):
+        c = standard_case(cname)
+        rec_c = recommend_parameters(
+            sur,
+            ParameterRecommendationRequest(
+                targetCase=c,
+                maximumPathDeviationMm=0.055,
+                maximumActualPathDeviationMm=0.065,
+                seed=10 + idx,
+            ),
+        )
+        chosen = rec_c.presets[0]
+        base_exp = simulate_realistic_cnc_controller(
+            c,
+            sur.baseline_parameters,
+            source_kind="controller-trace",
+            registry=sur.registry,
+            controller_profile=sur.controller_profile,
+        )
+        ver_raw = simulate_realistic_cnc_controller(
+            c,
+            chosen.full_parameters,
+            source_kind="controller-trace",
+            registry=sur.registry,
+            controller_profile=sur.controller_profile,
+        )
+        r3_ok = _seal_r3_trace_for_workbench(
+            c, ver_raw, trace_id=f"r3.ok.{idx}", receipt_id=f"rcpt.ok.{idx}", actual_y_bias_mm=0.0
+        )
+        ok_entries.append(
+            record_prediction_verification(
+                c,
+                sur,
+                r3_ok,
+                recommendation_report=rec_c,
+                candidate_id=chosen.candidate_id,
+                baseline_trace_or_report=base_exp,
+                entry_id=f"cut.00{idx}.{cname}",
+            )
+        )
+        r3_drift = _seal_r3_trace_for_workbench(
+            c,
+            ver_raw,
+            trace_id=f"r3.drift.{idx}",
+            receipt_id=f"rcpt.drift.{idx}",
+            actual_y_bias_mm=0.085,
+        )
+        drift_entries.append(
+            record_prediction_verification(
+                c,
+                sur,
+                r3_drift,
+                recommendation_report=rec_c,
+                candidate_id=chosen.candidate_id,
+                baseline_trace_or_report=base_exp,
+                entry_id=f"drift.00{idx}.{cname}",
+            )
+        )
+
+    ledger_ok = build_prediction_verification_ledger(
+        tuple(ok_entries), surrogate=sur, ledger_id="cnc.ledger.r3-verified@1"
+    )
+    ledger_drift = build_prediction_verification_ledger(
+        tuple(drift_entries), surrogate=sur, ledger_id="cnc.ledger.thermal-drift@1"
+    )
+    gov_promoted = assess_cnc_greybox_governance(gov_demo, verification_ledger=ledger_ok)
+    gov_refuted = assess_cnc_greybox_governance(gov_demo, verification_ledger=ledger_drift)
+
+    return {
+        "controllerProfiles": [
+            p.model_dump(mode="json", by_alias=True, exclude_none=True) for p in profiles
+        ],
+        "diagnosticScenarios": diagnostic_scenarios,
+        "governanceScenarios": [
+            {
+                "stateId": "synthetic-only",
+                "title": "阶段 A · 仅离线/合成建模（0/3 刀真机对账）",
+                "subtitle": "尚未导入真机复切 R3 遥测，R4/R5 诚实保持 Inconclusive，拒绝合成自证",
+                "badgeTone": "warning",
+                "governance": _compact_governance(gov_unverified),
+                "ledger": None,
+            },
+            {
+                "stateId": "r3-promoted",
+                "title": "阶段 B · 满 3 刀独立 R3 真机复切对账达标",
+                "subtitle": "直角、整圆、S 曲线三刀独立复切误差均落在 95% 保守区间内，R4/R5 自动晋升 Supported",
+                "badgeTone": "pass",
+                "governance": _compact_governance(gov_promoted),
+                "ledger": ledger_ok.model_dump(mode="json", by_alias=True, exclude_none=True),
+            },
+            {
+                "stateId": "drift-refuted",
+                "title": "阶段 C · 现场导轨热漂移失准预警（+0.085 mm 偏移）",
+                "subtitle": "真机复切实测超出灰盒保守上限，台账自动捕获模型失准并将 R4/R5 判为 Refuted",
+                "badgeTone": "danger",
+                "governance": _compact_governance(gov_refuted),
+                "ledger": ledger_drift.model_dump(mode="json", by_alias=True, exclude_none=True),
+            },
+        ],
+    }
 
 
 def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None) -> FastAPI:
@@ -990,6 +1365,10 @@ def create_app(*, serve_frontend: bool = True, frontend_dir: Path | None = None)
     @app.get("/api/v1/benchmarks/cnc/param-demo", response_model=CncParameterClosedLoopDemo, response_model_by_alias=True, response_model_exclude_none=True)
     def cnc_parameter_demo(offlineCount: int = 24, controllerCount: int = 10, seed: int = 42, multiCase: bool = False) -> CncParameterClosedLoopDemo:
         return build_cnc_parameter_closed_loop_demo(offline_count=offlineCount, controller_count=controllerCount, seed=seed, multi_case_calibration=multiCase)
+
+    @app.get("/api/v1/benchmarks/cnc/param-workbench")
+    def cnc_parameter_workbench() -> dict[str, Any]:
+        return _build_cnc_param_workbench_bundle()
 
 
     @app.post("/api/v1/benchmarks/cnc/param-ledger", response_model=PredictionVerificationLedger, response_model_by_alias=True, response_model_exclude_none=True)

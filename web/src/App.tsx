@@ -1,13 +1,15 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CncBenchmarkWorkbench } from "./features/benchmark/CncBenchmarkWorkbench";
+import { CncParamTuningWorkbench } from "./features/param-tuning/CncParamTuningWorkbench";
 import { XYChart } from "./charts";
 import type { ChartSeries } from "./charts";
 import { LabIntro } from "./guide/LabIntro";
 import { PipelineMap } from "./guide/PipelineMap";
 import { PipelineView } from "./guide/PipelineView";
 import { WelcomeOverlay } from "./guide/WelcomeOverlay";
+import { readStorage, writeStorage } from "./guide/storage";
 import { Sidebar } from "./components/Sidebar";
-import type { NavItem } from "./components/Sidebar";
+import type { NavItem, ThemeMode } from "./components/Sidebar";
 import { GlobalFooter } from "./components/GlobalFooter";
 import "./guide/styles.css";
 
@@ -50,6 +52,7 @@ interface LabMeta {
 
 const LAB_META: Record<Lab, LabMeta> = {
   benchmark: { title: "CNC 算法对比", manifest: "XYZ · 采样命令评估", boundary: "同一案例 · 两个算法版本" },
+  "param-tuning": { title: "现场调参与单刀快诊", manifest: "cnc-greybox.domain-pack@1", boundary: "OFFLINE ADVISORY · ZERO DEVICE WRITE" },
   pipeline: { title: "验证路径", manifest: "validation-pipeline@2", boundary: "8-STAGE PIPELINE · AUDITABLE STATEMENTS" },
   point: { title: "Experiment Workbench", manifest: "", boundary: "" },
   "five-axis-f1": { title: "Five-Axis Geometry Reference Workbench", manifest: "five-axis.f1-math-stage-manifest@1", boundary: "MATH ONLY · NOT DEVICE SAFE" },
@@ -253,8 +256,14 @@ function comparisonWinner(metric: MetricComparison, report: ExperimentReport): s
 
 export function App() {
   const [activeLab, setActiveLab] = useState<Lab>("benchmark");
+  const [theme, setTheme] = useState<ThemeMode>(() =>
+    readStorage("axiom-theme") === "dark" ? "dark" : "light",
+  );
   const [showLegacy, setShowLegacy] = useState(false);
-  const needsLegacy = activeLab !== "benchmark" && activeLab !== "pipeline";
+  const needsLegacy =
+    activeLab !== "benchmark" &&
+    activeLab !== "param-tuning" &&
+    activeLab !== "pipeline";
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [spec, setSpec] = useState<ExperimentSpec | null>(null);
   const [report, setReport] = useState<ExperimentReport | null>(null);
@@ -269,6 +278,15 @@ export function App() {
   const [showPipeline, setShowPipeline] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    writeStorage("axiom-theme", theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute("content", theme === "dark" ? "#0b0f17" : "#f4f6f9");
+    }
+  }, [theme]);
 
   const hydratePointSpec = (next: ExperimentSpec) => {
     setSpec(next);
@@ -312,7 +330,12 @@ export function App() {
   const pointDimension = spec?.sharedInput.points[0]?.length ?? 0;
   const pointRunnerLabel = [...new Set(spec?.arms.map((arm) => arm.runnerId ?? "unknown-runner") ?? [])].join(", ");
   const pointBusyState = loading || pointBusy;
-  const visibleError = (activeLab === "benchmark" || activeLab === "pipeline") ? null : error;
+  const visibleError =
+    activeLab === "benchmark" ||
+    activeLab === "param-tuning" ||
+    activeLab === "pipeline"
+      ? null
+      : error;
   const labMeta = LAB_META[activeLab] ?? LAB_META.benchmark;
   const workbenchTitle = labMeta.title;
 
@@ -393,6 +416,8 @@ export function App() {
       {/* Left Navigation Sidebar */}
       <Sidebar
         active={activeLab}
+        theme={theme}
+        onThemeChange={setTheme}
         onSelect={(lab) => {
           setActiveLab(lab);
           setShowLegacy(false);
@@ -463,12 +488,18 @@ export function App() {
           </div>
         )}
 
-        {activeLab !== "benchmark" && activeLab !== "pipeline" && activeLab !== "five-axis-f1" && (
-          <LabIntro lab={activeLab} onOpenPipeline={() => setShowPipeline(true)} />
-        )}
+        {activeLab !== "benchmark" &&
+          activeLab !== "param-tuning" &&
+          activeLab !== "pipeline" &&
+          activeLab !== "five-axis-f1" && (
+            <LabIntro lab={activeLab} onOpenPipeline={() => setShowPipeline(true)} />
+          )}
 
         {/* Top Header for non-custom pages */}
-        {activeLab !== "benchmark" && activeLab !== "pipeline" && activeLab !== "five-axis-f1" && (
+        {activeLab !== "benchmark" &&
+          activeLab !== "param-tuning" &&
+          activeLab !== "pipeline" &&
+          activeLab !== "five-axis-f1" && (
           <header className="page-header">
             <div className="page-header-info">
               <h1>{workbenchTitle}</h1>
@@ -504,7 +535,15 @@ export function App() {
 
         {/* Main View Router */}
         {activeLab === "benchmark" ? (
-          <CncBenchmarkWorkbench onOpenGuide={() => setShowWelcome(true)} />
+          <CncBenchmarkWorkbench
+            onOpenGuide={() => setShowWelcome(true)}
+            onOpenParamTuning={() => setActiveLab("param-tuning")}
+          />
+        ) : activeLab === "param-tuning" ? (
+          <CncParamTuningWorkbench
+            onOpenGuide={() => setShowWelcome(true)}
+            onOpenBenchmark={() => setActiveLab("benchmark")}
+          />
         ) : activeLab === "pipeline" ? (
           <PipelineView
             onSelect={(lab) => {
@@ -729,7 +768,11 @@ export function App() {
 
       {showPipeline && (
         <PipelineMap
-          active={activeLab === "pipeline" ? "benchmark" : activeLab}
+          active={
+            activeLab === "pipeline" || activeLab === "param-tuning"
+              ? "benchmark"
+              : activeLab
+          }
           onSelect={(lab) => {
             setActiveLab(lab);
             setShowLegacy(true);

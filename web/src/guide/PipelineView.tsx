@@ -128,6 +128,13 @@ export const PipelineView: FC<PipelineViewProps> = ({ onSelect, onOpenGuide }) =
           </button>
           <button
             type="button"
+            className="button button-secondary"
+            onClick={() => onSelect("param-tuning")}
+          >
+            现场调参与快诊
+          </button>
+          <button
+            type="button"
             className="button button-primary"
             onClick={() => onSelect("benchmark")}
           >

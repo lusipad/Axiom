@@ -1,20 +1,20 @@
 .ax-chart { position: relative; min-height: 0; }
 .ax-chart svg { display: block; width: 100%; height: auto; }
-.ax-chart-grid-minor { stroke: var(--chart-grid); stroke-width: 1; }
+.ax-chart-grid-minor { stroke: var(--chart-grid); stroke-width: 1; opacity: 0.55; }
 .ax-chart-grid { stroke: var(--chart-grid); stroke-width: 1; }
-.ax-chart-axis { stroke: var(--chart-axis); stroke-width: 1; }
-.ax-chart-tick { fill: var(--chart-tick); font: 10px var(--mono); }
-.ax-chart-axis-label { fill: var(--chart-tick); font: 10px var(--mono); letter-spacing: .06em; }
+.ax-chart-axis { stroke: var(--chart-axis); stroke-width: 1.1; }
+.ax-chart-tick { fill: var(--chart-tick); font: 11px var(--mono); }
+.ax-chart-axis-label { fill: var(--chart-tick); font: 600 11px var(--mono); letter-spacing: .05em; }
 
 .ax-chart-series path { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .ax-chart-series circle { vector-effect: non-scaling-stroke; }
 
-.ax-tone-reference path { stroke: var(--chart-reference); stroke-width: 3.4; opacity: .6; }
+.ax-tone-reference path { stroke: var(--chart-reference); stroke-width: 2.6; opacity: .65; }
 .ax-tone-reference circle { fill: var(--chart-reference); opacity: .75; }
 .ax-tone-baseline path { stroke: var(--chart-baseline); }
-.ax-tone-baseline circle { fill: var(--panel-deep); stroke: var(--chart-baseline); stroke-width: 1.8; }
+.ax-tone-baseline circle { fill: var(--panel); stroke: var(--chart-baseline); stroke-width: 1.8; }
 .ax-tone-candidate path { stroke: var(--chart-candidate); }
-.ax-tone-candidate circle { fill: var(--panel-deep); stroke: var(--chart-candidate); stroke-width: 1.8; }
+.ax-tone-candidate circle { fill: var(--panel); stroke: var(--chart-candidate); stroke-width: 1.8; }
 .ax-tone-s3 path { stroke: var(--chart-series-3); }
 .ax-tone-s3 circle { fill: var(--chart-series-3); }
 .ax-tone-s4 path { stroke: var(--chart-series-4); }
@@ -24,21 +24,21 @@
 .ax-tone-muted path { stroke: var(--muted); }
 .ax-tone-muted circle { fill: var(--muted); }
 
-.ax-chart-obstacle rect { stroke-width: 1; }
-.ax-chart-obstacle text { font: 10px var(--mono); }
-.ax-obstacle-stock rect { fill: rgba(238, 144, 104, 0.10); stroke: rgba(238, 144, 104, 0.55); }
-.ax-obstacle-stock text { fill: var(--orange); }
-.ax-obstacle-fixture rect { fill: rgba(223, 192, 106, 0.10); stroke: rgba(223, 192, 106, 0.55); }
-.ax-obstacle-fixture text { fill: var(--yellow); }
-.ax-obstacle-muted rect { fill: rgba(125, 143, 153, 0.10); stroke: rgba(125, 143, 153, 0.5); }
+.ax-chart-obstacle rect { stroke-width: 1.2; }
+.ax-chart-obstacle text { font: 600 11px var(--mono); }
+.ax-obstacle-stock rect { fill: var(--danger-bg); stroke: var(--red); }
+.ax-obstacle-stock text { fill: var(--danger-text); }
+.ax-obstacle-fixture rect { fill: var(--warn-bg); stroke: var(--yellow); }
+.ax-obstacle-fixture text { fill: var(--warn-text); }
+.ax-obstacle-muted rect { fill: var(--neutral-bg); stroke: var(--line-strong); }
 .ax-obstacle-muted text { fill: var(--muted); }
 
 .ax-chart-marker line { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
 .ax-chart-marker circle { fill: var(--muted); }
-.ax-chart-marker text { fill: var(--chart-tick); font: 9px var(--mono); }
+.ax-chart-marker text { fill: var(--chart-tick); font: 10.5px var(--mono); }
 
-.ax-chart-crosshair line { stroke: #54687255; stroke-width: 1; }
-.ax-chart-crosshair circle { fill: none; stroke-width: 2; }
+.ax-chart-crosshair line { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 2; }
+.ax-chart-crosshair circle { fill: var(--panel); stroke-width: 2; }
 .ax-chart-crosshair .ax-tone-reference circle,
 .ax-chart-crosshair circle.ax-tone-reference { stroke: var(--chart-reference); }
 .ax-chart-crosshair circle.ax-tone-baseline { stroke: var(--chart-baseline); }
@@ -52,19 +52,19 @@
   position: absolute;
   transform: translate(12px, -50%);
   display: grid;
-  gap: 3px;
-  min-width: 110px;
-  padding: 8px 10px;
+  gap: 4px;
+  min-width: 120px;
+  padding: 9px 11px;
   background: var(--chart-tooltip-bg);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-md);
   color: var(--text);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   pointer-events: none;
   z-index: 5;
 }
-.ax-chart-tooltip strong { font-size: 10px; letter-spacing: .04em; }
+.ax-chart-tooltip strong { font-size: 11px; letter-spacing: .03em; color: var(--text); }
 .ax-chart-tooltip span { color: var(--muted); white-space: nowrap; }
 .ax-tooltip-baseline { color: var(--chart-baseline) !important; }
 .ax-tooltip-candidate { color: var(--chart-candidate) !important; }
@@ -75,7 +75,7 @@
 
 .ax-chart-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 2px 0; color: var(--muted); font-size: var(--font-xs); }
 .ax-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.ax-chart-legend i { width: 16px; height: 0; border-top: 2px solid var(--muted); border-radius: 1px; }
+.ax-chart-legend i { width: 16px; height: 0; border-top: 2.2px solid var(--muted); border-radius: 1px; }
 .ax-chart-legend i.dashed { border-top-style: dashed; }
 .ax-chart-legend .ax-legend-reference i { border-color: var(--chart-reference); }
 .ax-chart-legend .ax-legend-baseline i { border-color: var(--chart-baseline); }
@@ -83,9 +83,9 @@
 .ax-chart-legend .ax-legend-s3 i { border-color: var(--chart-series-3); }
 .ax-chart-legend .ax-legend-s4 i { border-color: var(--chart-series-4); }
 .ax-chart-legend .ax-legend-s5 i { border-color: var(--chart-series-5); }
-.ax-chart-legend .ax-legend-stock i, .ax-chart-legend .ax-legend-fixture i { height: 8px; width: 10px; border: 1px solid; border-radius: 2px; }
-.ax-chart-legend .ax-legend-stock i { border-color: rgba(238, 144, 104, 0.6); background: rgba(238, 144, 104, 0.12); }
-.ax-chart-legend .ax-legend-fixture i { border-color: rgba(223, 192, 106, 0.6); background: rgba(223, 192, 106, 0.12); }
+.ax-chart-legend .ax-legend-stock i, .ax-chart-legend .ax-legend-fixture i { height: 9px; width: 11px; border: 1px solid; border-radius: 2px; }
+.ax-chart-legend .ax-legend-stock i { border-color: var(--red); background: var(--danger-bg); }
+.ax-chart-legend .ax-legend-fixture i { border-color: var(--yellow); background: var(--warn-bg); }
 
-.ax-chart-caption { display: block; padding-top: 6px; color: var(--faint); font: 10px var(--mono); }
+.ax-chart-caption { display: block; padding-top: 6px; color: var(--faint); font: 11px var(--mono); }
 figure.ax-chart { margin: 0; }

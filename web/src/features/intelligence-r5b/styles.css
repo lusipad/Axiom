@@ -1,35 +1,26 @@
 .workspace.intelligence-r5b-workspace {
-  --r5b-accent: #9de4ff;
-  --r5b-warning: #ffd18a;
+  --r5b-accent: var(--blue);
+  --r5b-warning: var(--amber);
   grid-template-columns: 332px minmax(560px, 1fr);
 }
 
 .intelligence-r5b-banner {
   display: grid;
   gap: 0.45rem;
-  border-left-color: #4aa6d1;
+  border-left-color: var(--blue);
 }
 
-.intelligence-r5b-banner strong:first-child {
-  color: var(--r5b-accent);
-}
-
-.intelligence-r5b-banner strong:nth-child(2) {
-  color: var(--r5b-warning);
-}
+.intelligence-r5b-banner strong:first-child { color: var(--info-text); }
+.intelligence-r5b-banner strong:nth-child(2) { color: var(--warn-text); }
 
 .analysis-panel.intelligence-r5b-analysis {
   grid-template-rows: 48px minmax(0, 1fr);
 }
 
-.intelligence-r5b-analysis .view-tabs {
-  align-items: center;
-  gap: 16px;
-}
-
+.intelligence-r5b-analysis .view-tabs { align-items: center; gap: 16px; }
 .intelligence-r5b-analysis .view-tabs span {
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   letter-spacing: .04em;
   white-space: nowrap;
 }
@@ -42,25 +33,20 @@
   gap: 0.85rem;
 }
 
-.intelligence-r5b-analysis-body {
-  padding: 1rem;
-  overflow: auto;
-}
+.intelligence-r5b-analysis-body { padding: 1.15rem; overflow: auto; }
 
 .intelligence-r5b-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-color: color-mix(in srgb, var(--r5b-accent) 40%, var(--line));
+  border-color: var(--info-border);
+  border-top: 3px solid var(--blue);
 }
 
-.intelligence-r5b-hero > div {
-  text-align: right;
-}
-
+.intelligence-r5b-hero > div { text-align: right; }
 .intelligence-r5b-hero > div > strong {
-  color: var(--r5b-accent);
-  font-size: 2.8rem;
+  color: var(--blue);
+  font-size: 2.4rem;
   text-transform: uppercase;
 }
 
@@ -75,24 +61,15 @@
 .intelligence-r5b-checks li {
   display: grid;
   gap: 0.3rem;
-  padding: 0.75rem;
+  padding: 0.8rem;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
 }
 
-.intelligence-r5b-checks li.done {
-  border-color: color-mix(in srgb, var(--r5b-accent) 40%, var(--line));
-}
-
-.intelligence-r5b-checks code,
-.intelligence-r5b-evidence-list code {
-  width: fit-content;
-}
-
-.intelligence-r5b-checks small {
-  color: var(--muted);
-  line-height: 1.45;
-}
+.intelligence-r5b-checks li.done { border-color: var(--info-border); }
+.intelligence-r5b-checks code, .intelligence-r5b-evidence-list code { width: fit-content; }
+.intelligence-r5b-checks small { color: var(--muted); line-height: 1.5; }
 
 .intelligence-r5b-threshold-grid,
 .intelligence-r5b-run-grid {
@@ -103,24 +80,25 @@
 .intelligence-r5b-run-grid article,
 .intelligence-r5b-metric-grid article {
   min-width: 0;
-  padding: 0.8rem;
+  padding: 0.85rem;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
 }
 
 .intelligence-r5b-threshold-grid span,
 .intelligence-r5b-run-grid header span,
 .intelligence-r5b-metric-grid header span {
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   text-transform: uppercase;
 }
 
 .intelligence-r5b-threshold-grid strong {
   display: block;
   margin: 0.45rem 0;
-  color: var(--r5b-accent);
+  color: var(--blue);
   font-family: var(--mono);
-  font-size: 1.7rem;
+  font-size: 1.55rem;
 }
 
 .intelligence-r5b-threshold-grid small,
@@ -129,75 +107,35 @@
   color: var(--muted);
 }
 
-.intelligence-r5b-run-grid header,
-.intelligence-r5b-metric-grid header {
+.intelligence-r5b-run-grid header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   justify-content: space-between;
   gap: 0.6rem;
 }
+.intelligence-r5b-run-grid header strong { white-space: nowrap; }
+.intelligence-r5b-run-grid p, .intelligence-r5b-metric-grid p { min-height: 2.2rem; overflow-wrap: anywhere; }
+.intelligence-r5b-metric-grid header { display: block; }
+.intelligence-r5b-metric-grid header span { display: block; margin-top: 0.35rem; white-space: nowrap; }
+.intelligence-r5b-metric-grid small { display: block; min-height: 2.5em; overflow-wrap: anywhere; line-height: 1.35; }
+.intelligence-r5b-metric-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.intelligence-r5b-metric-grid p { color: var(--blue); font-size: 1.2rem; margin: 0.55rem 0 0.35rem; font-weight: 600; }
 
-.intelligence-r5b-run-grid header strong {
-  white-space: nowrap;
-}
-
-.intelligence-r5b-run-grid p,
-.intelligence-r5b-metric-grid p {
-  min-height: 2.2rem;
-  overflow-wrap: anywhere;
-}
-
-.intelligence-r5b-metric-grid header span {
-  display: block;
-  margin-top: 0.35rem;
-  white-space: nowrap;
-}
-
-.intelligence-r5b-metric-grid header {
-  display: block;
-}
-
-.intelligence-r5b-metric-grid small {
-  display: block;
-  min-height: 2.5em;
-  overflow-wrap: anywhere;
-  line-height: 1.25;
-}
-
-.intelligence-r5b-metric-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.intelligence-r5b-metric-grid p {
-  color: var(--r5b-accent);
-  font-size: 1.25rem;
-  margin: 0.55rem 0 0.35rem;
-}
-
-.intelligence-r5b-evidence-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.intelligence-r5b-import-summary {
-  margin: 0.85rem 0;
-}
-
-.intelligence-r5b-import-summary dd {
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
+.intelligence-r5b-evidence-list { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.intelligence-r5b-import-summary { margin: 0.85rem 0; }
+.intelligence-r5b-import-summary dd { overflow-wrap: anywhere; white-space: normal; }
 
 .intelligence-r5b-intake-result {
   display: flex;
   justify-content: space-between;
   gap: 0.6rem;
   margin: 0.75rem 0;
-  padding: 0.65rem;
+  padding: 0.7rem;
   border: 1px solid var(--line);
-  font: 10px var(--mono);
+  border-radius: var(--radius-sm);
+  background: var(--panel-inset);
+  font: 11px var(--mono);
 }
 
 .intelligence-r5b-intake-downloads {
@@ -223,9 +161,10 @@
 .intelligence-r5b-intake-checks article,
 .intelligence-r5b-intake-receipts article {
   min-width: 0;
-  padding: 0.75rem;
+  padding: 0.8rem;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
 }
 
 .intelligence-r5b-intake-summary span,
@@ -238,38 +177,28 @@
 .intelligence-r5b-intake-summary strong {
   display: block;
   margin: 0.45rem 0;
-  font: 1.2rem var(--mono);
+  font: 600 1.2rem var(--mono);
 }
 
-.intelligence-r5b-intake-checks {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.intelligence-r5b-intake-checks header,
-.intelligence-r5b-intake-receipts header {
+.intelligence-r5b-intake-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.intelligence-r5b-intake-checks header, .intelligence-r5b-intake-receipts header {
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
 }
-
-.intelligence-r5b-intake-checks code,
-.intelligence-r5b-intake-receipts code {
+.intelligence-r5b-intake-checks code, .intelligence-r5b-intake-receipts code {
   display: block;
   margin-top: 0.5rem;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-
 .intelligence-r5b-intake-receipts {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0.85rem;
 }
 
 @media (max-width: 1180px) {
-  .workspace.intelligence-r5b-workspace {
-    grid-template-columns: 292px minmax(420px, 1fr);
-  }
-
+  .workspace.intelligence-r5b-workspace { grid-template-columns: 292px minmax(420px, 1fr); }
   .intelligence-r5b-metric-grid,
   .intelligence-r5b-threshold-grid,
   .intelligence-r5b-run-grid,
@@ -280,10 +209,7 @@
 }
 
 @media (max-width: 760px) {
-  .workspace.intelligence-r5b-workspace {
-    grid-template-columns: 1fr;
-  }
-
+  .workspace.intelligence-r5b-workspace { grid-template-columns: 1fr; }
   .intelligence-r5b-threshold-grid,
   .intelligence-r5b-run-grid,
   .intelligence-r5b-metric-grid,
@@ -293,13 +219,6 @@
   .intelligence-r5b-intake-downloads {
     grid-template-columns: 1fr;
   }
-
-  .intelligence-r5b-hero {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .intelligence-r5b-hero > div {
-    text-align: left;
-  }
+  .intelligence-r5b-hero { display: grid; gap: 0.75rem; }
+  .intelligence-r5b-hero > div { text-align: left; }
 }

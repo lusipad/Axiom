@@ -39,6 +39,17 @@ describe.skipIf(!demoMode)("demo mode lab smoke", () => {
     expect(screen.queryByText("未完成")).not.toBeInTheDocument();
   });
 
+  it("现场调参与快诊工作台在 Demo 模式下完整渲染", async () => {
+    render(<App />);
+    const skip = screen.queryByRole("button", { name: "跳过" });
+    if (skip) fireEvent.click(skip);
+    fireEvent.click(screen.getByRole("button", { name: /现场调参与快诊NEW/i }));
+    expect(
+      await screen.findByText("MD32410 轴跃度滑动滤波时间"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("未完成")).not.toBeInTheDocument();
+  });
+
   for (const lab of LABS) {
     it(`${lab.name} 打开时不报「未完成」`, async () => {
       render(<App />);

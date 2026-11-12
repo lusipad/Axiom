@@ -3,11 +3,11 @@
 }
 
 .machine-r3-boundary {
-  border-left-color: var(--orange);
+  border-left-color: var(--amber);
 }
 
 .machine-r3-boundary strong {
-  color: #ffd9c8;
+  color: var(--warn-text);
 }
 
 .machine-r3-analysis {
@@ -21,7 +21,7 @@
 
 .machine-r3-analysis .view-tabs span {
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   letter-spacing: .04em;
   white-space: nowrap;
 }
@@ -42,23 +42,9 @@
 }
 
 @media (max-width: 760px) {
-  .machine-r3-workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .machine-r3-columns {
-    padding: 10px;
-    grid-template-columns: 1fr;
-  }
-
-  .machine-r3-analysis .view-tabs {
-    gap: 10px;
-  }
-
-  .machine-r3-analysis .view-tabs span {
-    font-size: 9px;
-  }
-
+  .machine-r3-workspace { grid-template-columns: 1fr; }
+  .machine-r3-columns { padding: 12px; grid-template-columns: 1fr; }
+  .machine-r3-analysis .view-tabs { gap: 10px; }
   .machine-r3-workspace .data-list dd,
   .machine-r3-workspace .identity-list dd {
     overflow-wrap: anywhere;

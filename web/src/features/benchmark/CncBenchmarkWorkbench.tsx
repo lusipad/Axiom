@@ -26,9 +26,15 @@ interface ClosedLoopDemo {
 }
 
 const roleTitles: Record<Role, string> = {
-  case: "CASE · 参考路径",
-  baseline: "BASELINE A · 基线算法",
-  candidate: "CANDIDATE B · 候选算法",
+  case: "01 · CASE 参考路径与约束",
+  baseline: "02 · BASELINE A 基线版本",
+  candidate: "03 · CANDIDATE B 候选版本",
+};
+
+const roleHints: Record<Role, string> = {
+  case: "上传刀路参考折线与速度/加速度/Jerk 门禁 JSON",
+  baseline: "上传当前生产或上一版插补规划导出的采样轨迹",
+  candidate: "上传待验收的新版插补规划导出的采样轨迹",
 };
 
 const labels: Record<Role, string> = { case: "刀路与约束", baseline: "基线 A", candidate: "候选 B" };
@@ -39,6 +45,11 @@ const metricLabels: Record<string, string> = {
   durationSeconds: "运动时间",
   computationSeconds: "单周期计算耗时",
   sampledJerkMaxMmPerSec3: "最大 Jerk",
+  actualContourErrorMaxMm: "最大伺服轮廓误差",
+  trackingErrorRmsMm: "伺服跟随误差 RMS",
+  quadrantPeakGlitchMm: "过象限摩擦尖峰",
+  highFreqVibrationEnergyRatio: "高频振动能量占比",
+  commandBandLimitedEnergyRatio: "规划器高频激励占比",
 };
 
 const metricUnits: Record<string, string> = {
@@ -46,7 +57,7 @@ const metricUnits: Record<string, string> = {
   sampledPathDeviationMeanMm: "mm",
   durationSeconds: "s",
   computationSeconds: "ms",
-  sampledJerkMaxMmPerSec3: "m/s³",
+  sampledJerkMaxMmPerSec3: "mm/s³",
 };
 
 const statusLabels: Record<string, string> = {
@@ -71,7 +82,10 @@ const checkLabels: Record<string, string> = {
 };
 
 async function requestJson<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`/api/v1/benchmarks/cnc/${path}`, body === undefined ? undefined : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const response = await fetch(
+    `/api/v1/benchmarks/cnc/${path}`,
+    body === undefined ? undefined : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
   const payload = await response.json();
   if (!response.ok) {
     const detail = Array.isArray(payload.detail)
@@ -96,6 +110,12 @@ function number(value: number | null | undefined): string {
   return value === 0 ? "0" : Number(value.toPrecision(6)).toString();
 }
 
+function kpiNumber(value: number | null | undefined, unit: string): string {
+  if (value == null) return "—";
+  const formatted = value === 0 ? "0" : Number(value.toPrecision(4)).toString();
+  return `${formatted} ${unit}`.trim();
+}
+
 function locate(location?: Location): string {
   if (!location) return "—";
   return `样本 ${location.sampleIndex} · ${number(location.t)} s${location.axis ? ` · ${location.axis} 轴` : ""}${location.referenceSegmentIndex !== undefined ? ` · 路径段 ${location.referenceSegmentIndex}` : ""}`;
@@ -110,17 +130,19 @@ function previewPoints(value: JsonObject | null, reference = false): [number, nu
   const raw = reference ? value?.referencePath : value?.samples;
   if (!Array.isArray(raw)) return [];
   const stride = Math.max(1, Math.ceil(raw.length / 1500));
-  return raw.filter((_, index) => index % stride === 0 || index === raw.length - 1).map((item: unknown) => {
-    if (!reference && item && typeof item === "object") return (item as { positionMm?: unknown }).positionMm;
-    return item;
-  }).filter((item): item is [number, number, number] => Array.isArray(item) && item.length === 3 && item.every(value => typeof value === "number" && Number.isFinite(value)));
+  return raw
+    .filter((_, index) => index % stride === 0 || index === raw.length - 1)
+    .map((item: unknown) => {
+      if (!reference && item && typeof item === "object") return (item as { positionMm?: unknown }).positionMm;
+      return item;
+    })
+    .filter((item): item is [number, number, number] => Array.isArray(item) && item.length === 3 && item.every((v) => typeof v === "number" && Number.isFinite(v)));
 }
 
 function PathPreview({ inputs }: { inputs: Inputs }) {
   const paths = [previewPoints(inputs.case, true), previewPoints(inputs.baseline), previewPoints(inputs.candidate)];
   const hasPoints = paths.some((points) => points.length > 0);
 
-  // Generate fallback curves for sleek mock visualizer when inputs don't have enough points
   const referenceCurve: [number, number][] = hasPoints && paths[0]!.length > 0
     ? paths[0]!.map(([x, y]) => [x, y])
     : [[0, 20], [20, 28], [50, 42], [80, 58], [110, 78], [140, 100]];
@@ -140,18 +162,18 @@ function PathPreview({ inputs }: { inputs: Inputs }) {
   return (
     <div className="cnc-preview-card">
       <div className="cnc-preview-header">
-        <strong>XY 轨迹预览</strong>
-        <span className="cnc-preview-sub">预览抽样约 1,500 点</span>
+        <strong>XY 采样轨迹叠加投影</strong>
+        <span className="cnc-preview-sub">抽样上限 1,500 点</span>
       </div>
       <div className="cnc-chart-body">
-        <XYChart series={series} ariaLabel="参考路径与 A/B 指令的 XY 投影" height={220} xLabel="X (mm)" yLabel="Y (mm)" legend={false} />
+        <XYChart series={series} ariaLabel="参考路径与 A/B 指令的 XY 投影" height={236} xLabel="X (mm)" yLabel="Y (mm)" legend={false} />
       </div>
       <div className="cnc-preview-legend">
         <span className="legend-ref"><i className="legend-line line-gray" /> 参考路径</span>
         <span className="legend-base"><i className="legend-line line-blue" /> 基线 A</span>
         <span className="legend-cand"><i className="legend-line line-green" /> 候选 B</span>
       </div>
-      <div className="cnc-preview-caption">参考路径与 A/B 指令的 XY 投影</div>
+      <div className="cnc-preview-caption">悬停图表可读取任意采样点处的 X / Y 精确坐标（mm）</div>
     </div>
   );
 }
@@ -161,7 +183,13 @@ function shortHash(value?: string): string {
   return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
 }
 
-export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => void }) {
+export function CncBenchmarkWorkbench({
+  onOpenGuide,
+  onOpenParamTuning,
+}: {
+  onOpenGuide?: () => void;
+  onOpenParamTuning?: () => void;
+}) {
   const [inputs, setInputs] = useState<Inputs>({ case: null, baseline: null, candidate: null });
   const [filenames, setFilenames] = useState<Partial<Record<Role, string>>>({});
   const [report, setReport] = useState<Report | null>(null);
@@ -184,15 +212,17 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
     if (!file) return;
     const current = ++revision.current;
     setReport(null); setError(null); setBusy(true);
-    setInputs(previous => ({ ...previous, [role]: null }));
-    setFilenames(previous => ({ ...previous, [role]: file.name }));
+    setInputs((previous) => ({ ...previous, [role]: null }));
+    setFilenames((previous) => ({ ...previous, [role]: file.name }));
     try {
       if (file.size > 16 * 1024 * 1024) throw new Error("单个文件不能超过 16 MiB。");
       const parsed = object(JSON.parse((await file.text()).replace(/^\uFEFF/, "")));
-      if (current === revision.current) setInputs(previous => ({ ...previous, [role]: parsed }));
+      if (current === revision.current) setInputs((previous) => ({ ...previous, [role]: parsed }));
     } catch (reason) {
       if (current === revision.current) setError(`${labels[role]}：${reason instanceof Error ? reason.message : "无法读取文件"}`);
-    } finally { if (current === revision.current) setBusy(false); }
+    } finally {
+      if (current === revision.current) setBusy(false);
+    }
   }
 
   async function loadExample() {
@@ -203,13 +233,37 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
       if (current === revision.current) {
         setInputs(payload);
         setFilenames({
-          case: "impeller_finish_v3.json",
-          baseline: "axisCore v2.4.1",
-          candidate: "axisCore v2.5.0-rc.2",
+          case: `${String(payload.case?.caseId ?? "case")}.json`,
+          baseline: `${String(payload.baseline?.algorithmId ?? "baseline")} (${String(payload.baseline?.algorithmVersion ?? "A")})`,
+          candidate: `${String(payload.candidate?.algorithmId ?? "candidate")} (${String(payload.candidate?.algorithmVersion ?? "B")})`,
         });
       }
-    } catch (reason) { if (current === revision.current) setError(reason instanceof Error ? reason.message : "示例加载失败"); }
-    finally { if (current === revision.current) setBusy(false); }
+    } catch (reason) {
+      if (current === revision.current) setError(reason instanceof Error ? reason.message : "示例加载失败");
+    } finally {
+      if (current === revision.current) setBusy(false);
+    }
+  }
+
+  async function loadExampleAndCompare() {
+    const current = ++revision.current;
+    setBusy(true); setReport(null); setError(null);
+    try {
+      const payload = await requestJson<Record<Role, JsonObject>>("example");
+      if (current !== revision.current) return;
+      setInputs(payload);
+      setFilenames({
+        case: `${String(payload.case?.caseId ?? "case")}.json`,
+        baseline: `${String(payload.baseline?.algorithmId ?? "baseline")} (${String(payload.baseline?.algorithmVersion ?? "A")})`,
+        candidate: `${String(payload.candidate?.algorithmId ?? "candidate")} (${String(payload.candidate?.algorithmVersion ?? "B")})`,
+      });
+      const next = await requestJson<Report>("compare", payload);
+      if (current === revision.current) setReport(next);
+    } catch (reason) {
+      if (current === revision.current) setError(reason instanceof Error ? reason.message : "示例对比运行失败");
+    } finally {
+      if (current === revision.current) setBusy(false);
+    }
   }
 
   async function compare() {
@@ -219,8 +273,11 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
     try {
       const next = await requestJson<Report>("compare", inputs);
       if (current === revision.current) setReport(next);
-    } catch (reason) { if (current === revision.current) setError(reason instanceof Error ? reason.message : "比较失败"); }
-    finally { if (current === revision.current) setBusy(false); }
+    } catch (reason) {
+      if (current === revision.current) setError(reason instanceof Error ? reason.message : "比较失败");
+    } finally {
+      if (current === revision.current) setBusy(false);
+    }
   }
 
   async function runClosedLoopDemo() {
@@ -236,21 +293,64 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
     }
   }
 
-  const caseHash = String(inputs.case?.caseContentHash ?? inputs.case?.caseId ?? "9f3a...c21e");
-  const baseHash = String(inputs.baseline?.reportContentHash ?? "41bd...7a90");
-  const candHash = String(inputs.candidate?.reportContentHash ?? "e87c...03df");
+  const diffMap = new Map((report?.differences ?? []).map((d) => [d.metricId, d]));
+  const maxDevDiff = diffMap.get("sampledPathDeviationMaxMm");
+  const durDiff = diffMap.get("durationSeconds");
+  const totalChecks = report?.candidate.checks.length ?? 0;
+  const passedChecks = (report?.candidate.checks ?? []).filter((c) => c.status === "WithinLimit" || c.status === "Passed").length;
+  const violatedChecks = totalChecks - passedChecks;
+
+  const renderCardMeta = (role: Role) => {
+    const data = inputs[role];
+    if (!data) {
+      return (
+        <>
+          <div className="card-file-name unloaded">{filenames[role] ? `${filenames[role]}（读取未完成）` : "点击导入 JSON 文件"}</div>
+          <div className="card-hash-pill">
+            <span className="pill-tag neutral">待导入</span>
+            <span className="pill-hash">{roleHints[role]}</span>
+          </div>
+        </>
+      );
+    }
+    const isSynth = data.sourceKind === "synthetic-example";
+    const hashSource = role === "case"
+      ? String(data.caseContentHash ?? data.caseId ?? "已校验")
+      : String(data.reportContentHash ?? `${data.algorithmId ?? role}@${data.algorithmVersion ?? "1"}`);
+    const displayTitle = filenames[role] ?? String(data.caseId ?? data.algorithmId ?? "已导入 JSON");
+
+    return (
+      <>
+        <div className="card-file-name" title={displayTitle}>{displayTitle}</div>
+        <div className="card-hash-pill">
+          <span className={`pill-tag ${isSynth ? "amber" : "green"}`}>
+            {isSynth ? "合成示例" : "已就绪"}
+          </span>
+          <span className="pill-hash">标识 · {shortHash(hashSource)}</span>
+        </div>
+      </>
+    );
+  };
 
   return (
     <main className="cnc-benchmark-page" aria-label="CNC 算法对比工作台">
-      {/* Top Header */}
       <header className="page-header">
         <div className="page-header-info">
           <h1 aria-label="比较两版 CNC 算法">CNC 算法 A/B 对比</h1>
           <p className="page-header-subtitle">
-            同一案例 · 两个算法版本 · XYZ 采样命令评估 · 单位 mm
+            同一刀路案例 · 两版插补规划轨迹 · 采样误差与运动学硬约束门禁定位（单位 mm）
           </p>
         </div>
         <div className="page-header-actions">
+          {onOpenParamTuning && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={onOpenParamTuning}
+            >
+              前往现场调参与快诊 →
+            </button>
+          )}
           {onOpenGuide && (
             <button
               type="button"
@@ -276,7 +376,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
             onClick={compare}
             aria-label="比较 A / B"
           >
-            {busy ? "比较中…" : "运行比较"}
+            {busy ? "比较中…" : "比较 A / B"}
           </button>
         </div>
       </header>
@@ -285,7 +385,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
         {/* Step 01: 导入输入 */}
         <section className="cnc-step-section">
           <div className="step-label-row">
-            <span className="step-num-eyebrow">01 · 导入输入</span>
+            <span className="step-num-eyebrow">STEP 01 · 导入对比输入（三选齐后激活对比）</span>
             <div className="step-actions-quick">
               <button
                 type="button"
@@ -308,7 +408,6 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
           </div>
 
           <div className="cnc-input-cards-row">
-            {/* Card 1: Case */}
             <div
               className={`cnc-file-card ${inputs.case ? "loaded" : ""}`}
               onClick={() => fileInputRefs.case.current?.click()}
@@ -317,7 +416,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               onKeyDown={(e) => e.key === "Enter" && fileInputRefs.case.current?.click()}
             >
               <div className="card-icon-box icon-case">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 19c4-4 8 2 12-2 3-3 4-8 4-8" />
                   <circle cx="4" cy="19" r="2" />
                   <circle cx="20" cy="9" r="2" />
@@ -325,13 +424,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               </div>
               <div className="card-text-box">
                 <div className="card-role-label">{roleTitles.case}</div>
-                <div className="card-file-name" title={filenames.case ?? "impeller_finish_v3.json"}>
-                  {filenames.case ?? "impeller_finish_v3.json"}
-                </div>
-                <div className="card-hash-pill">
-                  <span className="pill-tag green">已导入</span>
-                  <span className="pill-hash">sha256 · {shortHash(caseHash)}</span>
-                </div>
+                {renderCardMeta("case")}
               </div>
               <input
                 ref={fileInputRefs.case}
@@ -346,7 +439,6 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
 
             <div className="cnc-plus-separator" aria-hidden="true">+</div>
 
-            {/* Card 2: Baseline A */}
             <div
               className={`cnc-file-card ${inputs.baseline ? "loaded" : ""}`}
               onClick={() => fileInputRefs.baseline.current?.click()}
@@ -355,7 +447,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               onKeyDown={(e) => e.key === "Enter" && fileInputRefs.baseline.current?.click()}
             >
               <div className="card-icon-box icon-base">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="18" cy="5" r="3" />
                   <circle cx="6" cy="12" r="3" />
                   <circle cx="18" cy="19" r="3" />
@@ -365,13 +457,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               </div>
               <div className="card-text-box">
                 <div className="card-role-label">{roleTitles.baseline}</div>
-                <div className="card-file-name" title={filenames.baseline ?? "axisCore v2.4.1"}>
-                  {filenames.baseline ?? "axisCore v2.4.1"}
-                </div>
-                <div className="card-hash-pill">
-                  <span className="pill-tag green">已导入</span>
-                  <span className="pill-hash">sha256 · {shortHash(baseHash)}</span>
-                </div>
+                {renderCardMeta("baseline")}
               </div>
               <input
                 ref={fileInputRefs.baseline}
@@ -386,7 +472,6 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
 
             <div className="cnc-plus-separator" aria-hidden="true">+</div>
 
-            {/* Card 3: Candidate B */}
             <div
               className={`cnc-file-card ${inputs.candidate ? "loaded" : ""}`}
               onClick={() => fileInputRefs.candidate.current?.click()}
@@ -395,7 +480,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               onKeyDown={(e) => e.key === "Enter" && fileInputRefs.candidate.current?.click()}
             >
               <div className="card-icon-box icon-cand">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M10 2v7.31L4.66 18c-.81 1.34.15 3 1.71 3h11.26c1.56 0 2.52-1.66 1.71-3L14 9.31V2" />
                   <line x1="8" y1="2" x2="16" y2="2" />
                   <line x1="7" y1="15" x2="17" y2="15" />
@@ -403,15 +488,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               </div>
               <div className="card-text-box">
                 <div className="card-role-label">{roleTitles.candidate}</div>
-                <div className="card-file-name" title={filenames.candidate ?? "axisCore v2.5.0-rc.2"}>
-                  {filenames.candidate ?? "axisCore v2.5.0-rc.2"}
-                </div>
-                <div className="card-hash-pill">
-                  <span className={`pill-tag ${synthetic ? "amber" : "green"}`}>
-                    {synthetic ? "合成示例" : "已导入"}
-                  </span>
-                  <span className="pill-hash">sha256 · {shortHash(candHash)}</span>
-                </div>
+                {renderCardMeta("candidate")}
               </div>
               <input
                 ref={fileInputRefs.candidate}
@@ -438,17 +515,49 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
         {report ? (
           <section className="cnc-step-section cnc-results" aria-label="算法比较报告">
             <div className="step-label-row">
-              <span className="step-num-eyebrow">02 · 比较报告</span>
+              <span className="step-num-eyebrow">STEP 02 · 版本验收结论与超限样本定位</span>
+            </div>
+
+            {/* KPI Strip */}
+            <div className="cnc-kpi-strip">
+              <article className="cnc-kpi-card">
+                <span className="kpi-label">候选最大路径偏差</span>
+                <strong className="kpi-value">{kpiNumber(maxDevDiff?.candidate, maxDevDiff?.unit ?? "mm")}</strong>
+                <span className="kpi-sub">
+                  基线 A：{kpiNumber(maxDevDiff?.baseline, maxDevDiff?.unit ?? "mm")}
+                </span>
+              </article>
+              <article className="cnc-kpi-card">
+                <span className="kpi-label">候选运动总时长</span>
+                <strong className="kpi-value">{kpiNumber(durDiff?.candidate, durDiff?.unit ?? "s")}</strong>
+                <span className="kpi-sub">
+                  基线 A：{kpiNumber(durDiff?.baseline, durDiff?.unit ?? "s")}
+                </span>
+              </article>
+              <article className="cnc-kpi-card">
+                <span className="kpi-label">运动学硬约束门禁</span>
+                <strong className={`kpi-value ${violatedChecks > 0 ? "text-red" : "text-green"}`}>
+                  {passedChecks} / {totalChecks} 通过
+                </strong>
+                <span className="kpi-sub">
+                  {violatedChecks > 0 ? `${violatedChecks} 项超限需定位修复` : "全部满足采样限制"}
+                </span>
+              </article>
+              <article className="cnc-kpi-card">
+                <span className="kpi-label">样本规模与算法版本</span>
+                <strong className="kpi-value">{report.candidate.sampleCount} 采样点</strong>
+                <span className="kpi-sub">
+                  {report.baseline.algorithmVersion} → {report.candidate.algorithmVersion}
+                </span>
+              </article>
             </div>
 
             <div className="cnc-report-columns">
-              {/* Left Column: Report tables & badges */}
               <div className="cnc-report-left">
                 <div className="cnc-report-title-row">
                   <h2>算法比较报告</h2>
                 </div>
 
-                {/* Outcome summary banner */}
                 <div className={`cnc-outcome-banner banner-${report.outcome}`}>
                   <div className={`outcome-badge badge-${report.outcome}`}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -461,14 +570,13 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                   <span className="outcome-explanation">
                     {report.reasons.length > 0
                       ? report.reasons.join("；")
-                      : "B 版轨迹精度显著改善，运动时间增加 10.0%；候选在 Z 轴出现 1 处加速度超限。"}
+                      : "已完成采样轨迹对比与硬约束门禁核验，请结合下方差异表与最差样本位置审阅。"}
                   </span>
                 </div>
 
-                {/* Metrics Table */}
                 <div className="cnc-section-subhead">
-                  <span className="subhead-title">比较指标</span>
-                  <span className="subhead-meta">采样命令范围内 · 比较容差 0.05 mm</span>
+                  <span className="subhead-title">比较指标明细</span>
+                  <span className="subhead-meta">采样命令范围 · 绑定同源案例哈希</span>
                 </div>
                 <div className="cnc-table-box">
                   <table>
@@ -497,8 +605,8 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                               <strong>{metricLabels[item.metricId] ?? item.metricId}</strong>
                               <small> ({item.unit || metricUnits[item.metricId] || "mm"})</small>
                             </td>
-                            <td>{number(item.baseline)}</td>
-                            <td>{number(item.candidate)}</td>
+                            <td className="mono">{number(item.baseline)}</td>
+                            <td className="mono">{number(item.candidate)}</td>
                             <td className={isImproved ? "text-green" : isRegressed ? "text-red" : "text-muted"}>
                               {isNotComparable ? "—" : pctText}
                             </td>
@@ -514,9 +622,9 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                   </table>
                 </div>
 
-                {/* Constraint Checks Table */}
                 <div className="cnc-section-subhead" style={{ marginTop: "24px" }}>
                   <span className="subhead-title">约束检查与最差位置</span>
+                  <span className="subhead-meta">精确到采样点序号、时刻与参考段</span>
                 </div>
                 <div className="cnc-table-box">
                   <table>
@@ -549,7 +657,6 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                   </table>
                 </div>
 
-                {/* Scope Coverage Notice Box */}
                 <div className="cnc-scope-callout">
                   <div className="callout-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
@@ -564,26 +671,25 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                 </div>
               </div>
 
-              {/* Right Column: Chart, Result Identity, Warning */}
               <div className="cnc-report-right">
                 <PathPreview inputs={inputs} />
 
                 <div className="cnc-identity-card">
                   <div className="identity-card-header">
-                    <strong>结果身份</strong>
+                    <strong>可审计结果身份</strong>
                   </div>
                   <div className="identity-rows">
                     <div className="identity-row">
-                      <span className="label">Case hash</span>
+                      <span className="label">案例 ID</span>
+                      <span className="val mono">{report.caseId}</span>
+                    </div>
+                    <div className="identity-row">
+                      <span className="label">Case Hash</span>
                       <span className="val mono">{shortHash(report.caseContentHash)}</span>
                     </div>
                     <div className="identity-row">
-                      <span className="label">RunBundle</span>
+                      <span className="label">Report Hash</span>
                       <span className="val mono">{shortHash(report.reportContentHash)}</span>
-                    </div>
-                    <div className="identity-row">
-                      <span className="label">容差 / 周期</span>
-                      <span className="val mono">0.05 mm · 2 ms</span>
                     </div>
                   </div>
                   <div className="identity-card-actions">
@@ -605,7 +711,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                 </div>
 
                 <div className="cnc-warning-callout">
-                  仅评估采样轨迹，不代表实机加工效果；「改善」只针对本页列出的指标。
+                  仅评估采样轨迹，不代表实机加工效果；若需结合西门子 840D / 倍福 TwinCAT 实测伺服跟踪做参数微调，请打开左侧「现场调参与快诊」。
                 </div>
               </div>
             </div>
@@ -613,17 +719,30 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
         ) : (
           <section className="cnc-empty-card">
             <div className="empty-inner">
-              <h2>从一次可复现的版本比较开始</h2>
-              <p>上传三份文件，或载入带有已知偏差的示例。报告会保留指标差异以及超限的样本、时间和轴。</p>
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={loadExample}
-                disabled={busy}
-                style={{ marginTop: "16px" }}
-              >
-                载入回归示例并比较
-              </button>
+              <span className="empty-badge">REPRODUCIBLE A/B BENCHMARK</span>
+              <h2>从一次可复现的算法版本比较开始</h2>
+              <p>
+                上传「刀路与约束 + 基线 A + 候选 B」三份 JSON 文件，或一键载入内置回归示例。报告将独立校验轨迹偏差与速度/加速度/Jerk 限制，并精确定位超限发生的样本序号、时刻与轴。
+              </p>
+              <div className="empty-actions">
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={loadExampleAndCompare}
+                  disabled={busy}
+                >
+                  {busy ? "正在载入并对比…" : "一键载入示例并立即对比"}
+                </button>
+                {onOpenParamTuning && (
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={onOpenParamTuning}
+                  >
+                    体验单刀快诊与多系统调参 →
+                  </button>
+                )}
+              </div>
             </div>
           </section>
         )}
@@ -635,21 +754,32 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
               <div>
                 <span className="eyebrow">32-PARAMETER MULTI-FIDELITY CLOSED LOOP</span>
                 <h2>高维参数质量评估、敏感度归因与稀疏微调推荐</h2>
-                <p>
-                  案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 控制器实采 {closedLoop.surrogate.controllerRunCount} 组（提取 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）
+                <p className="text-muted" style={{ margin: 0, fontSize: "13px" }}>
+                  案例 {closedLoop.case.caseId} · 离线跑批 {closedLoop.surrogate.offlineRunCount} 组 + 实采切片 {closedLoop.surrogate.controllerRunCount} 组（共 {closedLoop.surrogate.totalSliceSampleCount} 个几何切片）
                 </p>
               </div>
-              <button
-                className="button button-secondary"
-                type="button"
-                onClick={() => download(closedLoop, "cnc-param-closed-loop.json")}
-              >
-                下载闭环数据包
-              </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {onOpenParamTuning && (
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    onClick={onOpenParamTuning}
+                  >
+                    在交互式调参台中打开 →
+                  </button>
+                )}
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  onClick={() => download(closedLoop, "cnc-param-closed-loop.json")}
+                >
+                  下载闭环数据包
+                </button>
+              </div>
             </div>
 
             <div className="cnc-section-subhead" style={{ marginTop: "16px" }}>
-              <span className="subhead-title">1. 参数影响识别（Stage 1 稀疏初筛 + Stage 2 多保真 ARD-GP）</span>
+              <span className="subhead-title">1. 参数影响识别（解析物理先验 + 保守残差 ARD-GP）</span>
             </div>
             <div className="cnc-table-box">
               <table>
@@ -657,16 +787,22 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                   <tr>
                     <th>质量指标</th>
                     <th>建模模式</th>
-                    <th>R² / CV-RMSE</th>
+                    <th>留一 R² / 保守共形半径</th>
                     <th>Top-3 主导参数及贡献占比</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.values(closedLoop.surrogate.metricHeads).map((head) => (
                     <tr key={head.metricId}>
-                      <td><strong>{head.metricId}</strong><small> ({head.unit})</small></td>
-                      <td>{head.modelingMode}</td>
-                      <td>留一 R²={head.looR2Score == null ? "-" : number(head.looR2Score)} · ±{number(head.conformalRadius)}{head.residualEnabled === false ? " · 残差GP关闭" : ""}</td>
+                      <td>
+                        <strong>{metricLabels[head.metricId] ?? head.metricId}</strong>
+                        <small> ({head.unit})</small>
+                      </td>
+                      <td><span className="mono">{head.modelingMode}</span></td>
+                      <td className="mono">
+                        LOO R²={head.looR2Score == null ? "-" : number(head.looR2Score)} · ±{number(head.conformalRadius)}
+                        {head.residualEnabled === false ? " · 仅物理先验" : ""}
+                      </td>
                       <td>
                         {head.sensitivities
                           .filter((s) => s.status === "Active")
@@ -704,7 +840,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                       <td>{preset.tradeoffExplanation}</td>
                       <td className="mono text-muted">
                         {preset.changedParameters
-                          .map((p) => `${p.parameterId}: ${p.baselineValue} → ${p.recommendedValue} ${p.unit} (${p.relativeChangePct >= 0 ? "+" : ""}${p.relativeChangePct}%)`)
+                          .map((p) => `${p.displayName}: ${p.baselineValue} → ${p.recommendedValue} ${p.unit} (${p.relativeChangePct >= 0 ? "+" : ""}${p.relativeChangePct}%)`)
                           .join(" | ")}
                       </td>
                     </tr>

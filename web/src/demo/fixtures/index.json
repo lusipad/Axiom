@@ -9,6 +9,11 @@
       "file": "get_api_v1_benchmarks_cnc_param_demo.json"
     }
   ],
+  "GET /api/v1/benchmarks/cnc/param-workbench": [
+    {
+      "file": "get_api_v1_benchmarks_cnc_param_workbench.json"
+    }
+  ],
   "GET /api/v1/catalog": [
     {
       "file": "get_api_v1_catalog.json"

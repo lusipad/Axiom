@@ -39,7 +39,7 @@ describe.skipIf(!demoMode)("demo mode lab smoke", () => {
     expect(screen.queryByText("未完成")).not.toBeInTheDocument();
   });
 
-  it("现场调参与快诊工作台在 Demo 模式下完整渲染", async () => {
+  it("现场调参与快诊工作台在 Demo 模式下完整渲染并支持纯前端自定义单刀快诊", async () => {
     render(<App />);
     const skip = screen.queryByRole("button", { name: "跳过" });
     if (skip) fireEvent.click(skip);
@@ -48,6 +48,69 @@ describe.skipIf(!demoMode)("demo mode lab smoke", () => {
       await screen.findByText("MD32410 轴跃度滑动滤波时间"),
     ).toBeInTheDocument();
     expect(screen.queryByText("未完成")).not.toBeInTheDocument();
+
+    // Switch to custom single-cut upload and run in-browser local diagnosis
+    fireEvent.click(screen.getByRole("button", { name: /\+ 导入自有单刀数据快诊/ }));
+    fireEvent.click(screen.getByRole("button", { name: "载入示例模板" }));
+    fireEvent.click(screen.getByRole("button", { name: "执行单刀机理快诊" }));
+
+    expect(
+      await screen.findByText(/custom\.shopfloor-corner90/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/指令规划轮廓偏差.*已超出案例门限/),
+    ).toBeInTheDocument();
+  });
+
+  it("纯前端引擎支持任意自定义 A/B 轨迹对比计算", async () => {
+    const customPayload = {
+      case: {
+        caseId: "custom.ab-line",
+        coordinateFrame: "workpiece",
+        unit: "mm",
+        samplePeriodSeconds: 0.01,
+        referencePath: [
+          [0, 0, 0],
+          [10, 0, 0],
+        ],
+        maximumPathDeviationMm: 0.05,
+        maximumEndpointErrorMm: 0.005,
+      },
+      baseline: {
+        algorithmId: "algo.a",
+        algorithmVersion: "1.0",
+        sourceKind: "algorithm-export",
+        samples: [
+          { sampleIndex: 0, t: 0, positionMm: [0, 0, 0] },
+          { sampleIndex: 1, t: 0.01, positionMm: [2.5, 0.01, 0] },
+          { sampleIndex: 2, t: 0.02, positionMm: [5, 0.03, 0] },
+          { sampleIndex: 3, t: 0.03, positionMm: [7.5, 0.01, 0] },
+          { sampleIndex: 4, t: 0.04, positionMm: [10, 0, 0] },
+        ],
+      },
+      candidate: {
+        algorithmId: "algo.b",
+        algorithmVersion: "2.0",
+        sourceKind: "algorithm-export",
+        samples: [
+          { sampleIndex: 0, t: 0, positionMm: [0, 0, 0] },
+          { sampleIndex: 1, t: 0.01, positionMm: [2.5, 0.001, 0] },
+          { sampleIndex: 2, t: 0.02, positionMm: [5, 0.004, 0] },
+          { sampleIndex: 3, t: 0.03, positionMm: [7.5, 0.001, 0] },
+          { sampleIndex: 4, t: 0.04, positionMm: [10, 0, 0] },
+        ],
+      },
+    };
+    const res = await fetch("/api/v1/benchmarks/cnc/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(customPayload),
+    });
+    expect(res.status).toBe(200);
+    const report = await res.json();
+    expect(report.schemaId).toBe("axiom.cnc-benchmark-report@1");
+    expect(report.caseId).toBe("custom.ab-line");
+    expect(report.outcome).toBe("Improved");
   });
 
   for (const lab of LABS) {

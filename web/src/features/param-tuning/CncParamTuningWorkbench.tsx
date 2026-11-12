@@ -763,6 +763,60 @@ export function CncParamTuningWorkbench({
     }
   }
 
+  function loadCustomSampleTemplate() {
+    const sampleCase = {
+      caseId: "custom.shopfloor-corner90",
+      coordinateFrame: "workpiece",
+      unit: "mm",
+      samplePeriodSeconds: 0.002,
+      programmedFeedMmMin: 1800,
+      referencePath: [
+        [0, 0, 0],
+        [10, 0, 0],
+        [10, 10, 0],
+      ],
+      maximumPathDeviationMm: 0.025,
+      maximumEndpointErrorMm: 0.002,
+    };
+    const samples = Array.from({ length: 41 }, (_, i) => {
+      const u = i / 40;
+      const t = Number((i * 0.002).toFixed(4));
+      let x = u <= 0.5 ? u * 20 : 10;
+      let y = u <= 0.5 ? 0 : (u - 0.5) * 20;
+      // Corner rounding shrink around vertex (i = 20)
+      const distFromCorner = Math.abs(i - 20);
+      if (distFromCorner <= 5) {
+        const blend = (6 - distFromCorner) * 0.009;
+        x -= blend;
+        y += blend * 0.35;
+      }
+      return {
+        sampleIndex: i,
+        t,
+        positionMm: [Number(x.toFixed(5)), Number(y.toFixed(5)), 0],
+        actualPositionMm: [
+          Number((x - 0.003).toFixed(5)),
+          Number((y - 0.002).toFixed(5)),
+          0,
+        ],
+      };
+    });
+    const sampleExport = {
+      algorithmId: "shopfloor.custom-trace",
+      algorithmVersion: "v1",
+      sourceKind: "controller-trace",
+      unit: "mm",
+      samplePeriodSeconds: 0.002,
+      samples,
+    };
+    setCustomCase(sampleCase);
+    setCustomCaseName("sample-corner90-case.json");
+    setCustomExport(sampleExport);
+    setCustomExportName("sample-corner90-trace.json");
+    setCustomReport(null);
+    setError(null);
+  }
+
   async function runCustomDiagnose() {
     if (!customCase || !customExport || !activeProfile) return;
     setCustomBusy(true);
@@ -1122,6 +1176,13 @@ export function CncParamTuningWorkbench({
                     {customExportName
                       ? `已选轨迹：${customExportName}`
                       : "② 选择单刀采样轨迹 (.json)"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={loadCustomSampleTemplate}
+                  >
+                    载入示例模板
                   </button>
                 </div>
                 <div className="pt-custom-files">

@@ -41,6 +41,11 @@ jobs:
         working-directory: web
         run: pnpm build:demo
 
+      - name: Prepare GitHub Pages SPA fallback (.nojekyll & 404.html)
+        run: |
+          touch src/axiom/web_dist/.nojekyll
+          cp src/axiom/web_dist/index.html src/axiom/web_dist/404.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: src/axiom/web_dist

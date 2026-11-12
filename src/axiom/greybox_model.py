@@ -1,25 +1,26 @@
-"""Three-Layer CNC Grey-Box Physics, Constrained Identification, MLE Residual GP & Realistic Simulator.
+"""Three-layer CNC grey-box model and a synthetic CNC controller simulator.
 
-Replaces pure black-box 32D polynomial regression with:
-1. Layer 1 (White-Box Analytical Physics Core):
-   - Hard min-clipped speed envelopes (programmed feed, 3D axis projection, arc/helical centripetal,
-     inscribed corner-rounding curvature, and micro-segment lookahead braking distance).
-   - Forward-backward acceleration-limited velocity profile, S-curve jerk time-stretch, and post-filter
-     corner velocity-valley convolution (`cornerSpeedMinMmS`).
-   - Exact sinc (FIR) + 2nd-order Butterworth (Biquad) circular radial shrink & Jerk attenuation.
-   - Cascade P-PI servo tracking lag + exact second-order Signed Frenet Normal curvature-delay
-     superposition (capturing inward gain attenuation vs. outward inertia wide-swing + XY mismatch).
-2. Layer 2 (Constrained Grey-Box Parameter Calibration):
-   - Direct time-series least-squares (`scipy.optimize.lsq_linear`) for servo loop bandwidth ratios
-     and signed Hanning-FFT structural resonance frequency identification.
-   - Bounded Trust-Region Reflective (`scipy.optimize.least_squares`) calibration of interpretable
-     planner, corner-valley smoothing, friction, and resonance compliance constants.
-3. Layer 3 (Low-Dimensional L-BFGS-B MLE ARD Matérn-5/2 GP Residual + Split Conformal Bounds):
-   - Fits compact 3D-6D residual GPs with Marginal Log-Likelihood hyperparameter optimization
-     and Leave-One-Out Split Conformal safety bounds.
-4. Realistic Discrete-Time CNC Controller & Servo Simulator (`simulate_realistic_cnc_controller`):
-   - True min-clipped lookahead + causal FIR/Biquad filtering + cascade P-PI servo ODE +
-     Stribeck quadrant-crossing stiction + 2nd-order lightly damped mechanical resonance.
+Kernel `generic-fir-biquad@1` (see `GREYBOX_REQUIRED_PARAMETER_IDS`):
+1. Layer 1 (analytical backbone):
+   - Hard min-clipped speed envelopes (programmed feed, axis projection, centripetal,
+     corner-rounding curvature, micro-segment lookahead braking distance).
+   - Forward-backward acceleration-limited speed propagation and an empirical
+     post-filter corner speed valley.
+   - FIR sinc + 2nd-order Butterworth magnitude radial shrink on arcs.
+   - Steady-state error expansion of a P-P cascade with velocity/acceleration
+     feed-forward (`c_v`, `c_a`) and the resulting signed normal shift.
+   Several terms carry empirical coefficients; they are engineering approximations,
+   not exact laws.
+2. Layer 2 (bounded calibration): `lsq_linear` / trust-region `least_squares` fit of the
+   constants in `GreyBoxPhysicalConstants`. These are fitting coefficients; they are
+   not guaranteed to equal the machine's physical quantities (identifiability is not
+   checked yet).
+3. Layer 3 (optional residual): low-dimensional ARD Matern-5/2 GP on the residual,
+   enabled per metric only when it improves leave-one-out error (see parameter_learner).
+
+`simulate_realistic_cnc_controller` is a SYNTHETIC test fixture. It shares structure
+and constants with the kernel above, so agreement between the two is self-consistency,
+not evidence about a real machine.
 """
 
 from __future__ import annotations
@@ -52,6 +53,53 @@ from .parameter_space import (
     default_cnc_parameter_registry,
     default_parameter_values,
 )
+
+# The grey-box kernel below encodes ONE controller architecture: tolerance-based corner
+# blending, post-interpolation FIR + 2nd-order low-pass, and a P-P cascade with velocity /
+# acceleration feed-forward. Its formulas read these parameter ids directly; a registry
+# for a different CNC must map onto them (controller profile) or the kernel must refuse it,
+# otherwise every unmapped parameter silently falls back to its default.
+GREYBOX_KERNEL_ID = "generic-fir-biquad@1"
+GREYBOX_REQUIRED_PARAMETER_IDS: tuple[str, ...] = (
+    "g1.corner_tolerance_mm",
+    "g1.small_seg_chord_tol_mm",
+    "g1.lookahead_block_count",
+    "g1.corner_angle_threshold_deg",
+    "g1.collinear_merge_angle_deg",
+    "g1.curvature_speed_clamp_factor",
+    "g1.min_segment_length_mm",
+    "g1.spline_degree",
+    "g2.path_max_feed_override",
+    "g2.path_tangential_acc_mm_s2",
+    "g2.path_tangential_jerk_mm_s3",
+    "g2.centripetal_acc_limit_mm_s2",
+    "g2.axis_vel_limit_x",
+    "g2.axis_vel_limit_y",
+    "g2.axis_vel_limit_z",
+    "g2.axis_acc_limit_x",
+    "g2.axis_acc_limit_y",
+    "g2.axis_acc_limit_z",
+    "g2.fir_moving_avg_time_ms",
+    "g2.biquad_lowpass_freq_hz",
+    "g2.bell_acc_shape_factor",
+    "g3.servo_kp_x",
+    "g3.servo_kp_y",
+    "g3.servo_kp_z",
+    "g3.vel_feedforward_x",
+    "g3.vel_feedforward_y",
+    "g3.vel_feedforward_z",
+    "g3.acc_feedforward_x",
+    "g3.acc_feedforward_y",
+    "g3.friction_comp_amp_x",
+    "g3.friction_comp_amp_y",
+    "g3.notch_filter_freq_hz",
+)
+
+
+def missing_greybox_parameter_ids(registry: CncParameterRegistry) -> tuple[str, ...]:
+    """Kernel parameter ids that `registry` does not define (empty tuple means compatible)."""
+    present = {p.parameter_id for p in registry.parameters}
+    return tuple(pid for pid in GREYBOX_REQUIRED_PARAMETER_IDS if pid not in present)
 
 
 @dataclass(frozen=True)
@@ -615,7 +663,7 @@ def evaluate_greybox_backbone(
         "normalServoErrorMaxMm": normal_servo_max,
         "signedRadialOffsetMeanMm": float(np.mean(signed_radial_offsets)) if signed_radial_offsets else 0.0,
         "actualPathDeviationMaxMm": actual_dev_pred,
-        "quadrantGlitchMaxMm": quad_glitch_pred,
+        "quadrantGlitchExcessMm": quad_glitch_pred,
         "dominantResonanceFreqHz": f_res,
         "resonanceBandRmsMm": resonance_rms_pred,
         "velocityMaxMmS": (max(seg_speeds) * scurve_vel_scale) if seg_speeds else v_prog,
@@ -643,11 +691,11 @@ def calibrate_greybox_constants(
             design_col: list[float] = []
             target_col: list[float] = []
             for _, case, exp, rep, p_dict in ctrl_records:
-                if exp.samples[0].actual_position_mm is None or len(exp.samples) < 6:
+                if len(exp.samples) < 6 or any(s.actual_position_mm is None for s in exp.samples):
                     continue
                 dt = case.sample_period_seconds
                 q_cmd = np.asarray([s.position_mm[ax_idx] for s in exp.samples], dtype=np.float64)
-                q_act = np.asarray([s.actual_position_mm[ax_idx] for s in exp.samples if s.actual_position_mm is not None], dtype=np.float64)
+                q_act = np.asarray([s.actual_position_mm[ax_idx] for s in exp.samples], dtype=np.float64)  # type: ignore[index]
                 if float(np.ptp(q_cmd)) < 1e-4:
                     continue
                 vel = np.gradient(q_cmd, dt)
@@ -758,11 +806,11 @@ def calibrate_greybox_constants(
                 pred = evaluate_greybox_backbone(prof, p_dict, c_tmp)
                 fe_obs = float(rep.servo_metrics["followingErrorMaxMm"].value or 0.0)
                 act_obs = float(rep.servo_metrics["actualPathDeviationMaxMm"].value or 0.0)
-                qg_obs = float(rep.servo_metrics["quadrantGlitchMaxMm"].value or 0.0)
+                qg_obs = float(rep.servo_metrics["quadrantGlitchExcessMm"].value or 0.0)
                 s_res.append((pred["followingErrorMaxMm"] - fe_obs) / act_scale)
                 s_res.append(1.25 * (pred["actualPathDeviationMaxMm"] - act_obs) / act_scale)
                 if prof.has_arcs or prof.has_xy_reversals:
-                    s_res.append(0.8 * (pred["quadrantGlitchMaxMm"] - qg_obs) / act_scale)
+                    s_res.append(0.8 * (pred["quadrantGlitchExcessMm"] - qg_obs) / act_scale)
             prior_s = 0.10 * (xs - xs_init) / (ub_s - lb_s)
             return np.concatenate([np.asarray(s_res, dtype=np.float64), prior_s])
 
@@ -772,16 +820,36 @@ def calibrate_greybox_constants(
         xs_opt = xs_init
 
     calibrated = _make_consts(xp_opt, xs_opt)
+
+    def _bound_hits(names: Sequence[str], x: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> list[str]:
+        return [n for n, v, lo, hi in zip(names, x, lb, ub) if min(v - lo, hi - v) <= 0.02 * (hi - lo)]
+
+    plan_names = (
+        "splineCurvatureDeg3", "splineCurvatureDeg5", "lookaheadSafetyFactor", "bellRampOverhead",
+        "cruiseTimeScale", "jerkRampWeight", "cornerTolRealization", "cornerFilterCoupling",
+        "cornerValleyFilterFill", "chordTolRealization", "jerkFilterScale",
+    )
+    servo_names = (
+        "velocityLoopRatioX", "velocityLoopRatioY", "velocityLoopRatioZ",
+        "stribeckBreakawayXMm", "stribeckBreakawayYMm", "resonanceComplianceGain",
+    )
+    hits = _bound_hits(plan_names, xp_opt, lb_plan, ub_plan) if len(records) >= 3 else []
+    if len(ctrl_records) >= 3:
+        hits += _bound_hits(servo_names, xs_opt, lb_s, ub_s)
     notes.append(
-        f"规划层灰盒标定完成：3阶/5阶样条曲率系数=({calibrated.spline_curvature_deg3:.3f}, {calibrated.spline_curvature_deg5:.3f})，"
-        f"前瞻刹停安全裕度={calibrated.lookahead_safety_factor:.3f}，拐角滤波耦合={calibrated.corner_filter_coupling:.3f}，"
+        f"规划层拟合系数（{GREYBOX_KERNEL_ID}，非直接物理量）：3阶/5阶样条曲率系数=({calibrated.spline_curvature_deg3:.3f}, {calibrated.spline_curvature_deg5:.3f})，"
+        f"前瞻刹停裕度={calibrated.lookahead_safety_factor:.3f}，拐角滤波耦合={calibrated.corner_filter_coupling:.3f}，"
         f"拐角谷值平滑系数={calibrated.corner_valley_filter_fill:.3f}"
     )
     if ctrl_records:
         notes.append(
-            f"伺服机电层标定完成：X/Y速度环带宽比=({calibrated.velocity_loop_ratio_x:.2f}, {calibrated.velocity_loop_ratio_y:.2f})，"
-            f"静摩擦脱开基准=({calibrated.stribeck_breakaway_x_mm * 1000:.1f}, {calibrated.stribeck_breakaway_y_mm * 1000:.1f}) µm，"
-            f"辨识机械谐振峰={calibrated.identified_resonance_hz:.1f} Hz"
+            f"伺服层拟合系数（非直接物理量，未做可辨识性检验）：X/Y 速度环带宽比=({calibrated.velocity_loop_ratio_x:.2f}, {calibrated.velocity_loop_ratio_y:.2f})，"
+            f"摩擦突跳基准=({calibrated.stribeck_breakaway_x_mm * 1000:.1f}, {calibrated.stribeck_breakaway_y_mm * 1000:.1f}) µm；"
+            f"FFT 实测主谐振峰中位数={calibrated.identified_resonance_hz:.1f} Hz"
+        )
+    if hits:
+        notes.append(
+            "以下系数贴近标定边界，当前数据无法辨识，请勿当作机床物理参数解读：" + "、".join(hits)
         )
     return calibrated, tuple(notes)
 
@@ -856,14 +924,14 @@ def simulate_realistic_cnc_controller(
     algorithm_version: str = "realistic-cnc-kernel-v1",
     machine_resonance_hz: float = 115.0,
 ) -> CncAlgorithmExport:
-    """Physics-faithful discrete-time CNC trajectory planner, FIR/Biquad filter & cascade servo simulator.
+    """Synthetic discrete-time CNC planner, filter and servo simulator (test fixture only).
 
-    Unlike smooth polynomial toy generators, this simulator implements:
-    - True hard `min(...)` lookahead, centripetal, and 3D axis projection speed clipping (with exact dead-zone plateaus).
-    - Inscribed corner-rounding spline geometry along vertices > corner_angle_threshold_deg.
-    - Real causal discrete FIR moving-average filter + 2nd-order Butterworth lowpass filter.
-    - Cascade P-PI axial servo tracking ODE + Stribeck velocity-reversal quadrant stiction +
-      2nd-order lightly damped mechanical structural resonance attenuated by `g3.notch_filter_freq_hz`.
+    Implements hard min-clipped lookahead, inscribed corner blending, a causal FIR moving
+    average followed by two cascaded first-order low-pass stages (critically damped, not a
+    true Butterworth), a P-P position/velocity cascade with feed-forward (no velocity-loop
+    integrator), an injected quadrant-reversal pulse and an injected sinusoidal resonance.
+    Its hidden "true" constants are close to the kernel defaults, so it must not be used
+    as the sole ground truth for transfer or calibration claims.
     """
     reg = registry or default_cnc_parameter_registry()
     p = {**default_parameter_values(reg), **dict(parameters)}

@@ -41,7 +41,7 @@ ADR 记录会长期约束多个文档或实现、且存在实质替代方案的�
 | [ADR-0026](ADR-0026-R7E现场证据到R5B真实holdout投影.md) | R7-E / R4.1 现场证据经确定性应用层 Adapter 进入 R5-B，保留原始哈希与安全边界 | Accepted |
 | [ADR-0028](ADR-0028-先交付CNC算法对比与回归工作流.md) | 先交付外部 CNC 算法 A/B 对比与回归工作流，保留既有数学与现场合同资产 | Proposed |
 | [ADR-0029](ADR-0029-高维CNC参数质量评估与稀疏推荐闭环.md) | 建立 30+ 维 CNC 参数双层质量评估、离线/实机残差融合与 Top-K 稀疏推荐闭环（黑盒初筛部分由 ADR-0030 替代） | Superseded by ADR-0030 |
-| [ADR-0030](ADR-0030-三层灰盒物理建模与跨刀路零样本推荐.md) | 采用三层灰盒物理建模、Frenet 正交误差解耦、跨刀路零样本推荐与 `cnc-greybox.domain-pack@1` 治理主干桥接 | Accepted |
+| [ADR-0030](ADR-0030-三层灰盒物理建模与跨刀路零样本推荐.md) | 采用三层灰盒物理建模、Frenet 正交误差解耦、跨刀路零样本推荐与 `cnc-greybox.domain-pack@1` 治理主干桥接（评审后退回，合成数据下 R4/R5 保持 Inconclusive） | Proposed |
 
 ## 生命周期规则
 

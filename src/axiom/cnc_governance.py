@@ -1,29 +1,27 @@
-"""Unified Governance Bridge connecting CNC Three-Layer Grey-Box Modeling to Axiom R0-R7 Spine.
+"""Governance bridge from the CNC grey-box workflow to Axiom's DomainPack / RunBundle / Claim spine.
 
-Eliminates the architectural split between the CNC Benchmark/Grey-Box Parameter workflow
-(`benchmark.py`, `greybox_model.py`, `parameter_learner.py`, `parameter_recommender.py`) and
-Axiom's core `DomainPack` / `RunBundle` / `Claim` / `R3-R7` safety governance pipeline:
-
-1. `CNC_GREYBOX_DOMAIN_PACK` (`cnc-greybox.domain-pack@1`):
-   - Publicly registered `DomainPack` + `DomainRuntimeBinding` executable via `axiom.evaluate_run(...)`.
-   - Emits cryptographically sealed `RunBundle` and `Claim` objects covering:
-     * L0 Sampled Command Hard Gate (`cnc-greybox.sampled-limits-passed@1`)
-     * R3 Read-Only Trace Lineage & Clock Integrity (`cnc-greybox.r3-readonly-lineage@1`)
-     * R4 Grey-Box Physical Calibration Fidelity (`cnc-greybox.r4-greybox-calibration@1`)
-     * R5 Split-Conformal & FeatureEnvelope Epistemic Gate (`cnc-greybox.r5-epistemic-envelope@1`)
-     * R6/R7 OfflineAdvisory Zero-Write Safety Gate (`cnc-greybox.r7-advisory-safety-gate@1`)
-2. `CNC_EXPORT_TO_ORDERED_POINT_ADAPTER` (`cnc.export-to-ordered-point@1`):
-   - Explicit `ArtifactAdapter` projecting `CncAlgorithmExport` into `OrderedPointSequence` with
-     full hash provenance (`preservedSemantics` / `droppedSemantics`).
-3. `adapt_r3_telemetry_to_cnc_export(...)`:
-   - Deterministic read-only bridge converting an R3 `MachineTelemetryTrace` (command + encoder
-     feedback channels) into a case-bound `CncAlgorithmExport(sourceKind="controller-trace")`,
-     enforcing zero write operations (`operation == "file-import"`).
+1. `CNC_GREYBOX_DOMAIN_PACK` (`cnc-greybox.domain-pack@1`), executable via `axiom.evaluate_run(...)`:
+   * `cnc-greybox.sampled-limits-passed@1`: sampled command hard limits (Observed).
+   * `cnc-greybox.r3-readonly-lineage@1`: export is bound to the case hash. Raw R3 trace
+     integrity is enforced earlier by `adapt_r3_telemetry_to_cnc_export`.
+   * `cnc-greybox.r4-greybox-calibration@1` / `cnc-greybox.r5-epistemic-envelope@1`: reality
+     claims about the model. They need predictions checked against real-machine verification
+     runs, which this pipeline does not ingest yet, so they are Inconclusive
+     (`RealMachineHoldoutRequired`). Tampered surrogate / report hashes give
+     `ContentHashMismatch`. Self-consistency numbers are reported in details only.
+   * `cnc-greybox.r7-advisory-safety-gate@1`: OfflineAdvisory, zero device-write boundary.
+   * `cnc-greybox.surrogate-mean-loo-r2@1`: mean leave-one-out R2 on the supplied runs.
+2. `CNC_EXPORT_TO_ORDERED_POINT_ADAPTER` (`cnc.export-to-ordered-point@1`).
+3. `adapt_r3_telemetry_to_cnc_export(...)`: read-only R3 trace to CNC export bridge with
+   receipt-hash, sequence, timestamp-period and channel-quality checks.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import platform
+from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import Any, Literal, Mapping
 
@@ -56,6 +54,7 @@ from .domain import (
 )
 from .evaluator import _aggregate_outcome, _apply_threshold, _content_hash, _seal_evaluation_report
 from .machine.models import MachineTelemetryTrace
+from .machine.runtime import machine_trace_content_hash
 from .models import (
     AxiomModel,
     CapabilityResolution,
@@ -87,12 +86,17 @@ CNC_R3_LINEAGE_METRIC_ID = "cnc-greybox.r3-readonly-lineage@1"
 CNC_R4_CALIBRATION_METRIC_ID = "cnc-greybox.r4-greybox-calibration@1"
 CNC_R5_EPISTEMIC_METRIC_ID = "cnc-greybox.r5-epistemic-envelope@1"
 CNC_R7_SAFETY_GATE_METRIC_ID = "cnc-greybox.r7-advisory-safety-gate@1"
-CNC_GREYBOX_MEAN_R2_METRIC_ID = "cnc-greybox.surrogate-mean-r2@1"
+CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID = "cnc-greybox.surrogate-mean-loo-r2@1"
 
 CNC_SAMPLED_LIMITS_CLAIM_ID = "cnc-greybox.sampled-limits-claim@1"
 CNC_R4_CALIBRATION_CLAIM_ID = "cnc-greybox.r4-calibration-claim@1"
 CNC_R5_EPISTEMIC_CLAIM_ID = "cnc-greybox.r5-epistemic-claim@1"
 CNC_R7_SAFETY_CLAIM_ID = "cnc-greybox.r7-zero-write-advisory-claim@1"
+
+
+def _canonical_hash(payload: Mapping[str, Any]) -> str:
+    raw = json.dumps(dict(payload), sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _pkg_ver(dist_name: str, fallback: str = "0.0.0") -> str:
@@ -124,7 +128,7 @@ class CncGreyboxEvaluationCase(AxiomModel):
             CNC_R4_CALIBRATION_METRIC_ID,
             CNC_R5_EPISTEMIC_METRIC_ID,
             CNC_R7_SAFETY_GATE_METRIC_ID,
-            CNC_GREYBOX_MEAN_R2_METRIC_ID,
+            CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID,
         ],
         alias="requiredMetrics",
     )
@@ -212,8 +216,17 @@ def adapt_r3_telemetry_to_cnc_export(
     parameters: Mapping[str, float] | None = None,
     command_channels: tuple[str, str, str] = ("cmd_x", "cmd_y", "cmd_z"),
     actual_channels: tuple[str, str, str] = ("act_x", "act_y", "act_z"),
+    period_tolerance: float = 0.10,
+    accept_suspect_quality: bool = False,
 ) -> CncAlgorithmExport:
-    """Deterministically project a read-only R3 `MachineTelemetryTrace` into a CNC `controller-trace` export."""
+    """Deterministically project a read-only R3 `MachineTelemetryTrace` into a CNC export.
+
+    Refuses (raises) instead of guessing when: the operation is not a file import, the
+    capture receipt hash does not match the raw trace, sequence ids are discontinuous,
+    device timestamps are reordered or deviate from the case sample period by more than
+    `period_tolerance`, or a required channel is missing / bad (suspect too, unless
+    `accept_suspect_quality`). Actual feedback must be present in all frames or none.
+    """
     r3_trace = (
         trace
         if isinstance(trace, MachineTelemetryTrace)
@@ -226,10 +239,22 @@ def adapt_r3_telemetry_to_cnc_export(
         raise ValueError(
             f"R3 governance violation: forbidden non-read-only operation '{r3_trace.capture_receipt.operation}'"
         )
+    if machine_trace_content_hash(r3_trace) != r3_trace.capture_receipt.trace_content_hash:
+        raise ValueError("R3 captureReceipt.traceContentHash does not match the raw telemetry trace payload")
     if len(r3_trace.frames) < 4:
         raise ValueError("R3 telemetry trace must contain at least 4 frames for V/A/J evaluation")
 
     dt = bench_case.sample_period_seconds
+    stamps = [datetime.fromisoformat(f.device_timestamp.replace("Z", "+00:00")) for f in r3_trace.frames]
+    for idx in range(1, len(stamps)):
+        step = (stamps[idx] - stamps[idx - 1]).total_seconds()
+        if step <= 0.0 or abs(step - dt) > period_tolerance * dt:
+            raise ValueError(
+                f"R3 frame {r3_trace.frames[idx].sequence_id}: device timestamp step {step:.6g}s does not match "
+                f"case samplePeriodSeconds {dt:.6g}s (tolerance {period_tolerance:.0%}); resampling is forbidden"
+            )
+
+    allowed_quality = {None, "good", "suspect"} if accept_suspect_quality else {None, "good"}
     samples: list[BenchmarkSample] = []
     for idx, frame in enumerate(r3_trace.frames):
         if idx > 0 and frame.sequence_id != r3_trace.frames[idx - 1].sequence_id + 1:
@@ -237,7 +262,7 @@ def adapt_r3_telemetry_to_cnc_export(
         ch_map = {
             s.channel_id: float(s.value)
             for s in frame.samples
-            if isinstance(s.value, (int, float)) and s.quality != "bad"
+            if isinstance(s.value, (int, float)) and s.quality in allowed_quality
         }
         if not all(ch in ch_map for ch in command_channels):
             raise ValueError(f"R3 frame {frame.sequence_id} missing command channels {command_channels}")
@@ -263,6 +288,10 @@ def adapt_r3_telemetry_to_cnc_export(
                 actualPositionMm=act_xyz,
             )
         )
+
+    has_actual = [s.actual_position_mm is not None for s in samples]
+    if any(has_actual) and not all(has_actual):
+        raise ValueError("R3 actual feedback channels are present in some frames but not others")
 
     return CncAlgorithmExport(
         algorithmId=algorithm_id,
@@ -330,19 +359,19 @@ CNC_GREYBOX_DOMAIN_PACK = register_domain_pack(
             _metric_def(
                 CNC_R4_CALIBRATION_METRIC_ID,
                 claim_id=CNC_R4_CALIBRATION_CLAIM_ID,
-                predicate="Three-layer grey-box physical constants satisfy bounded identification and positive R² fidelity.",
+                predicate="Grey-box calibration predicts held-out real-machine runs within its declared uncertainty (requires real verification runs; Inconclusive otherwise).",
             ),
             _metric_def(
                 CNC_R5_EPISTEMIC_METRIC_ID,
                 claim_id=CNC_R5_EPISTEMIC_CLAIM_ID,
-                predicate="Recommended presets remain inside the declared FeatureEnvelope and satisfy Split Conformal upper bounds.",
+                predicate="Recommended presets stay inside the training envelope and their uncertainty bounds achieve nominal coverage on real verification runs (Inconclusive otherwise).",
             ),
             _metric_def(
                 CNC_R7_SAFETY_GATE_METRIC_ID,
                 claim_id=CNC_R7_SAFETY_CLAIM_ID,
                 predicate="Recommendation remains strictly OfflineAdvisory with zero device-write authority; DeviceSafe remains Open.",
             ),
-            _metric_def(CNC_GREYBOX_MEAN_R2_METRIC_ID, direction="higher-is-better"),
+            _metric_def(CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID, direction="higher-is-better"),
         ),
         failureMappings=(
             FailureMapping(
@@ -361,87 +390,149 @@ def _parse_cnc_greybox_request(request: CoreEvaluationRequest) -> CncGreyboxEval
     return CncGreyboxEvaluationRequest.model_validate(payload)
 
 
+def _surrogate_hash_ok(sur: LearnedParameterSurrogate) -> bool:
+    content = sur.model_dump(mode="json", by_alias=True, exclude_none=True)
+    content.pop("modelContentHash", None)
+    return _canonical_hash(content) == sur.model_content_hash
+
+
+def _report_hash_ok(rec: ParameterRecommendationReport) -> bool:
+    content = rec.model_dump(mode="json", by_alias=True, exclude_none=True)
+    content.pop("reportContentHash", None)
+    return _canonical_hash(content) == rec.report_content_hash
+
+
 def _evaluate_cnc_greybox_request(req: CncGreyboxEvaluationRequest) -> EvaluationReport:
     art = req.artifact
     q_rep: CncQualityReport = evaluate_cnc_export(art.benchmark_case, art.export)
 
     limits_ok = q_rep.outcome == "Passed"
-    r3_ok = (
+    case_bound = (
         art.export.case_content_hash == benchmark_case_hash(art.benchmark_case)
         and art.export.source_kind in ("algorithm-export", "controller-trace")
         and len(art.export.samples) >= 4
     )
 
     sur = art.surrogate
-    if sur is not None and sur.greybox_constants is not None and sur.metric_heads:
-        mean_r2 = sum(h.r2_score for h in sur.metric_heads.values()) / len(sur.metric_heads)
-        r4_ok = (
-            sur.engine_mode == "greybox-physics-gp"
-            and 0.5 <= sur.greybox_constants.velocity_loop_ratio_x <= 20.0
-            and mean_r2 >= 0.55
-        )
-    else:
-        mean_r2 = 0.0
-        r4_ok = False
-
     rec = art.recommendation_report
-    if rec is not None and rec.presets:
-        r5_ok = all(p.in_domain and p.hard_constraints_satisfied for p in rec.presets)
-        r7_ok = (
-            rec.permission_level == "OfflineAdvisory"
-            and rec.device_write_allowed is False
-            and all(p.permission_level == "OfflineAdvisory" and p.device_write_allowed is False for p in rec.presets)
-        )
-    else:
-        r5_ok = sur is not None
-        r7_ok = True
+    sur_hash_ok = sur is None or _surrogate_hash_ok(sur)
+    rec_hash_ok = rec is None or _report_hash_ok(rec)
+    rec_bound = rec is None or sur is None or rec.surrogate_model_hash == sur.model_content_hash
+
+    loo_r2_values = [
+        h.loo_r2_score for h in (sur.metric_heads.values() if sur is not None else ()) if h.loo_r2_score is not None
+    ]
+    mean_loo_r2 = float(sum(loo_r2_values) / len(loo_r2_values)) if loo_r2_values else None
 
     ev_obs = Evidence(level="Observed", method="cnc-frenet-sampled-evaluation@1")
-    ev_gb = Evidence(level="Validated", method="three-layer-greybox-ard-gp-conformal@1")
+    ev_model = Evidence(level="Observed", method="greybox-loo-self-consistency@1")
 
-    raw_map: dict[str, tuple[bool | float, str | None, Evidence, dict[str, Any]]] = {
-        CNC_SAMPLED_LIMITS_METRIC_ID: (
+    def _computed(metric_id: str, value: bool | float, ev: Evidence, details: dict[str, Any]) -> MetricResult:
+        return MetricResult(
+            metricId=metric_id,
+            metricDefinitionId=metric_id,
+            status="Computed",
+            value=value,
+            requires=["cnc-greybox.artifact@1"],
+            evidence=ev,
+            details=details,
+        )
+
+    def _unavailable(metric_id: str, status: str, reason: str, details: dict[str, Any]) -> MetricResult:
+        return MetricResult(
+            metricId=metric_id,
+            metricDefinitionId=metric_id,
+            status=status,
+            reasonCode=reason,
+            requires=["cnc-greybox.artifact@1"],
+            evidence=ev_model,
+            details=details,
+        )
+
+    integrity_details = {
+        "surrogateHashVerified": sur_hash_ok,
+        "recommendationHashVerified": rec_hash_ok,
+        "recommendationBoundToSurrogate": rec_bound,
+    }
+
+    def _model_claim(metric_id: str, details: dict[str, Any]) -> MetricResult:
+        # Reality claims about the model need predictions checked against real-machine
+        # verification runs (holdout). This pipeline does not ingest such evidence yet, so
+        # the claim stays Inconclusive no matter how well the model fits synthetic data.
+        if not (sur_hash_ok and rec_hash_ok and rec_bound):
+            return _unavailable(metric_id, "InvalidObservation", "ContentHashMismatch", {**details, **integrity_details})
+        if sur is None:
+            return _unavailable(metric_id, "InsufficientContext", "SurrogateMissing", details)
+        return _unavailable(
+            metric_id,
+            "InsufficientContext",
+            "RealMachineHoldoutRequired",
+            {**details, **integrity_details, "evidenceSource": "supplied-runs-only"},
+        )
+
+    gb = sur.greybox_constants if sur is not None else None
+    r4_details: dict[str, Any] = {
+        "kernel": "generic-fir-biquad@1",
+        "calibratedCaseCount": len(sur.calibrated_case_ids) if sur else 0,
+        "meanLooR2": mean_loo_r2,
+        "residualEnabledHeads": sorted(m for m, h in sur.metric_heads.items() if h.residual_enabled) if sur else [],
+        "identifiedResonanceHz": gb.identified_resonance_hz if gb is not None else None,
+        "calibrationNotes": list(sur.physical_diagnostics) if sur else [],
+    }
+    r5_details: dict[str, Any] = {
+        "presetCount": len(rec.presets) if rec else 0,
+        "presetsInEnvelope": sum(1 for p in rec.presets if p.in_domain) if rec else 0,
+        "noFeasibleReason": rec.no_feasible_reason if rec else None,
+        "uncertaintyMethod": "loo-residual-quantile",
+        "empiricalCoverage": None,
+    }
+    r7_ok = rec is None or (
+        rec.permission_level == "OfflineAdvisory"
+        and rec.device_write_allowed is False
+        and all(p.permission_level == "OfflineAdvisory" and p.device_write_allowed is False for p in rec.presets)
+    )
+
+    results_by_id: dict[str, MetricResult] = {
+        CNC_SAMPLED_LIMITS_METRIC_ID: _computed(
+            CNC_SAMPLED_LIMITS_METRIC_ID,
             limits_ok,
-            None,
             ev_obs,
-            {"outcome": q_rep.outcome, "sliceCount": len(q_rep.geometry_slices)},
+            {"outcome": q_rep.outcome, "sliceCount": len(q_rep.geometry_slices), "sourceKind": art.export.source_kind},
         ),
-        CNC_R3_LINEAGE_METRIC_ID: (
-            r3_ok,
-            None,
+        CNC_R3_LINEAGE_METRIC_ID: _computed(
+            CNC_R3_LINEAGE_METRIC_ID,
+            case_bound,
             ev_obs,
-            {"sourceKind": art.export.source_kind, "sampleCount": len(art.export.samples)},
-        ),
-        CNC_R4_CALIBRATION_METRIC_ID: (
-            r4_ok,
-            None,
-            ev_gb,
             {
-                "identifiedResonanceHz": sur.greybox_constants.identified_resonance_hz
-                if (sur and sur.greybox_constants)
-                else None,
-                "calibratedCaseCount": len(sur.calibrated_case_ids) if sur else 0,
+                "check": "export bound to case hash with >= 4 samples",
+                "sourceKind": art.export.source_kind,
+                "sampleCount": len(art.export.samples),
+                "note": "R3 trace integrity is enforced by adapt_r3_telemetry_to_cnc_export, not re-verified here",
             },
         ),
-        CNC_R5_EPISTEMIC_METRIC_ID: (
-            r5_ok,
-            None,
-            ev_gb,
-            {"feasiblePresets": sum(1 for p in (rec.presets if rec else ()) if p.hard_constraints_satisfied)},
-        ),
-        CNC_R7_SAFETY_GATE_METRIC_ID: (
+        CNC_R4_CALIBRATION_METRIC_ID: _model_claim(CNC_R4_CALIBRATION_METRIC_ID, r4_details),
+        CNC_R5_EPISTEMIC_METRIC_ID: _model_claim(CNC_R5_EPISTEMIC_METRIC_ID, r5_details),
+        CNC_R7_SAFETY_GATE_METRIC_ID: _computed(
+            CNC_R7_SAFETY_GATE_METRIC_ID,
             r7_ok,
-            None,
             ev_obs,
             {"permissionLevel": "OfflineAdvisory", "deviceWriteAllowed": False, "realityGate": "Open"},
         ),
-        CNC_GREYBOX_MEAN_R2_METRIC_ID: (
-            round(float(mean_r2), 6),
-            None,
-            ev_gb,
-            {"modeledHeadCount": len(sur.metric_heads) if sur else 0},
-        ),
     }
+    if mean_loo_r2 is not None and sur_hash_ok:
+        results_by_id[CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID] = _computed(
+            CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID,
+            round(mean_loo_r2, 6),
+            ev_model,
+            {"modeledHeadCount": len(loo_r2_values), "scope": "leave-one-out on supplied runs"},
+        )
+    else:
+        results_by_id[CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID] = _unavailable(
+            CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID,
+            "InvalidObservation" if not sur_hash_ok else "InsufficientContext",
+            "ContentHashMismatch" if not sur_hash_ok else "SurrogateMissing",
+            integrity_details,
+        )
 
     req_items = [
         item if isinstance(item, MetricRequest) else MetricRequest(metricId=item)
@@ -449,21 +540,13 @@ def _evaluate_cnc_greybox_request(req: CncGreyboxEvaluationRequest) -> Evaluatio
     ]
     results: list[MetricResult] = []
     for item in req_items:
-        val, unit, ev, details = raw_map[item.metric_id]
-        base_res = MetricResult(
-            metricId=item.metric_id,
-            metricDefinitionId=item.metric_id,
-            status="Computed",
-            value=val,
-            unit=unit,
-            requires=["cnc-greybox.artifact@1"],
-            evidence=ev,
-            details=details,
-        )
-        if item.threshold is not None and isinstance(val, (int, float)) and not isinstance(val, bool):
-            base_res = _apply_threshold(base_res, item.threshold)
-        elif isinstance(val, bool):
-            base_res = base_res.model_copy(update={"threshold_passed": val})
+        base_res = results_by_id[item.metric_id]
+        if base_res.status == "Computed":
+            val = base_res.value
+            if item.threshold is not None and isinstance(val, (int, float)) and not isinstance(val, bool):
+                base_res = _apply_threshold(base_res, item.threshold)
+            elif isinstance(val, bool):
+                base_res = base_res.model_copy(update={"threshold_passed": val})
         results.append(base_res)
 
     req_payload_hash = _content_hash(req.model_dump(mode="json", by_alias=True, exclude_none=True))
@@ -550,13 +633,26 @@ def build_cnc_greybox_run_spec(
                     CNC_R5_EPISTEMIC_METRIC_ID,
                     CNC_R7_SAFETY_GATE_METRIC_ID,
                     {
-                        "metricId": CNC_GREYBOX_MEAN_R2_METRIC_ID,
+                        "metricId": CNC_GREYBOX_MEAN_LOO_R2_METRIC_ID,
                         "threshold": {"operator": ">=", "value": 0.55},
                     },
                 ],
             },
         },
     }
+
+
+def _verification_parameters(
+    rec: ParameterRecommendationReport,
+    sur: LearnedParameterSurrogate,
+) -> dict[str, float]:
+    """Parameters of the preset to replay: PrecisionOptimal if present, else the first preset, else baseline."""
+    for preset in rec.presets:
+        if preset.preset_role == "PrecisionOptimal":
+            return dict(preset.full_parameters)
+    if rec.presets:
+        return dict(rec.presets[0].full_parameters)
+    return dict(sur.baseline_parameters)
 
 
 def assess_cnc_greybox_governance(
@@ -578,7 +674,7 @@ def assess_cnc_greybox_governance(
         case_obj = demo.case
         sur_obj = demo.surrogate
         rec_obj = demo.recommendation_report
-        best_params = rec_obj.presets[1].full_parameters
+        best_params = _verification_parameters(rec_obj, sur_obj)
         from .greybox_model import simulate_realistic_cnc_controller
 
         exp_obj = simulate_realistic_cnc_controller(
@@ -596,7 +692,7 @@ def assess_cnc_greybox_governance(
 
         exp_obj = simulate_realistic_cnc_controller(
             case_obj,
-            rec_obj.presets[1].full_parameters,
+            _verification_parameters(rec_obj, sur_obj),
             source_kind="controller-trace",
             registry=sur_obj.registry,
             algorithm_version="governance-verified-preset",

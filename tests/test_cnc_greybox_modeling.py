@@ -1,11 +1,15 @@
-"""Comprehensive verification suite for the Three-Layer CNC Grey-Box Evaluation, Calibration, Transfer & R0-R7 Governance System."""
+"""Tests for the CNC grey-box evaluation, calibration, recommendation and governance bridge.
+
+All machine data here comes from the synthetic simulator, so transfer assertions are
+self-consistency checks, not evidence about real machines; governance must say so.
+"""
 
 from __future__ import annotations
 
+import io
 import json
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from contextlib import redirect_stdout
 
 from fastapi.testclient import TestClient
 
@@ -29,6 +33,8 @@ from axiom.cnc_governance import (
     assess_cnc_greybox_governance,
 )
 from axiom.greybox_model import extract_case_geometry_profile, simulate_realistic_cnc_controller
+from axiom.machine.models import MachineTelemetryTrace
+from axiom.machine.runtime import machine_trace_content_hash
 from axiom.parameter_learner import (
     EXTENDED_TARGET_METRICS,
     learn_parameter_surrogate,
@@ -40,7 +46,13 @@ from axiom.parameter_recommender import (
     build_cnc_parameter_closed_loop_demo,
     recommend_parameters,
 )
-from axiom.parameter_space import default_cnc_parameter_registry, default_parameter_values, generate_parameter_doe
+from axiom.parameter_space import (
+    CncParameterRegistry,
+    compute_registry_content_hash,
+    default_cnc_parameter_registry,
+    default_parameter_values,
+    generate_parameter_doe,
+)
 from axiom.web import create_app
 
 
@@ -186,7 +198,8 @@ class CncGreyBoxModelingTests(unittest.TestCase):
         self.assertEqual(surrogate.cross_toolpath_validation.evaluated_case_count, 5)
         self.assertLess(surrogate.cross_toolpath_validation.mean_duration_mape_pct, 8.0)
         table_txt = render_parameter_impact_table(surrogate)
-        self.assertIn("物理辨识", table_txt)
+        self.assertIn("灰盒标定", table_txt)
+        self.assertIn("留一 R²", table_txt)
         self.assertIn("跨刀路留一验证 LOCO", table_txt)
         self.assertIn("normalServoErrorMaxMm", surrogate.metric_heads)
 
@@ -239,13 +252,30 @@ class CncGreyBoxModelingTests(unittest.TestCase):
         self.assertLess(abs(pred_dur - gt_dur) / max(gt_dur, 1e-6), 0.15)
         self.assertLess(abs(pred_act_err - gt_act_err), 0.012)
 
-        rec_unseen = recommend_parameters(
+        rec_strict = recommend_parameters(
             surrogate,
             ParameterRecommendationRequest(
                 baselineParameters=probe_params,
                 maxChangedParameters=4,
                 maximumPathDeviationMm=0.040,
                 maximumActualPathDeviationMm=0.045,
+                seed=77,
+            ),
+            target_case=unseen_part,
+        )
+        # The probe baseline lies outside the DoE envelope and transfer uncertainty is
+        # floored by the LOCO error, so tight contour limits cannot be assured: no preset.
+        self.assertEqual(rec_strict.presets, ())
+        self.assertIsNotNone(rec_strict.no_feasible_reason)
+
+        rec_unseen = recommend_parameters(
+            surrogate,
+            ParameterRecommendationRequest(
+                baselineParameters=probe_params,
+                maxChangedParameters=4,
+                maximumPathDeviationMm=None,
+                maximumActualPathDeviationMm=None,
+                maximumFollowingErrorMm=None,
                 seed=77,
             ),
             target_case=unseen_part,
@@ -261,6 +291,8 @@ class CncGreyBoxModelingTests(unittest.TestCase):
         assert verified_rep.servo_metrics is not None
         verified_err = verified_rep.servo_metrics["actualPathDeviationMaxMm"].value or 0.0
         self.assertLess(verified_err, gt_act_err)
+        # Synthetic self-consistency only: the replayed error lies inside the declared bound.
+        self.assertLessEqual(verified_err, prec_preset.predicted_metrics["actualPathDeviationMaxMm"].conservative_upper_bound)
 
     def test_r0_to_r7_governance_bridge_r3_adapter_cli_and_web_api(self) -> None:
         # 1. DomainPack & ArtifactAdapter registration in core Axiom catalog
@@ -269,31 +301,43 @@ class CncGreyBoxModelingTests(unittest.TestCase):
         self.assertIn(CNC_GREYBOX_DOMAIN_PACK_ID, pack_ids)
         self.assertIn(CNC_EXPORT_TO_ORDERED_POINT_ADAPTER_ID, adapter_ids)
 
-        # 2. Closed-loop demo produces 3 distinct presets & passes all sealed R0-R7 governance claims
+        # 2. Presets are distinct, feasible, in-envelope and never exceed the programmed feed
         demo = build_cnc_parameter_closed_loop_demo(offline_count=16, controller_count=8, seed=42, multi_case_calibration=True)
-        preset_cands = [p.candidate_id for p in demo.recommendation_report.presets]
-        self.assertEqual(len(set(preset_cands)), 3, f"Expected 3 distinct Pareto presets, got {preset_cands}")
-        eff_p, prec_p, _ = demo.recommendation_report.presets
-        self.assertLess(
-            eff_p.predicted_metrics["durationSeconds"].predicted_mean,
-            prec_p.predicted_metrics["durationSeconds"].predicted_mean,
-        )
-        self.assertLessEqual(
-            prec_p.predicted_metrics["actualPathDeviationMaxMm"].predicted_mean,
-            eff_p.predicted_metrics["actualPathDeviationMaxMm"].predicted_mean,
-        )
+        rec = demo.recommendation_report
+        preset_cands = [p.candidate_id for p in rec.presets]
+        self.assertEqual(len(set(preset_cands)), len(preset_cands))
+        self.assertLessEqual(len(preset_cands), 3)
+        if not rec.presets:
+            self.assertIsNotNone(rec.no_feasible_reason)
+        for preset in rec.presets:
+            self.assertTrue(preset.in_domain and preset.hard_constraints_satisfied)
+            self.assertLessEqual(preset.full_parameters["g2.path_max_feed_override"], 1.0 + 1e-9)
 
+        # 3. Synthetic-only evidence: reality claims (R4/R5) stay Inconclusive, case outcome is Inconclusive
         gov = assess_cnc_greybox_governance(demo)
         self.assertEqual(gov.permission_ceiling, "OfflineAdvisory")
         self.assertFalse(gov.device_write_allowed)
         self.assertEqual(gov.deployment_shadow_status, "Open")
         self.assertEqual(gov.device_safety_status, "NotAssessed")
-        self.assertEqual(gov.run_bundle.report.case_outcome.value, "Passed")
+        self.assertEqual(gov.run_bundle.report.case_outcome.value, "Inconclusive")
         claim_map = {c.claim_definition_id: c.status.value for c in gov.run_bundle.claims}
         self.assertEqual(claim_map["cnc-greybox.sampled-limits-claim@1"], "Supported")
-        self.assertEqual(claim_map["cnc-greybox.r4-calibration-claim@1"], "Supported")
-        self.assertEqual(claim_map["cnc-greybox.r5-epistemic-claim@1"], "Supported")
+        self.assertEqual(claim_map["cnc-greybox.r4-calibration-claim@1"], "Inconclusive")
+        self.assertEqual(claim_map["cnc-greybox.r5-epistemic-claim@1"], "Inconclusive")
         self.assertEqual(claim_map["cnc-greybox.r7-zero-write-advisory-claim@1"], "Supported")
+        reasons = {r.metric_id: r.reason_code for r in gov.run_bundle.report.metric_results}
+        self.assertEqual(reasons["cnc-greybox.r4-greybox-calibration@1"], "RealMachineHoldoutRequired")
+        for result in gov.run_bundle.report.metric_results:
+            self.assertNotEqual(result.evidence.level if result.evidence else None, "Validated")
+
+        # 3b. Tampered self-reported fields are detected through the content hash
+        fake_heads = {m: h.model_copy(update={"r2_score": 0.99, "loo_r2_score": 0.99}) for m, h in demo.surrogate.metric_heads.items()}
+        tampered = demo.surrogate.model_copy(update={"metric_heads": fake_heads})
+        exp_t = simulate_realistic_cnc_controller(demo.case, demo.surrogate.baseline_parameters, source_kind="controller-trace")
+        gov_t = assess_cnc_greybox_governance(demo.case, export=exp_t, surrogate=tampered, recommendation_report=rec)
+        reasons_t = {r.metric_id: r.reason_code for r in gov_t.run_bundle.report.metric_results}
+        self.assertEqual(reasons_t["cnc-greybox.r4-greybox-calibration@1"], "ContentHashMismatch")
+        self.assertEqual(reasons_t["cnc-greybox.surrogate-mean-loo-r2@1"], "ContentHashMismatch")
 
         # 3. ArtifactAdapter provenance check (CncAlgorithmExport -> OrderedPointSequence)
         adapter = axiom.get_artifact_adapter("cnc.algorithm-export", "ordered-point-sequence")
@@ -337,21 +381,92 @@ class CncGreyBoxModelingTests(unittest.TestCase):
                 for k in range(6)
             ],
         }
+        unsigned = MachineTelemetryTrace.model_validate(r3_payload)
+        r3_payload["captureReceipt"]["traceContentHash"] = machine_trace_content_hash(unsigned)
         cnc_from_r3 = adapt_r3_telemetry_to_cnc_export(r3_payload, line_case)
         self.assertEqual(cnc_from_r3.source_kind, "controller-trace")
         self.assertEqual(len(cnc_from_r3.samples), 6)
 
-        # CLI & FastAPI governance endpoint check
+        # 4b. The bridge refuses instead of guessing
+        tampered_hash = json.loads(json.dumps(r3_payload))
+        tampered_hash["captureReceipt"]["traceContentHash"] = "a" * 64
+        with self.assertRaisesRegex(ValueError, "traceContentHash"):
+            adapt_r3_telemetry_to_cnc_export(tampered_hash, line_case)
+        slow_case = standard_case("line", StandardCaseSettings(sample_period_seconds=0.004))
+        with self.assertRaisesRegex(ValueError, "device timestamp step"):
+            adapt_r3_telemetry_to_cnc_export(r3_payload, slow_case)
+        suspect = json.loads(json.dumps(r3_payload))
+        suspect["frames"][2]["samples"][0]["quality"] = "suspect"
+        suspect["captureReceipt"]["traceContentHash"] = machine_trace_content_hash(MachineTelemetryTrace.model_validate(suspect))
+        with self.assertRaisesRegex(ValueError, "missing command channels"):
+            adapt_r3_telemetry_to_cnc_export(suspect, line_case)
+        self.assertEqual(len(adapt_r3_telemetry_to_cnc_export(suspect, line_case, accept_suspect_quality=True).samples), 6)
+
+        # 5. CLI & FastAPI governance endpoints: synthetic-only evidence is not "Passed"
         client = TestClient(create_app(serve_frontend=False))
         resp = client.get("/api/v1/benchmarks/cnc/param-governance?offlineCount=12&controllerCount=6&multiCase=true")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["runBundle"]["report"]["caseOutcome"], "Passed")
-        with TemporaryDirectory() as td:
+        self.assertNotEqual(resp.json()["runBundle"]["report"]["caseOutcome"], "Passed")
+        with redirect_stdout(io.StringIO()):
             rc = main(["param-governance", "--offline-count", "12", "--controller-count", "6", "--multi-case"])
-            self.assertEqual(rc, 0)
-            _ = Path(td)
-            _ = json
+        self.assertEqual(rc, 1)
 
+    def test_registry_mismatch_and_unknown_parameters_are_rejected_not_defaulted(self) -> None:
+        reg = default_cnc_parameter_registry()
+        case = standard_case("corner90", StandardCaseSettings(sample_period_seconds=0.002))
+        doe = generate_parameter_doe(reg, offline_count=6, controller_count=0, seed=3, mode="lhs")
+        exports = [simulate_realistic_cnc_controller(case, s.parameters, registry=reg) for s in doe.offline_samples]
+
+        renamed_raw = reg.model_dump(mode="json", by_alias=True)
+        rename = lambda pid: "vendorB." + pid.split(".", 1)[1]  # noqa: E731
+        for p_def in renamed_raw["parameters"]:
+            p_def["parameterId"] = rename(p_def["parameterId"])
+        for d_def in renamed_raw.get("derivedFeatures", []):
+            d_def["sourceParameters"] = [rename(sp) for sp in d_def["sourceParameters"]]
+        renamed_raw["registryContentHash"] = "0" * 64
+        bad_hash_reg = CncParameterRegistry.model_validate(renamed_raw)
+        with self.assertRaisesRegex(ValueError, "registryContentHash"):
+            learn_parameter_surrogate(case, exports, registry=bad_hash_reg)
+
+        renamed_raw["registryContentHash"] = compute_registry_content_hash(bad_hash_reg)
+        renamed_reg = CncParameterRegistry.model_validate(renamed_raw)
+        renamed_exports = [
+            e.model_copy(update={"parameters": {rename(k): v for k, v in (e.parameters or {}).items()}}) for e in exports
+        ]
+        with self.assertRaisesRegex(ValueError, "not compatible with grey-box kernel"):
+            learn_parameter_surrogate(case, renamed_exports, registry=renamed_reg)
+
+        foreign = [e.model_copy(update={"parameters": {**(e.parameters or {}), "siemens.MD32300": 1.0}}) for e in exports]
+        with self.assertRaisesRegex(ValueError, "not in registry"):
+            learn_parameter_surrogate(case, foreign, registry=reg)
+
+    def test_residual_gate_uncertainty_and_feed_cap(self) -> None:
+        demo = build_cnc_parameter_closed_loop_demo(offline_count=16, controller_count=8, seed=42, multi_case_calibration=False)
+        for head in demo.surrogate.metric_heads.values():
+            # The residual GP may only stay on when it beats the grey-box backbone out of sample.
+            if head.residual_enabled:
+                self.assertLess(head.cv_rmse, head.greybox_only_rmse)
+            else:
+                self.assertAlmostEqual(head.cv_rmse, head.greybox_only_rmse, places=6)
+            self.assertEqual(head.uncertainty_method, "loo-residual-quantile")
+            self.assertIsNotNone(head.loo_r2_score)
+            # The returned radius is never smaller than the calibrated quantile.
+            _, radius, _ = predict_metric_for_parameters(demo.surrogate, head.metric_id, demo.surrogate.baseline_parameters)
+            self.assertGreaterEqual(radius + 1e-12, head.conformal_radius)
+
+        rec = recommend_parameters(
+            demo.surrogate,
+            ParameterRecommendationRequest(maximumPathDeviationMm=None, maximumActualPathDeviationMm=None, maximumFollowingErrorMm=None, seed=5),
+        )
+        for cand in rec.pareto_front:
+            self.assertLessEqual(cand.full_parameters["g2.path_max_feed_override"], 1.0 + 1e-9)
+
+        impossible = recommend_parameters(
+            demo.surrogate,
+            ParameterRecommendationRequest(maximumPathDeviationMm=1e-6, seed=5),
+        )
+        self.assertEqual(impossible.presets, ())
+        self.assertIn("未通过门禁", impossible.no_feasible_reason or "")
 
 if __name__ == "__main__":
     unittest.main()

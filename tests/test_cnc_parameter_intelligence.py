@@ -157,32 +157,43 @@ class CncParameterIntelligenceTests(unittest.TestCase):
         demo = build_cnc_parameter_closed_loop_demo(offline_count=20, controller_count=8, seed=7)
         rec = demo.recommendation_report
         self.assertIsInstance(rec, ParameterRecommendationReport)
-        self.assertEqual(len(rec.presets), 3)
+        # Presets are distinct and only emitted when they pass the gates; with a single
+        # calibration case the uncertainty may be too wide for the case limit, in which
+        # case the report must say why instead of padding three presets.
+        self.assertLessEqual(len(rec.presets), 3)
+        if not rec.presets:
+            self.assertIn("未通过门禁", rec.no_feasible_reason or "")
+        self.assertEqual(len({p.candidate_id for p in rec.presets}), len(rec.presets))
         roles = [p.preset_role for p in rec.presets]
-        self.assertEqual(roles, ["EfficiencyOptimal", "PrecisionOptimal", "BalancedKneePoint"])
+        order = ["EfficiencyOptimal", "PrecisionOptimal", "BalancedKneePoint"]
+        self.assertEqual(roles, [r for r in order if r in roles])
 
         for preset in rec.presets:
             self.assertLessEqual(preset.changed_parameter_count, rec.max_changed_parameters)
             self.assertFalse(preset.device_write_allowed)
             self.assertEqual(preset.permission_level, "OfflineAdvisory")
+            self.assertTrue(preset.hard_constraints_satisfied)
 
-        # EfficiencyOptimal should have durationSeconds <= PrecisionOptimal
-        eff_dur = rec.presets[0].predicted_metrics["durationSeconds"].predicted_mean
-        prec_dur = rec.presets[1].predicted_metrics["durationSeconds"].predicted_mean
-        self.assertLessEqual(eff_dur, prec_dur + 1e-6)
-
-        # PrecisionOptimal should have contour error <= EfficiencyOptimal
+        by_role = {p.preset_role: p for p in rec.presets}
         acc_metric = rec.primary_accuracy_metric_id
-        prec_err = rec.presets[1].predicted_metrics[acc_metric].predicted_mean
-        eff_err = rec.presets[0].predicted_metrics[acc_metric].predicted_mean
-        self.assertLessEqual(prec_err, eff_err + 1e-6)
+        if "EfficiencyOptimal" in by_role and "PrecisionOptimal" in by_role:
+            eff, prec = by_role["EfficiencyOptimal"], by_role["PrecisionOptimal"]
+            # EfficiencyOptimal should have durationSeconds <= PrecisionOptimal
+            self.assertLessEqual(
+                eff.predicted_metrics["durationSeconds"].predicted_mean,
+                prec.predicted_metrics["durationSeconds"].predicted_mean + 1e-6,
+            )
+            # PrecisionOptimal should have contour error <= EfficiencyOptimal
+            self.assertLessEqual(
+                prec.predicted_metrics[acc_metric].predicted_mean,
+                eff.predicted_metrics[acc_metric].predicted_mean + 1e-6,
+            )
 
         # Active DoE suggestions must be populated
         self.assertEqual(len(rec.active_doe_suggestions), 3)
         rec_table = render_recommendation_table(rec)
-        self.assertIn("高速效率优先档", rec_table)
-        self.assertIn("高精轮廓优先档", rec_table)
-        self.assertIn("柔顺均衡拐点档", rec_table)
+        for preset in rec.presets:
+            self.assertIn(preset.preset_title or "", rec_table)
 
     def test_cli_and_web_api_endpoints(self) -> None:
         client = TestClient(create_app(serve_frontend=False))
@@ -214,7 +225,10 @@ class CncParameterIntelligenceTests(unittest.TestCase):
         demo_resp = client.get("/api/v1/benchmarks/cnc/param-demo?offlineCount=12&controllerCount=6&seed=21")
         self.assertEqual(demo_resp.status_code, 200)
         demo_json = demo_resp.json()
-        self.assertEqual(len(demo_json["recommendationReport"]["presets"]), 3)
+        presets_json = demo_json["recommendationReport"]["presets"]
+        self.assertLessEqual(len(presets_json), 3)
+        if not presets_json:
+            self.assertTrue(demo_json["recommendationReport"]["noFeasibleReason"])
 
         # 5. CLI param-demo command
         exit_code = main(["param-demo", "--offline-count", "10", "--controller-count", "5", "--format", "table"])

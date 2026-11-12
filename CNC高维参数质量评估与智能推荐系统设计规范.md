@@ -24,7 +24,8 @@
 | `tangentialLagMaxMm` | $|\langle \mathbf{q}_{\text{cmd}} - \mathbf{q}_{\text{act}}, \mathbf{t}(s^*) \rangle|$ 峰值 | 剥离不直接损伤零件几何轮廓的纯切向时间延迟 |
 | `normalServoErrorMaxMm` | $\|\mathbf{e}_{\perp}\| = \|(\mathbf{I} - \mathbf{t}\mathbf{t}^\top)(\mathbf{q}_{\text{cmd}} - \mathbf{q}_{\text{act}})\|$ 峰值 | 精准提取真正造成过切/欠切的法向伺服轮廓误差 |
 | `signedRadialOffsetMeanMm` | 圆弧段 $\mathbb{E}[\|\mathbf{q}_{\text{act}} - \mathbf{c}\| - R]$ | 区分滤波/低增益导致的**径向内缩（$<0$）**与惯量过冲导致的**外扩（$>0$）** |
-| `quadrantGlitchMaxMm` | 轴速度过零换向窗口内法向伺服脉冲减去前后基线 | 独立剥离导轨 Stribeck 静摩擦过象限突跳峰值 |
+| `quadrantGlitchMaxMm` | 轴速度过零换向 ±5 采样内实测轮廓误差最大值（原口径，保持可比） | 过象限突跳总量 |
+| `quadrantGlitchExcessMm` | 换向约 15 ms 窗口内实测轮廓误差减去指令偏差 | 剥离规划偏差后的伺服过象限突出量（灰盒模型使用） |
 | `smoothedJerkRmsMmS3` | 7 点三次 Savitzky-Golay 正则化三阶导数 RMS | 抑制编码器分辨率量化在 $\Delta^3 q / T^3$ 上放大的高频伪白噪声 |
 | `dominantResonanceFreqHz` | 有符号法向残差经 Hanning 窗与 $[45, 450]\text{ Hz}$ 频权寻峰 | 避免无符号模值整流导致的倍频失真，精准定位机械结构谐振主频 |
 | `resonanceBandRmsMm` | 主谐振峰 $\pm 15\text{ Hz}$ 频带积分有效值 | 定量评估 FIR 频谱零点与伺服陷波器对机械颤振的抑制效果 |

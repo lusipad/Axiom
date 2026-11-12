@@ -1,15 +1,16 @@
-"""Constrained Multi-Objective CNC Parameter Recommender, Cross-Case Transfer & Active DoE Engine.
+"""Constrained multi-objective CNC parameter recommender (offline advisory only).
 
-Operates on a calibrated `LearnedParameterSurrogate` (Grey-Box Physics + Residual GP) to provide:
-1. Zero-Shot Cross-Toolpath Recommendation (`target_case`): transfer a machine/planner profile
-   calibrated on standard V1 cases directly onto any unseen part NC toolpath without re-sampling!
-2. Top-K Sparse Delta Recommendation (modifying <= K_max highest-leverage parameters on the
-   target geometry while locking the remaining 25+ parameters at baseline).
-3. Conservative Safety & Epistemic Gate (FeatureEnvelope OOD check + adaptive Split Conformal
-   upper bound: mean + kappa * radius <= limit).
-4. Weight-free Pareto Front extraction across (durationSeconds, contourErrorMm, discreteJerkRms)
-   with 3 genuinely distinct engineering presets (EfficiencyOptimal, PrecisionOptimal,
-   BalancedKneePoint) plus physical error-source attribution notes.
+Operates on a `LearnedParameterSurrogate`:
+1. Optional `target_case`: evaluates candidates on another toolpath through the grey-box
+   backbone. Duration transfer has been checked on synthetic data only; contour-error
+   transfer is unverified and every preset must be validated on the machine.
+2. Top-K sparse deltas (<= K parameters changed) sampled inside the observed training
+   envelope; feed override is capped at `maximumFeedOverride` (default 1.0).
+3. Gates: in-envelope check plus `mean + kappa * radius <= limit`, where the radius is a
+   leave-one-out residual quantile whose real-machine coverage is not yet verified.
+4. Pareto front over (durationSeconds, contour error, discreteJerkRms) and up to three
+   distinct presets; when nothing passes the gates no preset is emitted
+   (`noFeasibleReason`).
 """
 
 from __future__ import annotations
@@ -121,11 +122,13 @@ class ParameterRecommendationRequest(AxiomModel):
     max_changed_parameters: int = Field(default=4, ge=1, le=12, alias="maxChangedParameters")
     maximum_path_deviation_mm: float | None = Field(default=0.035, ge=0.0, alias="maximumPathDeviationMm")
     maximum_actual_path_deviation_mm: float | None = Field(default=0.045, ge=0.0, alias="maximumActualPathDeviationMm")
-    maximum_following_error_mm: float | None = Field(default=0.030, ge=0.0, alias="maximumFollowingErrorMm")
+    maximum_following_error_mm: float | None = Field(default=None, ge=0.0, alias="maximumFollowingErrorMm")
     maximum_jerk_rms_mm_s3: float | None = Field(default=None, ge=0.0, alias="maximumJerkRmsMmS3")
     maximum_duration_seconds: float | None = Field(default=None, ge=0.0, alias="maximumDurationSeconds")
     safety_kappa: float = Field(default=1.0, ge=0.0, le=3.0, alias="safetyKappa")
     candidate_pool_size: int = Field(default=280, ge=40, le=2000, alias="candidatePoolSize")
+    # Recommendations never exceed the programmed feed unless the caller explicitly allows it.
+    maximum_feed_override: float = Field(default=1.0, ge=0.05, le=2.0, alias="maximumFeedOverride")
     seed: int = 42
 
 
@@ -140,9 +143,11 @@ class ParameterRecommendationReport(AxiomModel):
     evaluated_candidate_count: int = Field(alias="evaluatedCandidateCount")
     feasible_candidate_count: int = Field(alias="feasibleCandidateCount")
     pareto_candidate_count: int = Field(alias="paretoCandidateCount")
+    # Empty when no candidate satisfies the gates; see `noFeasibleReason`.
     presets: tuple[ParameterRecommendationCandidate, ...]
     pareto_front: tuple[ParameterRecommendationCandidate, ...] = Field(alias="paretoFront")
     active_doe_suggestions: tuple[ActiveExperimentSuggestion, ...] = Field(alias="activeDoeSuggestions")
+    no_feasible_reason: str | None = Field(default=None, alias="noFeasibleReason")
     permission_level: Literal["OfflineAdvisory"] = Field(default="OfflineAdvisory", alias="permissionLevel")
     device_write_allowed: Literal[False] = Field(default=False, alias="deviceWriteAllowed")
     report_content_hash: str = Field(alias="reportContentHash")
@@ -197,6 +202,28 @@ def _target_geometry_leverage(
     return scores
 
 
+def _parameter_sampling_bounds(model: LearnedParameterSurrogate) -> dict[str, tuple[float, float]]:
+    """Normalized sampling range per parameter: the intersection of every metric head's
+    observed feature envelope (plus margin) in which that parameter is a feature.
+
+    Sampling outside it only produces out-of-domain candidates that the gates reject."""
+    bounds: dict[str, tuple[float, float]] = {}
+    for head in model.metric_heads.values():
+        env = head.envelope
+        for fid, lo, hi in zip(env.feature_ids, env.minimums, env.maximums):
+            if fid not in {p.parameter_id for p in model.registry.parameters}:
+                continue
+            margin = env.margin_fraction * max(hi - lo, 0.25)
+            lo_m, hi_m = max(-1.0, lo - margin), min(1.0, hi + margin)
+            if fid in bounds:
+                prev_lo, prev_hi = bounds[fid]
+                lo_m, hi_m = max(prev_lo, lo_m), min(prev_hi, hi_m)
+                if lo_m > hi_m:
+                    lo_m = hi_m = 0.5 * (lo_m + hi_m)
+            bounds[fid] = (lo_m, hi_m)
+    return bounds
+
+
 def recommend_parameters(
     surrogate: LearnedParameterSurrogate | Mapping[str, Any],
     request: ParameterRecommendationRequest | Mapping[str, Any] | None = None,
@@ -235,6 +262,12 @@ def recommend_parameters(
     )
     objective_metrics = ("durationSeconds", primary_acc_metric, "discreteJerkRms")
     available_metrics = tuple(m for m in model.metric_heads.keys())
+    missing_heads = [m for m in ("durationSeconds", primary_acc_metric) if m not in model.metric_heads]
+    if missing_heads:
+        raise ValueError(
+            f"surrogate has no metric head for {', '.join(missing_heads)}; "
+            "learn with more runs (>= 4 per metric) before requesting recommendations"
+        )
 
     agg_importance = _target_geometry_leverage(model, eval_case, base_params, objective_metrics)
     locked_set = set(req.locked_parameter_ids)
@@ -264,86 +297,37 @@ def recommend_parameters(
     rng = np.random.default_rng(req.seed)
     candidate_dicts: list[dict[str, float]] = [dict(base_params)]
 
+    feed_param = param_map.get("g2.path_max_feed_override")
+    sampling_bounds = _parameter_sampling_bounds(model)
+
+    def _clip_value(pid: str, val: float) -> float:
+        p_def = param_map[pid]
+        lo, hi = float(p_def.bounds[0]), float(p_def.bounds[1])
+        if feed_param is not None and pid == feed_param.parameter_id:
+            hi = min(hi, req.maximum_feed_override)
+        clipped_v = max(lo, min(hi, float(val)))
+        return float(round(clipped_v)) if p_def.value_type == "integer" else round(clipped_v, 6)
+
     def _apply_seed_override(seed_override: Mapping[str, float]) -> dict[str, float]:
         cand = dict(base_params)
         applied = 0
         for pid, val in seed_override.items():
             if pid in param_map and pid not in locked_set and applied < k_max:
-                p_def = param_map[pid]
-                lo, hi = float(p_def.bounds[0]), float(p_def.bounds[1])
-                clipped_v = max(lo, min(hi, float(val)))
-                cand[pid] = float(round(clipped_v)) if p_def.value_type == "integer" else round(clipped_v, 6)
+                cand[pid] = _clip_value(pid, val)
                 applied += 1
         return cand
 
-    # Physics-informed Pareto frontier sweep seeds (Efficiency, Precision, Smoothness/Resonance-Notch)
-    if model.greybox_constants is not None:
-        gb_c = model.greybox_constants
-        f_res = gb_c.identified_resonance_hz
+    # Only physics-derived seeds: align the FIR spectral zero and the notch with the
+    # resonance actually measured by FFT on controller traces. No hand-picked "answers".
+    if model.greybox_constants is not None and model.controller_run_count > 0:
+        f_res = model.greybox_constants.identified_resonance_hz
         fir_notch_ms = round(min(48.0, max(4.0, 1000.0 / max(f_res, 25.0))), 3)
         notch_hz = round(min(400.0, max(40.0, f_res)), 2)
-        path_lim = req.maximum_path_deviation_mm or 0.035
-
-        physics_seeds: list[dict[str, float]] = [
-            # High-speed family (varying feed override & corner tolerance within conservative contour budget)
-            {
-                "g2.path_max_feed_override": 1.18,
-                "g1.corner_tolerance_mm": min(0.032, path_lim * 0.65),
-                "g2.fir_moving_avg_time_ms": 6.0,
-                "g3.vel_feedforward_x": 0.995,
-            },
-            {
-                "g2.path_max_feed_override": 1.12,
-                "g1.corner_tolerance_mm": min(0.022, path_lim * 0.48),
-                "g2.fir_moving_avg_time_ms": fir_notch_ms,
-                "g3.vel_feedforward_y": 0.995,
-            },
-            {
-                "g2.path_max_feed_override": 1.20,
-                "g2.path_tangential_acc_mm_s2": min(8500.0, min(float(l.maximum_acceleration_mm_s2) for l in eval_case.axis_limits) * 0.95) if eval_case else 4800.0,
-                "g1.corner_tolerance_mm": min(0.018, path_lim * 0.42),
-                "g2.fir_moving_avg_time_ms": 5.0,
-            },
-            # High-precision family (tight tolerance, gentle centripetal acc so short FIR obeys jerk limit, matched feedforward)
-            {
-                "g1.corner_tolerance_mm": 0.004,
-                "g2.fir_moving_avg_time_ms": max(8.5, fir_notch_ms),
-                "g2.centripetal_acc_limit_mm_s2": 1600.0,
-                "g3.vel_feedforward_x": 0.998,
-            },
-            {
-                "g1.corner_tolerance_mm": 0.006,
-                "g2.fir_moving_avg_time_ms": fir_notch_ms,
-                "g3.notch_filter_freq_hz": notch_hz,
-                "g3.vel_feedforward_x": 0.995,
-            },
-            {
-                "g1.corner_tolerance_mm": 0.008,
-                "g2.fir_moving_avg_time_ms": 5.0,
-                "g3.friction_comp_amp_x": round(gb_c.stribeck_breakaway_x_mm, 5),
-                "g3.friction_comp_amp_y": round(gb_c.stribeck_breakaway_y_mm, 5),
-            },
-            # Smoothness / Balanced knee family (low jerk + exact resonance notch + moderate speed)
-            {
-                "g2.fir_moving_avg_time_ms": fir_notch_ms,
-                "g3.notch_filter_freq_hz": notch_hz,
-                "g2.path_tangential_jerk_mm_s3": 95000.0,
-                "g1.corner_tolerance_mm": 0.012,
-            },
-            {
-                "g2.bell_acc_shape_factor": 0.88,
-                "g2.path_tangential_jerk_mm_s3": 110000.0,
-                "g1.corner_tolerance_mm": 0.010,
-                "g2.fir_moving_avg_time_ms": fir_notch_ms,
-            },
-            {
-                "g2.path_max_feed_override": 1.06,
-                "g1.corner_tolerance_mm": 0.011,
-                "g2.path_tangential_jerk_mm_s3": 125000.0,
-                "g3.notch_filter_freq_hz": notch_hz,
-            },
-        ]
-        for seed_override in physics_seeds:
+        for seed_override in (
+            {"g2.fir_moving_avg_time_ms": fir_notch_ms},
+            {"g3.notch_filter_freq_hz": notch_hz},
+            {"g2.fir_moving_avg_time_ms": fir_notch_ms, "g3.notch_filter_freq_hz": notch_hz},
+        ):
             candidate_dicts.append(_apply_seed_override(seed_override))
 
     for _ in range(max(0, req.candidate_pool_size - len(candidate_dicts))):
@@ -353,11 +337,13 @@ def recommend_parameters(
         for pid_raw in chosen_ids:
             pid = str(pid_raw)
             p_def = param_map[pid]
-            u_norm = float(rng.uniform(-0.92, 0.92))
-            cand[pid] = denormalize_parameter_value(p_def, u_norm)
+            lo_n, hi_n = sampling_bounds.get(pid, (-0.92, 0.92))
+            u_norm = float(rng.uniform(lo_n, hi_n))
+            cand[pid] = _clip_value(pid, denormalize_parameter_value(p_def, u_norm))
         candidate_dicts.append(cand)
 
     evaluated_candidates: list[ParameterRecommendationCandidate] = []
+    gate_failures: dict[str, int] = {}
     uncertainty_records: list[tuple[float, float, dict[str, float], tuple[str, ...]]] = []
 
     for idx_c, cand_p in enumerate(candidate_dicts):
@@ -402,6 +388,7 @@ def recommend_parameters(
             within_lim = True if lim is None else (upper_b <= lim)
             if not within_lim:
                 all_gates_ok = False
+                gate_failures[f"{m_id} 上界超限"] = gate_failures.get(f"{m_id} 上界超限", 0) + 1
 
             delta_b = p_mean - b_mean
             rel_b = (delta_b / max(abs(b_mean), 1e-9)) * 100.0
@@ -421,7 +408,8 @@ def recommend_parameters(
 
         if eval_case is not None and model.greybox_constants is not None:
             max_case_acc = min(float(lim.maximum_acceleration_mm_s2) for lim in eval_case.axis_limits)
-            max_case_jrk = min(float(lim.maximum_jerk_mm_s3) for lim in eval_case.axis_limits if lim.maximum_jerk_mm_s3 is not None)
+            declared_jerks = [float(lim.maximum_jerk_mm_s3) for lim in eval_case.axis_limits if lim.maximum_jerk_mm_s3 is not None]
+            max_case_jrk = min(declared_jerks) if declared_jerks else float("inf")
             cand_at = float(cand_p.get("g2.path_tangential_acc_mm_s2", 5000.0))
             cand_jt = float(cand_p.get("g2.path_tangential_jerk_mm_s3", 200000.0))
             cand_an = float(cand_p.get("g2.centripetal_acc_limit_mm_s2", 3000.0))
@@ -430,6 +418,7 @@ def recommend_parameters(
             corner_jrk_est = (1.25 * cand_an) / max(cand_fir_s, eval_case.sample_period_seconds) if extract_case_geometry_profile(eval_case).has_corners else 0.0
             if cand_at > max_case_acc or cand_jt > max_case_jrk or corner_jrk_est > max_case_jrk:
                 all_gates_ok = False
+                gate_failures["轴加速度/Jerk 上限"] = gate_failures.get("轴加速度/Jerk 上限", 0) + 1
 
         in_dom = not any_ood
         feasible_flag = in_dom and all_gates_ok
@@ -459,7 +448,7 @@ def recommend_parameters(
         )
 
     feasible = [c for c in evaluated_candidates if c.hard_constraints_satisfied]
-    pool_for_pareto = feasible if feasible else evaluated_candidates
+    pool_for_pareto = feasible
 
     obj_tuples = [
         (
@@ -483,61 +472,18 @@ def recommend_parameters(
 
     pareto_front.sort(key=lambda c: c.predicted_metrics["durationSeconds"].predicted_mean)
 
-    # Select 3 distinct engineering presets when >= 3 non-dominated points exist
-    prec_cand = min(pareto_front, key=lambda c: c.predicted_metrics[primary_acc_metric].predicted_mean)
-    eff_candidates = [c for c in pareto_front if c.candidate_id != prec_cand.candidate_id] or pareto_front
-    eff_cand = min(eff_candidates, key=lambda c: c.predicted_metrics["durationSeconds"].predicted_mean)
-
-    durs = np.asarray([c.predicted_metrics["durationSeconds"].predicted_mean for c in pareto_front])
-    errs = np.asarray([c.predicted_metrics[primary_acc_metric].predicted_mean for c in pareto_front])
-    jrks = np.asarray(
-        [
-            c.predicted_metrics["discreteJerkRms"].predicted_mean
-            if "discreteJerkRms" in c.predicted_metrics
-            else 0.0
-            for c in pareto_front
-        ]
-    )
-    d_norm = (durs - np.min(durs)) / max(float(np.ptp(durs)), 1e-9)
-    e_norm = (errs - np.min(errs)) / max(float(np.ptp(errs)), 1e-9)
-    j_norm = (jrks - np.min(jrks)) / max(float(np.ptp(jrks)), 1e-9)
-    utopia_dist = np.sqrt(d_norm ** 2 + e_norm ** 2 + 0.75 * (j_norm ** 2))
-    order_knee = np.argsort(utopia_dist)
-    knee_cand = pareto_front[int(order_knee[0])]
-    if len(pareto_front) >= 3:
-        for idx_k in order_knee:
-            cand_k = pareto_front[int(idx_k)]
-            if cand_k.candidate_id not in {eff_cand.candidate_id, prec_cand.candidate_id}:
-                knee_cand = cand_k
-                break
-
-    def _label_preset(
-        cand: ParameterRecommendationCandidate,
-        role: PresetRole,
-        title: str,
-    ) -> ParameterRecommendationCandidate:
-        dur_m = cand.predicted_metrics["durationSeconds"]
-        acc_m = cand.predicted_metrics[primary_acc_metric]
-        jrk_m = cand.predicted_metrics.get("discreteJerkRms")
-        jrk_txt = f"，冲击 RMS {jrk_m.relative_change_pct:+.1f}%" if jrk_m else ""
-        desc = (
-            f"【{title}】仅微调 {cand.changed_parameter_count} 个核心参数："
-            f"预计周期 {dur_m.predicted_mean:.4g}s ({dur_m.relative_change_pct:+.1f}%)，"
-            f"{primary_acc_metric}={acc_m.predicted_mean:.4g}mm (保守上界 {acc_m.conservative_upper_bound:.4g}mm){jrk_txt}"
+    no_feasible_reason: str | None = None
+    presets: tuple[ParameterRecommendationCandidate, ...] = ()
+    if not pareto_front:
+        ood_count = sum(1 for c in evaluated_candidates if not c.in_domain)
+        top_fail = sorted(gate_failures.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        fail_txt = "；".join(f"{name} {cnt} 次" for name, cnt in top_fail) or "无"
+        no_feasible_reason = (
+            f"{len(evaluated_candidates)} 个候选均未通过门禁（超出训练数据覆盖范围 {ood_count} 个；主要失败项：{fail_txt}）。"
+            "请放宽约束、减少锁定参数，或按 activeDoeSuggestions 补采数据后重试；不输出推荐档位。"
         )
-        return cand.model_copy(
-            update={
-                "preset_role": role,
-                "preset_title": title,
-                "tradeoff_explanation": desc,
-            }
-        )
-
-    presets = (
-        _label_preset(eff_cand, "EfficiencyOptimal", "高速效率优先档"),
-        _label_preset(prec_cand, "PrecisionOptimal", "高精轮廓优先档"),
-        _label_preset(knee_cand, "BalancedKneePoint", "柔顺均衡拐点档"),
-    )
+    else:
+        presets = _select_presets(pareto_front, primary_acc_metric)
 
     uncertainty_records.sort(key=lambda item: item[0], reverse=True)
     doe_suggestions: list[ActiveExperimentSuggestion] = []
@@ -571,11 +517,67 @@ def recommend_parameters(
         presets=presets,
         paretoFront=tuple(pareto_front[:15]),
         activeDoeSuggestions=tuple(doe_suggestions),
+        noFeasibleReason=no_feasible_reason,
         reportContentHash="",
     )
     content = report.model_dump(mode="json", by_alias=True, exclude_none=True)
     content.pop("reportContentHash")
     return report.model_copy(update={"report_content_hash": _canonical_hash(content)})
+
+
+def _select_presets(
+    pareto_front: list[ParameterRecommendationCandidate],
+    primary_acc_metric: str,
+) -> tuple[ParameterRecommendationCandidate, ...]:
+    """Pick up to three DISTINCT presets from a non-empty feasible Pareto front."""
+
+    def _dur(c: ParameterRecommendationCandidate) -> float:
+        return c.predicted_metrics["durationSeconds"].predicted_mean
+
+    def _err(c: ParameterRecommendationCandidate) -> float:
+        return c.predicted_metrics[primary_acc_metric].predicted_mean
+
+    def _jrk(c: ParameterRecommendationCandidate) -> float:
+        m = c.predicted_metrics.get("discreteJerkRms")
+        return m.predicted_mean if m is not None else 0.0
+
+    prec_cand = min(pareto_front, key=_err)
+    eff_cand = min(pareto_front, key=_dur)
+    durs = np.asarray([_dur(c) for c in pareto_front])
+    errs = np.asarray([_err(c) for c in pareto_front])
+    jrks = np.asarray([_jrk(c) for c in pareto_front])
+    d_norm = (durs - np.min(durs)) / max(float(np.ptp(durs)), 1e-9)
+    e_norm = (errs - np.min(errs)) / max(float(np.ptp(errs)), 1e-9)
+    j_norm = (jrks - np.min(jrks)) / max(float(np.ptp(jrks)), 1e-9)
+    order_knee = np.argsort(np.sqrt(d_norm ** 2 + e_norm ** 2 + 0.75 * (j_norm ** 2)))
+    taken = {eff_cand.candidate_id, prec_cand.candidate_id}
+    knee_cand = next((pareto_front[int(i)] for i in order_knee if pareto_front[int(i)].candidate_id not in taken), None)
+
+    def _label(cand: ParameterRecommendationCandidate, role: PresetRole, title: str) -> ParameterRecommendationCandidate:
+        dur_m = cand.predicted_metrics["durationSeconds"]
+        acc_m = cand.predicted_metrics[primary_acc_metric]
+        jrk_m = cand.predicted_metrics.get("discreteJerkRms")
+        jrk_txt = f"，冲击 RMS {jrk_m.relative_change_pct:+.1f}%" if jrk_m else ""
+        desc = (
+            f"【{title}】微调 {cand.changed_parameter_count} 个参数：预计周期 {dur_m.predicted_mean:.4g}s "
+            f"({dur_m.relative_change_pct:+.1f}%)，{primary_acc_metric}={acc_m.predicted_mean:.4g}mm "
+            f"(上界 {acc_m.conservative_upper_bound:.4g}mm，实机覆盖率未验证，需上机验证){jrk_txt}"
+        )
+        return cand.model_copy(update={"preset_role": role, "preset_title": title, "tradeoff_explanation": desc})
+
+    roles: tuple[tuple[ParameterRecommendationCandidate | None, PresetRole, str], ...] = (
+        (eff_cand, "EfficiencyOptimal", "高速效率优先档"),
+        (prec_cand, "PrecisionOptimal", "高精轮廓优先档"),
+        (knee_cand, "BalancedKneePoint", "柔顺均衡拐点档"),
+    )
+    chosen: list[ParameterRecommendationCandidate] = []
+    seen: set[str] = set()
+    for cand, role, title in roles:
+        if cand is None or cand.candidate_id in seen:
+            continue
+        seen.add(cand.candidate_id)
+        chosen.append(_label(cand, role, title))
+    return tuple(chosen)
 
 
 def simulate_parametric_cnc_export(
@@ -657,9 +659,10 @@ def build_cnc_parameter_closed_loop_demo(
         surrogate,
         ParameterRecommendationRequest(
             maxChangedParameters=4,
-            maximumPathDeviationMm=0.048,
-            maximumActualPathDeviationMm=0.048,
-            maximumFollowingErrorMm=0.035,
+            # Contour limits come from the case; following error is not a contour-quality limit.
+            maximumPathDeviationMm=corner_case.maximum_path_deviation_mm,
+            maximumActualPathDeviationMm=corner_case.maximum_path_deviation_mm,
+            maximumFollowingErrorMm=None,
             seed=seed,
         ),
         target_case=corner_case,
@@ -686,6 +689,9 @@ def render_recommendation_table(report: ParameterRecommendationReport) -> str:
         f"主精度目标：{report.primary_accuracy_metric_id} | 权限级别：{report.permission_level} (禁止自动写设备)",
         "",
     ]
+    if report.no_feasible_reason:
+        lines.append(f"未输出推荐档位：{report.no_feasible_reason}")
+        lines.append("")
     for preset in report.presets:
         lines.append(preset.tradeoff_explanation)
         if preset.changed_parameters:

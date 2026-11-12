@@ -14,7 +14,7 @@ interface Difference { metricId: string; baseline?: number | null; candidate?: n
 interface Report { caseId: string; caseContentHash: string; scope: string; outcome: string; baseline: Analysis; candidate: Analysis; differences: Difference[]; reasons: string[]; reportContentHash: string; uncheckedProperties: string[] }
 
 interface SensitivityItem { parameterId: string; displayName: string; group: string; status: string; contributionRatio: number; direction: string }
-interface MetricHead { metricId: string; unit: string; modelingMode: string; r2Score: number; cvRmse: number; conformalRadius: number; sensitivities: SensitivityItem[] }
+interface MetricHead { metricId: string; unit: string; modelingMode: string; r2Score: number; looR2Score?: number | null; residualEnabled?: boolean; cvRmse: number; conformalRadius: number; sensitivities: SensitivityItem[] }
 interface ParameterDelta { parameterId: string; displayName: string; group: string; unit: string; baselineValue: number; recommendedValue: number; relativeChangePct: number }
 interface PresetCandidate { candidateId: string; presetRole: string; presetTitle: string; changedParameterCount: number; changedParameters: ParameterDelta[]; tradeoffExplanation: string }
 interface ActiveDoeItem { suggestionId: string; targetSource: string; changedParameterIds: string[]; acquisitionScore: number; rationale: string }
@@ -22,7 +22,7 @@ interface ClosedLoopDemo {
   case: { caseId: string };
   sampleQualityReport: { outcome: string; scope: string; analysis: Analysis; servoMetrics?: Record<string, Metric>; geometrySlices: Array<{ sliceId: string; primitiveKind: string; startSampleIndex: number; endSampleIndex: number; metrics: Record<string, number | null> }> };
   surrogate: { offlineRunCount: number; controllerRunCount: number; totalSliceSampleCount: number; globalActiveParameterIds: string[]; metricHeads: Record<string, MetricHead> };
-  recommendationReport: { maxChangedParameters: number; evaluatedCandidateCount: number; feasibleCandidateCount: number; paretoCandidateCount: number; presets: PresetCandidate[]; activeDoeSuggestions: ActiveDoeItem[] };
+  recommendationReport: { maxChangedParameters: number; evaluatedCandidateCount: number; feasibleCandidateCount: number; paretoCandidateCount: number; presets: PresetCandidate[]; activeDoeSuggestions: ActiveDoeItem[]; noFeasibleReason?: string | null };
 }
 
 const roleTitles: Record<Role, string> = {
@@ -666,7 +666,7 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                     <tr key={head.metricId}>
                       <td><strong>{head.metricId}</strong><small> ({head.unit})</small></td>
                       <td>{head.modelingMode}</td>
-                      <td>R²={number(head.r2Score)} · ±{number(head.conformalRadius)}</td>
+                      <td>留一 R²={head.looR2Score == null ? "-" : number(head.looR2Score)} · ±{number(head.conformalRadius)}{head.residualEnabled === false ? " · 残差GP关闭" : ""}</td>
                       <td>
                         {head.sensitivities
                           .filter((s) => s.status === "Active")
@@ -693,6 +693,11 @@ export function CncBenchmarkWorkbench({ onOpenGuide }: { onOpenGuide?: () => voi
                   </tr>
                 </thead>
                 <tbody>
+                  {closedLoop.recommendationReport.presets.length === 0 && (
+                    <tr>
+                      <td colSpan={3}>未输出推荐档位：{closedLoop.recommendationReport.noFeasibleReason ?? "没有候选通过门禁"}</td>
+                    </tr>
+                  )}
                   {closedLoop.recommendationReport.presets.map((preset) => (
                     <tr key={preset.candidateId}>
                       <td><strong>{preset.presetTitle}</strong><small> ({preset.presetRole})</small></td>

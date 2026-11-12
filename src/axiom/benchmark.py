@@ -1,11 +1,15 @@
 """File-based CNC single-run quality evaluation and A/B comparison, independent of the built-in F4 solvers.
 
 This evaluates sampled XYZ commands and optional controller actual feedback traces.
-Upgraded with:
-1. O(N + M) Monotonic Arc-Length Progress Cursor & Local Frenet Frame (tangent / inward normal).
-2. Signed Normal Contour Error vs. Tangential Phase Lag Orthogonal Decomposition.
-3. Arc-Length Physical Windowing for Corner Transitions (sample-period invariant).
-4. Quantization-Aware Regularized Jerk & Hanning-FFT Structural Resonance Peak Identification.
+Finite differences are diagnostics of the sampled stream, not certificates for a
+controller's inter-sample motion law. Frenet, spectral and smoothed-jerk metrics are
+likewise sampled-stream diagnostics.
+
+Diagnostics:
+1. Monotonic arc-length progress cursor and local Frenet frame (tangent / inward normal).
+2. Tangential lag vs. normal servo error decomposition of the actual feedback.
+3. Arc-length windowing for corner transitions (sample-period invariant).
+4. Savitzky-Golay smoothed jerk and Hanning-FFT dominant resonance peak.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ ARC_RADIUS_RELATIVE_TOLERANCE = 1e-6
 MICRO_SEGMENT_THRESHOLD_MM = 0.5
 CORNER_WINDOW_MIN_MM = 2.0
 CORNER_WINDOW_MAX_MM = 6.0
-RESONANCE_MIN_FREQ_HZ = 25.0
+RESONANCE_MIN_FREQ_HZ = 45.0
 RESONANCE_MAX_FREQ_HZ = 450.0
 BENCHMARK_SCOPE = "sampled-xyz-command"
 DUAL_TRACE_SCOPE = "sampled-xyz-command-and-servo-feedback"
@@ -71,6 +75,8 @@ class BenchmarkTolerances(AxiomModel):
     duration_seconds: Nonnegative = Field(default=0, alias="durationSeconds")
     path_deviation_mm: Nonnegative = Field(default=0.001, alias="pathDeviationMm")
     computation_seconds: Nonnegative = Field(default=0.0001, alias="computationSeconds")
+    # Optional metrics are compared only when the case declares a tolerance, so
+    # older cases keep their content hash and their A/B outcome.
     path_deviation_rms_mm: Nonnegative | None = Field(default=None, alias="pathDeviationRmsMm")
     path_deviation_p99_mm: Nonnegative | None = Field(default=None, alias="pathDeviationP99Mm")
     jerk_mm_s3: Nonnegative | None = Field(default=None, alias="jerkMmS3")
@@ -582,6 +588,7 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
         "sampledPathDeviationP95Mm": BenchmarkMetric(value=float(np.quantile(errors, 0.95)), unit="mm"),
         "sampledPathDeviationP99Mm": BenchmarkMetric(value=float(np.quantile(errors, 0.99)), unit="mm"),
     }
+    # Path speed at the sample nearest each reference corner (central difference).
     corner_speed = BenchmarkMetric(value=None, unit="mm/s")
     for vertex, _ in _reference_corners(case):
         nearest = int(np.argmin(np.sum((positions - path[vertex]) ** 2, axis=1)))
@@ -606,6 +613,8 @@ def _analyse(case: CncBenchmarkCase, run: CncAlgorithmExport) -> BenchmarkRunAna
         index = int(np.argmax(excess))
         check(f"{limits.axis}.position-range", BenchmarkMetric(value=max(0.0, float(excess[index])), unit="mm", location=location(index, limits.axis)), 0.0)
 
+    # All operators use the declared fixed command period, after validating the
+    # supplied timestamps. kth differences are located at their right endpoint.
     differences = positions
     for order, (name, unit, limit_field) in enumerate((
         ("Velocity", "mm/s", "maximum_velocity_mm_s"),
@@ -637,7 +646,7 @@ def _extract_resonance_spectrum(signal_mm: np.ndarray, period: float) -> tuple[f
     n = arr.shape[0]
     fs = 1.0 / period
     nyquist = 0.5 * fs
-    f_lo = 45.0
+    f_lo = RESONANCE_MIN_FREQ_HZ
     if n < 24 or nyquist <= f_lo * 1.15:
         return 0.0, 0.0
     window = np.hanning(n)
@@ -656,7 +665,7 @@ def _extract_resonance_spectrum(signal_mm: np.ndarray, period: float) -> tuple[f
     if not np.any(band_mask):
         return 0.0, 0.0
     band_freqs = freqs[band_mask]
-    # Weight by (f / 100 Hz) when locating the structural resonance peak to reject smooth 1/f^2 Stribeck skirts
+    # Weight by min(f / 80 Hz, 2.5) when locating the peak to reject smooth low-frequency skirts
     weighted = psd_amp[band_mask] * np.minimum(band_freqs / 80.0, 2.5)
     peak_idx = int(np.argmax(weighted))
     f_dom = float(band_freqs[peak_idx])
@@ -711,28 +720,39 @@ def _compute_servo_metrics(
     else:
         signed_radial_mean = 0.0
 
-    # Quadrant glitch detection on arcs or direction reversals (velocity sign change)
+    # Quadrant glitch detection on arcs or direction reversals (velocity sign change).
+    # `quadrantGlitchMaxMm` keeps its original contract (largest actual contour error
+    # within +/-5 samples of a reversal) so existing reports stay comparable.
+    # `quadrantGlitchExcessMm` is the newer servo-only protrusion: actual error minus the
+    # command's own deviation, in a period-invariant ~15 ms window.
     cmd_vel = np.diff(cmd_positions, axis=0) / case.sample_period_seconds
     glitch_max = 0.0
     glitch_idx = 0
+    excess_max = 0.0
+    excess_idx = 0
     if len(cmd_vel) >= 2:
         sign_flip = np.any(cmd_vel[:-1, :2] * cmd_vel[1:, :2] <= 0.0, axis=1)
         reversal_indices = np.where(sign_flip)[0] + 1
         if len(reversal_indices):
-            window_mask = np.zeros(len(act_positions), dtype=bool)
+            legacy_mask = np.zeros(len(act_positions), dtype=bool)
+            excess_mask = np.zeros(len(act_positions), dtype=bool)
             half_q_win = max(3, min(25, int(round(0.015 / case.sample_period_seconds))))
             for r_idx in reversal_indices:
-                lo = max(0, int(r_idx) - half_q_win)
-                hi = min(len(act_positions), int(r_idx) + half_q_win + 1)
-                window_mask[lo:hi] = True
-            window_indices = np.where(window_mask)[0]
-            if len(window_indices):
-                # Isolate servo-induced reversal protrusion above planned command deviation
+                legacy_mask[max(0, int(r_idx) - 5) : min(len(act_positions), int(r_idx) + 6)] = True
+                excess_mask[max(0, int(r_idx) - half_q_win) : min(len(act_positions), int(r_idx) + half_q_win + 1)] = True
+            legacy_indices = np.where(legacy_mask)[0]
+            if len(legacy_indices):
+                local_errors = act_errors[legacy_indices]
+                best = int(np.argmax(local_errors))
+                glitch_max = float(local_errors[best])
+                glitch_idx = int(legacy_indices[best])
+            excess_indices = np.where(excess_mask)[0]
+            if len(excess_indices):
                 cmd_dev_all, _ = _path_deviations(cmd_positions, path, arcs)
-                servo_excess = np.maximum(0.0, act_errors[window_indices] - cmd_dev_all[window_indices])
+                servo_excess = np.maximum(0.0, act_errors[excess_indices] - cmd_dev_all[excess_indices])
                 best = int(np.argmax(servo_excess))
-                glitch_max = float(servo_excess[best])
-                glitch_idx = int(window_indices[best])
+                excess_max = float(servo_excess[best])
+                excess_idx = int(excess_indices[best])
 
     f_dom_hz, res_rms_mm = _extract_resonance_spectrum(normal_servo_vec, case.sample_period_seconds)
 
@@ -804,6 +824,15 @@ def _compute_servo_metrics(
                 sampleIndex=glitch_idx,
                 t=float(times[glitch_idx]),
                 referenceSegmentIndex=int(act_segments[glitch_idx]),
+            ),
+        ),
+        "quadrantGlitchExcessMm": BenchmarkMetric(
+            value=excess_max,
+            unit="mm",
+            location=BenchmarkLocation(
+                sampleIndex=excess_idx,
+                t=float(times[excess_idx]),
+                referenceSegmentIndex=int(act_segments[excess_idx]),
             ),
         ),
         "dominantResonanceFreqHz": BenchmarkMetric(
@@ -1095,7 +1124,7 @@ def evaluate_cnc_export(
     quant_jerk_floor = float((math.sqrt(20.0 / 12.0) * q_step) / (req.case.sample_period_seconds ** 3))
     sg_jerk_rms = _savitzky_golay_jerk_rms(cmd_positions, req.case.sample_period_seconds)
 
-    # Compute high-frequency command acceleration excitation power above 25 Hz
+    # High-frequency command acceleration excitation in the resonance band (RESONANCE_MIN_FREQ_HZ and above)
     cmd_acc = np.diff(cmd_positions, n=2, axis=0) / (req.case.sample_period_seconds ** 2) if len(cmd_positions) >= 3 else np.zeros((0, 3))
     cmd_acc_norm = np.linalg.norm(cmd_acc, axis=1) if len(cmd_acc) else np.zeros(0)
     _, cmd_hf_acc_rms = _extract_resonance_spectrum(cmd_acc_norm, req.case.sample_period_seconds)
@@ -1167,6 +1196,7 @@ def evaluate_cnc_export(
 
 
 def compare_cnc_exports(payload: CncBenchmarkRequest | Mapping[str, Any]) -> CncBenchmarkReport:
+    # Revalidate model instances too: callers may use model_copy/model_construct.
     request = CncBenchmarkRequest.model_validate(payload.model_dump(mode="json", by_alias=True) if isinstance(payload, CncBenchmarkRequest) else payload)
     baseline, candidate = (_analyse(request.case, run) for run in (request.baseline, request.candidate))
     tolerances = request.case.comparison_tolerances
@@ -1255,6 +1285,7 @@ _SERVO_METRIC_LABELS = {
     "actualPathDeviationP99Mm": "实测 P99 轮廓误差",
     "signedRadialOffsetMeanMm": "圆弧径向内缩均值",
     "quadrantGlitchMaxMm": "过象限突跳峰值",
+    "quadrantGlitchExcessMm": "过象限伺服突出量",
     "dominantResonanceFreqHz": "主导谐振频率",
     "resonanceBandRmsMm": "谐振频带有效值",
 }
@@ -1270,6 +1301,7 @@ _OUTCOME_LABELS = {
 
 
 def _cell(value: float | None) -> str:
+    # Values below 1 pm are floating-point noise for a millimetre-scale report.
     return "-" if value is None else "0" if abs(value) < 1e-9 else f"{value:.6g}"
 
 

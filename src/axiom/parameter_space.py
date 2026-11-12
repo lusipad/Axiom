@@ -53,6 +53,7 @@ SERVO_METRIC_IDS = frozenset(
         "actualPathDeviationP99Mm",
         "signedRadialOffsetMeanMm",
         "quadrantGlitchMaxMm",
+        "quadrantGlitchExcessMm",
         "dominantResonanceFreqHz",
         "resonanceBandRmsMm",
     }
@@ -519,9 +520,24 @@ def default_cnc_parameter_registry() -> CncParameterRegistry:
         derivedFeatures=derived,
         registryContentHash="",
     )
-    content = reg.model_dump(mode="json", by_alias=True, exclude_none=True)
-    content.pop("registryContentHash")
-    return reg.model_copy(update={"registry_content_hash": _canonical_hash(content)})
+    return reg.model_copy(update={"registry_content_hash": compute_registry_content_hash(reg)})
+
+
+def compute_registry_content_hash(registry: CncParameterRegistry) -> str:
+    """Canonical content hash of a registry, excluding its own `registryContentHash` field."""
+    content = registry.model_dump(mode="json", by_alias=True, exclude_none=True)
+    content.pop("registryContentHash", None)
+    return _canonical_hash(content)
+
+
+def verify_registry_content_hash(registry: CncParameterRegistry) -> None:
+    """Raise if the declared registry hash does not match its content."""
+    expected = compute_registry_content_hash(registry)
+    if registry.registry_content_hash != expected:
+        raise ValueError(
+            f"registry {registry.registry_id} declares registryContentHash "
+            f"{registry.registry_content_hash[:12]}... but its content hashes to {expected[:12]}..."
+        )
 
 
 def default_parameter_values(registry: CncParameterRegistry | None = None) -> dict[str, float]:

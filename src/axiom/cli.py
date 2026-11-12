@@ -278,6 +278,7 @@ def _param_recommend_cli(args: argparse.Namespace) -> int:
         maximumPathDeviationMm=args.max_path_deviation_mm,
         maximumActualPathDeviationMm=args.max_actual_path_deviation_mm,
         maximumFollowingErrorMm=args.max_following_error_mm,
+        maximumFeedOverride=args.max_feed_override,
         safetyKappa=args.safety_kappa,
     )
     report = recommend_parameters(surrogate, req)
@@ -307,13 +308,36 @@ def _param_demo_cli(args: argparse.Namespace) -> int:
 
 
 def _param_governance_cli(args: argparse.Namespace) -> int:
-    demo = build_cnc_parameter_closed_loop_demo(
-        offline_count=args.offline_count,
-        controller_count=args.controller_count,
-        seed=args.seed,
-        multi_case_calibration=args.multi_case,
-    )
-    gov_report = assess_cnc_greybox_governance(demo)
+    if args.case is not None or args.export is not None:
+        if args.case is None or args.export is None:
+            print("param-governance 文件模式必须同时提供 --case 与 --export", file=sys.stderr)
+            return 2
+        case_obj = CncBenchmarkCase.model_validate(_benchmark_json(args.case))
+        exp_obj = CncAlgorithmExport.model_validate(_benchmark_json(args.export))
+        sur_obj = (
+            LearnedParameterSurrogate.model_validate(_benchmark_json(args.model))
+            if args.model is not None
+            else None
+        )
+        rec_obj = (
+            ParameterRecommendationReport.model_validate(_benchmark_json(args.recommendation))
+            if args.recommendation is not None
+            else None
+        )
+        gov_report = assess_cnc_greybox_governance(
+            case_obj,
+            export=exp_obj,
+            surrogate=sur_obj,
+            recommendation_report=rec_obj,
+        )
+    else:
+        demo = build_cnc_parameter_closed_loop_demo(
+            offline_count=args.offline_count,
+            controller_count=args.controller_count,
+            seed=args.seed,
+            multi_case_calibration=args.multi_case,
+        )
+        gov_report = assess_cnc_greybox_governance(demo)
     print(gov_report.model_dump_json(indent=2, by_alias=True, exclude_none=True))
     return 0 if gov_report.run_bundle.report.case_outcome.value == "Passed" else 1
 
@@ -637,7 +661,8 @@ def _parser() -> argparse.ArgumentParser:
     rec_cmd.add_argument("--max-changed-params", type=int, default=4)
     rec_cmd.add_argument("--max-path-deviation-mm", type=float, default=0.035)
     rec_cmd.add_argument("--max-actual-path-deviation-mm", type=float, default=0.045)
-    rec_cmd.add_argument("--max-following-error-mm", type=float, default=0.030)
+    rec_cmd.add_argument("--max-following-error-mm", type=float, default=None)
+    rec_cmd.add_argument("--max-feed-override", type=float, default=1.0)
     rec_cmd.add_argument("--safety-kappa", type=float, default=1.0)
     rec_cmd.add_argument("--format", choices=("json", "table"), default="json")
     demo_cmd = commands.add_parser("param-demo", help="run the 32-parameter CNC evaluation, learning, and recommendation closed-loop demo")
@@ -647,6 +672,10 @@ def _parser() -> argparse.ArgumentParser:
     demo_cmd.add_argument("--multi-case", action="store_true")
     demo_cmd.add_argument("--format", choices=("json", "table"), default="table")
     gov_cmd = commands.add_parser("param-governance", help="run R0-R7 governance verification on the 3-layer CNC grey-box advisor")
+    gov_cmd.add_argument("--case", type=Path, help="benchmark case JSON file for file-mode governance")
+    gov_cmd.add_argument("--export", type=Path, help="CNC algorithm export JSON file for file-mode governance")
+    gov_cmd.add_argument("--model", type=Path, help="optional learned parameter surrogate JSON file")
+    gov_cmd.add_argument("--recommendation", type=Path, help="optional parameter recommendation report JSON file")
     gov_cmd.add_argument("--offline-count", type=int, default=14)
     gov_cmd.add_argument("--controller-count", type=int, default=8)
     gov_cmd.add_argument("--seed", type=int, default=42)

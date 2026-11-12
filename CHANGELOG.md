@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — ADR-0030 review fixes (claims, uncertainty, recommender)
+
+- 治理：`cnc-greybox` R4/R5 在没有实机验证数据时为 `Inconclusive`（`RealMachineHoldoutRequired`），证据等级改为 `Observed`；重算 surrogate/推荐报告哈希防篡改；拟合度门禁改用留一 R²（`cnc-greybox.surrogate-mean-loo-r2@1`）。
+- R3 桥接：校验 `traceContentHash`、设备时间戳步长与采样周期、通道质量，实测通道全有或全无。
+- 学习器：残差 GP 按留一误差准入（`residualEnabled`）；不确定性半径为不缩放的留一残差分位数，新刀路以 LOCO 误差为下限；包络取训练真实范围；注册表哈希与灰盒参数兼容性校验，未知参数报错；标定系数标注为拟合系数并提示不可辨识项。
+- 推荐器：删除手写候选与 >1.0 进给倍率（新增 `maximumFeedOverride`，默认 1.0）；无可行解时不出档位并给出 `noFeasibleReason`；档位去重；修复 jerk 上限缺失与指标头缺失的崩溃。
+- 评估：`quadrantGlitchMaxMm` 恢复原口径，新增 `quadrantGlitchExcessMm`；恢复有限差分边界说明。
+- ADR-0030 状态退回 Proposed，并记录评审修订与未解决项。
+
 ## Unreleased — CNC three-layer grey-box modeling & cross-toolpath zero-shot advisor (ADR-0030)
 
 - 新增 `src/axiom/greybox_model.py`：实现零轨迹几何画像提取、硬取小速度包络、拐角滤波谷值卷积、圆弧 `sinc`+Butterworth 内缩、级联 P-PI 二阶曲率-延迟带符号法向叠加、时序 `lsq_linear` 伺服辨识与低维最大边缘似然 Matérn-5/2 ARD-GP 残差融合。

@@ -1,21 +1,17 @@
-"""Grey-Box Physics + Low-Dimensional MLE ARD-GP Residual CNC Parameter Learner.
+"""Grey-box backbone + optional low-dimensional residual GP CNC parameter learner.
 
-Upgrades the legacy black-box ElasticNet polynomial learner to a three-layer grey-box architecture:
-1. Layer 1 (White-Box Analytical Physics Backbone):
-   - Evaluates exact piecewise `min(...)` speed envelopes (programmed feed, 3D axis projection,
-     arc/helical centripetal, corner-rounding curvature, and micro-segment lookahead braking distance),
-     post-filter corner valley speed convolution, FIR sinc + Butterworth radial shrink, cascade P-PI
-     servo tracking lag, and second-order signed Frenet normal curvature-delay superposition across
-     arbitrary `CncBenchmarkCase` geometries.
-2. Layer 2 (Constrained Grey-Box Mechanism Calibration):
-   - Identifies physical constants (spline curvature factors, lookahead safety margin, corner valley
-     smoothing, servo velocity-loop bandwidth ratios, Stribeck stiction breakaway, and FFT structural
-     resonance Hz) via `scipy.optimize.lsq_linear` and bounded Trust-Region Reflective (`least_squares`).
-3. Layer 3 (Compact Physics-Feature L-BFGS-B MLE ARD Matérn-5/2 GP Residual + Split Conformal + LOCO Audit):
-   - Strips the calibrated grey-box prediction `r = y_obs - y_greybox` and fits a low-dimensional
-     (3D-6D) ARD Matérn-5/2 GP via Marginal Log-Likelihood optimization, eliminating high-dimensional
-     underdetermined hallucinations and plateau parabolic bend-back while providing automatic
-     Leave-One-Case-Out (LOCO) cross-toolpath zero-shot validation (`CrossToolpathValidationSummary`).
+1. Layer 1/2: the `generic-fir-biquad@1` grey-box backbone from `greybox_model` with
+   constants fitted across all supplied cases (fitting coefficients, not identified
+   physical quantities).
+2. Layer 3: a 3D-6D ARD Matern-5/2 residual GP per metric, kept only when it lowers the
+   leave-one-out error relative to the backbone alone (`residualEnabled`).
+3. Uncertainty: a leave-one-out residual quantile at rank ceil((n + 1)(1 - alpha)); it is
+   never shrunk afterwards and is inflated outside the observed feature envelope. Its
+   empirical coverage on unseen machines is unverified until real verification runs exist.
+4. Leave-One-Case-Out (LOCO) report of backbone transfer across the supplied toolpaths.
+
+Registries must define every kernel parameter id; unknown export parameters are rejected
+instead of silently defaulting.
 """
 
 from __future__ import annotations
@@ -37,6 +33,7 @@ from .benchmark import (
     evaluate_cnc_export,
 )
 from .greybox_model import (
+    GREYBOX_KERNEL_ID,
     CaseGeometryProfile,
     GreyBoxPhysicalConstants,
     calibrate_greybox_constants,
@@ -44,6 +41,7 @@ from .greybox_model import (
     extract_case_geometry_profile,
     fit_mle_ard_matern52_gp,
     matern52_kernel,
+    missing_greybox_parameter_ids,
 )
 from .models import AxiomModel
 from .parameter_space import (
@@ -59,6 +57,7 @@ from .parameter_space import (
     default_parameter_values,
     denormalize_parameter_value,
     normalize_parameter_value,
+    verify_registry_content_hash,
 )
 
 DEFAULT_TARGET_METRICS = (
@@ -68,7 +67,7 @@ DEFAULT_TARGET_METRICS = (
     "cornerSpeedMinMmS",
     "followingErrorMaxMm",
     "actualPathDeviationMaxMm",
-    "quadrantGlitchMaxMm",
+    "quadrantGlitchExcessMm",
 )
 EXTENDED_TARGET_METRICS = (
     "durationSeconds",
@@ -81,7 +80,7 @@ EXTENDED_TARGET_METRICS = (
     "tangentialLagMaxMm",
     "normalServoErrorMaxMm",
     "actualPathDeviationMaxMm",
-    "quadrantGlitchMaxMm",
+    "quadrantGlitchExcessMm",
     "resonanceBandRmsMm",
 )
 KINEMATIC_BRIDGE_FEATURES = (
@@ -171,6 +170,13 @@ class MetricSurrogateHead(AxiomModel):
     train_rmse: float = Field(alias="trainRmse")
     cv_rmse: float = Field(alias="cvRmse")
     r2_score: float = Field(alias="r2Score")
+    # Out-of-sample fidelity (leave-one-out). `r2Score` is in-sample and must not gate claims.
+    loo_r2_score: float | None = Field(default=None, alias="looR2Score")
+    # Residual GP is used only when it beats the grey-box backbone on leave-one-out error.
+    residual_enabled: bool = Field(default=True, alias="residualEnabled")
+    uncertainty_method: str = Field(default="loo-residual-quantile", alias="uncertaintyMethod")
+    nominal_coverage: float | None = Field(default=None, alias="nominalCoverage")
+    calibration_sample_count: int | None = Field(default=None, alias="calibrationSampleCount")
     envelope: ParameterFeatureEnvelope
     sensitivities: tuple[ParameterSensitivityItem, ...]
     interactions: tuple[PairwiseParameterInteraction, ...]
@@ -285,7 +291,7 @@ def _residual_feature_ids_for_metric(
     has_controller_traces: bool,
 ) -> list[str]:
     """Select compact, physically grounded 3D-6D feature subspace for the residual ARD-GP."""
-    if metric_id == "quadrantGlitchMaxMm":
+    if metric_id == "quadrantGlitchExcessMm":
         return ["g3.friction_comp_amp_x", "g3.friction_comp_amp_y", "g3.servo_kp_x", "phys.revAccNorm"]
     if metric_id == "resonanceBandRmsMm":
         return ["g3.notch_filter_freq_hz", "g2.fir_moving_avg_time_ms", "phys.firResonanceGain", "phys.notchSuppression"]
@@ -321,26 +327,52 @@ def _predict_residual_gp(head: MetricSurrogateHead, z_vec: Sequence[float] | np.
         lin_part = float(np.dot(z[0], lin_w))
 
     X_tr = np.asarray(head.gp_train_x, dtype=np.float64)
+    radius = float(head.conformal_radius)
+    if not in_dom:
+        # Outside the observed feature range the calibration quantile no longer applies;
+        # inflate rather than shrink, and the caller must treat the point as OOD.
+        radius *= 1.75
+    if not head.residual_enabled:
+        return 0.0, radius, not in_dom
     if len(X_tr) == 0:
-        return intercept + lin_part, head.conformal_radius, not in_dom
+        return intercept + lin_part, radius, not in_dom
 
     ls = np.asarray(head.gp_length_scales, dtype=np.float64)
     alpha = np.asarray(head.gp_alpha, dtype=np.float64)
     k_star = matern52_kernel(z, X_tr, ls, head.gp_signal_variance)
     gp_mean = float((k_star @ alpha)[0])
-
-    K_tr = matern52_kernel(X_tr, X_tr, ls, head.gp_signal_variance) + head.gp_noise_variance * np.eye(len(X_tr))
-    try:
-        v_vec = np.linalg.solve(K_tr, k_star.T)
-        post_var = max(0.0, head.gp_signal_variance - float((k_star @ v_vec)[0, 0]))
-        rel_std = math.sqrt(post_var / max(head.gp_signal_variance, 1e-12))
-    except np.linalg.LinAlgError:
-        rel_std = 1.0
-
-    radius = float(head.conformal_radius * (0.45 + 0.55 * rel_std))
-    if not in_dom:
-        radius *= 1.75
     return intercept + lin_part + gp_mean, radius, (not in_dom)
+
+
+TRANSFER_Z_SCORE = 1.645
+
+
+def _transfer_radius(
+    surrogate: LearnedParameterSurrogate,
+    metric_id: str,
+    predicted: float,
+    case: CncBenchmarkCase | None,
+) -> float:
+    """Uncertainty floor for toolpaths the model was NOT calibrated on.
+
+    The in-sample quantile says nothing about a new geometry. The LOCO report measures the
+    backbone's zero-shot error on each held-out calibration toolpath, so its worst case is
+    the floor (about 90% under a normal approximation). Without a LOCO report a new
+    toolpath gets no floor here and the caller must treat transfer as unverified."""
+    if case is None or case.case_id in surrogate.calibrated_case_ids:
+        return 0.0
+    loco = surrogate.cross_toolpath_validation
+    if loco is None or not loco.items:
+        return 0.0
+    if metric_id == "durationSeconds":
+        worst_pct = max(it.duration_zero_shot_mape_pct for it in loco.items)
+        return TRANSFER_Z_SCORE * worst_pct / 100.0 * abs(predicted)
+    if metric_id == "sampledPathDeviationMaxMm":
+        return TRANSFER_Z_SCORE * max(it.command_deviation_zero_shot_rmse_mm for it in loco.items)
+    if metric_id in ("actualPathDeviationMaxMm", "normalServoErrorMaxMm"):
+        vals = [it.actual_deviation_zero_shot_rmse_mm for it in loco.items if it.actual_deviation_zero_shot_rmse_mm is not None]
+        return TRANSFER_Z_SCORE * max(vals) if vals else 0.0
+    return 0.0
 
 
 def predict_metric_for_parameters(
@@ -382,13 +414,13 @@ def predict_metric_for_parameters(
                 tgt_prof = extract_case_geometry_profile(target_case)
                 scale_len = tgt_prof.total_length_mm / max(def_prof.total_length_mm, 1e-6)
                 res_mean *= min(2.5, max(0.25, scale_len))
-                radius *= min(2.5, max(0.5, scale_len))
-        ref_scale = max(head.greybox_only_rmse * 3.0, 1e-6)
-        mag_factor = min(1.05, max(0.18, abs(base_phys) / max(abs(base_phys) + ref_scale, 1e-6) + 0.15))
+                # Never shrink the calibrated radius when transferring to another toolpath.
+                radius *= min(2.5, max(1.0, scale_len))
         pred_total = base_phys + res_mean
         if metric_id != "signedRadialOffsetMeanMm":
             pred_total = max(0.0, pred_total)
-        return pred_total, radius * mag_factor, is_ood
+        radius = max(radius, _transfer_radius(surrogate, metric_id, pred_total, active_case))
+        return pred_total, radius, is_ood
 
     return max(0.0, res_mean), radius, is_ood
 
@@ -624,30 +656,41 @@ def _fit_greybox_residual_head(
             res_pred_i = float(lin_trend[i])
         loo_abs_errors.append(abs(float(y_obs[i]) - (float(y_gb[i]) + res_pred_i)))
 
-    sorted_err = sorted(loo_abs_errors)
-    eff_alpha = 0.22 if len(sorted_err) <= 8 else CONFORMAL_ALPHA
-    q_idx = min(len(sorted_err) - 1, max(0, math.floor(len(sorted_err) * (1.0 - eff_alpha))))
-    conformal_rad = float(sorted_err[q_idx]) if sorted_err else 0.0
+    gb_abs_errors = [abs(float(r)) for r in residuals]
+    loo_rmse_with_residual = float(math.sqrt(np.mean(np.square(loo_abs_errors)))) if loo_abs_errors else gb_rmse
+    # Gate: keep the residual GP only if it beats the fixed grey-box backbone out of sample.
+    residual_enabled = bool(loo_abs_errors) and loo_rmse_with_residual < 0.98 * gb_rmse
+    calib_errors = loo_abs_errors if residual_enabled else gb_abs_errors
 
-    full_res_pred = lin_trend + (matern52_kernel(Z_mat, Z_mat, ls_opt, sig_var) @ gp_alpha)
+    # Leave-one-out residual quantile at the finite-sample rank ceil((n + 1)(1 - alpha)).
+    # When n is too small for that rank, fall back to the largest observed error.
+    sorted_err = sorted(calib_errors)
+    n_cal = len(sorted_err)
+    rank = math.ceil((n_cal + 1) * (1.0 - CONFORMAL_ALPHA))
+    conformal_rad = float(sorted_err[min(rank, n_cal) - 1]) if sorted_err else 0.0
+
+    if residual_enabled:
+        full_res_pred = lin_trend + (matern52_kernel(Z_mat, Z_mat, ls_opt, sig_var) @ gp_alpha)
+    else:
+        full_res_pred = np.zeros(n_samples, dtype=np.float64)
+        lin_beta = np.zeros_like(lin_beta)
+        gp_alpha = np.zeros_like(gp_alpha)
     full_pred = y_gb + full_res_pred
     train_rmse = float(math.sqrt(np.mean((y_obs - full_pred) ** 2)))
-    cv_rmse = float(math.sqrt(np.mean(np.square(loo_abs_errors)))) if loo_abs_errors else train_rmse
+    cv_rmse = loo_rmse_with_residual if residual_enabled else gb_rmse
     ss_tot = float(np.sum((y_obs - np.mean(y_obs)) ** 2))
     ss_res = float(np.sum((y_obs - full_pred) ** 2))
     r2 = float(max(0.0, 1.0 - ss_res / ss_tot)) if ss_tot > 1e-12 else 1.0
+    ss_loo = float(np.sum(np.square(calib_errors)))
+    loo_r2 = float(1.0 - ss_loo / ss_tot) if ss_tot > 1e-12 else None
 
+    # Feature envelope = observed training range (no artificial widening); the margin is
+    # applied at prediction time.
     env_mins: list[float] = []
     env_maxs: list[float] = []
-    for j, fid in enumerate(feat_ids):
-        c_min, c_max = float(np.min(Z_mat[:, j])), float(np.max(Z_mat[:, j]))
-        if fid.startswith("g1.") or fid.startswith("g2.") or fid.startswith("phys."):
-            c_min, c_max = min(c_min, -0.95), max(c_max, 0.95)
-        elif (c_max - c_min) < 0.40:
-            mid = 0.5 * (c_min + c_max)
-            c_min, c_max = mid - 0.50, mid + 0.50
-        env_mins.append(round(c_min, 6))
-        env_maxs.append(round(c_max, 6))
+    for j in range(len(feat_ids)):
+        env_mins.append(round(float(np.min(Z_mat[:, j])), 6))
+        env_maxs.append(round(float(np.max(Z_mat[:, j])), 6))
 
     envelope = ParameterFeatureEnvelope(
         featureIds=tuple(feat_ids),
@@ -675,6 +718,11 @@ def _fit_greybox_residual_head(
         trainRmse=round(train_rmse, 8),
         cvRmse=round(cv_rmse, 8),
         r2Score=round(r2, 6),
+        looR2Score=round(loo_r2, 6) if loo_r2 is not None else None,
+        residualEnabled=residual_enabled,
+        uncertaintyMethod="loo-residual-quantile",
+        nominalCoverage=round(1.0 - CONFORMAL_ALPHA, 4),
+        calibrationSampleCount=n_cal,
         envelope=envelope,
         sensitivities=sensitivities,
         interactions=interactions,
@@ -851,12 +899,28 @@ def learn_parameter_surrogate(
     unique_profiles = list(profile_by_hash.values())
 
     reg = req.registry or default_cnc_parameter_registry()
+    verify_registry_content_hash(reg)
+    missing_ids = missing_greybox_parameter_ids(reg)
+    if missing_ids:
+        raise ValueError(
+            f"registry {reg.registry_id} is not compatible with grey-box kernel {GREYBOX_KERNEL_ID}: "
+            f"missing {', '.join(missing_ids)}. Map the controller's parameters onto the kernel "
+            "parameter ids (controller profile) instead of renaming them; unmapped parameters "
+            "would otherwise silently fall back to defaults."
+        )
     default_params = default_parameter_values(reg)
+    registry_ids = set(default_params)
 
     full_records: list[tuple[CaseGeometryProfile, CncBenchmarkCase, CncAlgorithmExport, CncQualityReport, dict[str, float]]] = []
     for exp in req.exports:
         if not exp.parameters:
             raise ValueError("All exports supplied to learn_parameter_surrogate must include parameters")
+        unknown_ids = sorted(set(exp.parameters) - registry_ids)
+        if unknown_ids:
+            raise ValueError(
+                f"export {exp.algorithm_id} {exp.algorithm_version} reports parameters not in registry "
+                f"{reg.registry_id}: {', '.join(unknown_ids[:8])}{' ...' if len(unknown_ids) > 8 else ''}"
+            )
         matched_case = case_by_hash.get(exp.case_content_hash)
         if matched_case is None:
             raise ValueError(
@@ -909,7 +973,7 @@ def learn_parameter_surrogate(
             sub_c: list[tuple[CaseGeometryProfile, dict[str, float]]] = []
             unit = "mm"
             for prof, _, _, rep, p_dict in ctrl_records:
-                if m_id == "quadrantGlitchMaxMm" and not (prof.has_arcs or prof.has_xy_reversals):
+                if m_id == "quadrantGlitchExcessMm" and not (prof.has_arcs or prof.has_xy_reversals):
                     continue
                 if m_id in ("actualPathDeviationMaxMm", "normalServoErrorMaxMm") and not (prof.has_corners or prof.has_arcs or prof.has_micro_segments):
                     continue
@@ -982,7 +1046,7 @@ def render_parameter_impact_table(surrogate: LearnedParameterSurrogate) -> str:
         f"全局识别出的核心活跃参数（共 {len(surrogate.global_active_parameter_ids)}/{len(surrogate.registry.parameters)} 个）：{', '.join(surrogate.global_active_parameter_ids)}",
     ]
     for diag in surrogate.physical_diagnostics:
-        lines.append(f"  [物理辨识] {diag}")
+        lines.append(f"  [灰盒标定] {diag}")
     if surrogate.cross_toolpath_validation is not None:
         loco = surrogate.cross_toolpath_validation
         act_str = f"，实测轮廓 RMSE={loco.mean_actual_deviation_rmse_mm:.4g}mm" if loco.mean_actual_deviation_rmse_mm is not None else ""
@@ -993,9 +1057,13 @@ def render_parameter_impact_table(surrogate: LearnedParameterSurrogate) -> str:
     lines.append("")
 
     for m_id, head in surrogate.metric_heads.items():
+        loo_r2_txt = f"{head.loo_r2_score:.3f}" if head.loo_r2_score is not None else "-"
+        residual_txt = "启用" if head.residual_enabled else "关闭（留一误差不优于纯灰盒）"
+        cov_txt = f"名义覆盖 {head.nominal_coverage:.0%}，" if head.nominal_coverage is not None else ""
         lines.append(
-            f"【指标 {m_id} ({head.unit})】模式={head.modeling_mode}, R²={head.r2_score:.3f}, "
-            f"纯灰盒RMSE={head.greybox_only_rmse:.4g}, 融合CV-RMSE={head.cv_rmse:.4g}, Conformal区间=±{head.conformal_radius:.4g}"
+            f"【指标 {m_id} ({head.unit})】留一 R²={loo_r2_txt}（训练 R²={head.r2_score:.3f}），"
+            f"纯灰盒RMSE={head.greybox_only_rmse:.4g}, 留一RMSE={head.cv_rmse:.4g}, 残差GP={residual_txt}, "
+            f"不确定性半径=±{head.conformal_radius:.4g}（{cov_txt}实机覆盖率未验证）"
         )
         lines.append(
             "  "
